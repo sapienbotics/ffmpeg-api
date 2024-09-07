@@ -1,66 +1,73 @@
 const express = require('express');
+const bodyParser = require('body-parser');
+const axios = require('axios');
 const { exec } = require('child_process');
 const fs = require('fs');
-const https = require('https');
-const http = require('http');
-
+const path = require('path');
 const app = express();
-app.use(express.json());
+const port = 8080;
 
-// Utility function to download files from a URL
-const downloadFile = (url, outputPath) => {
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(outputPath);
+// Use a cross-platform way to define the temp folder
+const tempFolder = process.platform === 'win32' ? 'F:\\temp' : '/tmp';
 
-    // Use the appropriate module for handling HTTP and HTTPS URLs
-    const mod = url.startsWith('https') ? https : http;
-
-    mod.get(url, response => {
-      if (response.statusCode === 200) {
-        response.pipe(file);
-        file.on('finish', () => {
-          file.close(resolve);
-        });
-      } else {
-        reject(new Error(`Failed to download file, status code: ${response.statusCode}`));
-      }
-    }).on('error', err => {
-      fs.unlink(outputPath, () => {}); // Delete the file in case of an error
-      reject(err);
-    });
-  });
-};
+app.use(bodyParser.json());
 
 app.post('/edit-video', async (req, res) => {
-  const { inputVideo, inputAudio, outputFile, options } = req.body;
+    try {
+        const { inputVideo, inputAudio, outputFile, options } = req.body;
 
-  try {
-    // Download the input video and audio files
-    const videoPath = '/tmp/temp_input_video.mp4';
-    const audioPath = '/tmp/temp_input_audio.mp3';
+        if (!inputVideo || !outputFile) {
+            return res.status(400).send({ error: 'inputVideo and outputFile are required' });
+        }
 
-    await downloadFile(inputVideo, videoPath);
-    await downloadFile(inputAudio, audioPath);
+        // Define file paths
+        const videoPath = path.join(tempFolder, 'temp_input_video.mp4');
+        const audioPath = inputAudio ? path.join(tempFolder, 'temp_input_audio.mp3') : null;
+        const outputPath = outputFile ? path.join(tempFolder, 'processed_video.mp4') : null;
 
-    // Build the FFmpeg command
-    const command = `ffmpeg -i ${videoPath} -i ${audioPath} ${options} ${outputFile}`;
+        // Download video and audio files
+        const downloadFile = (url, filePath) => {
+            return new Promise((resolve, reject) => {
+                axios({
+                    url,
+                    method: 'GET',
+                    responseType: 'stream'
+                }).then(response => {
+                    const writer = fs.createWriteStream(filePath);
+                    response.data.pipe(writer);
+                    writer.on('finish', resolve);
+                    writer.on('error', reject);
+                });
+            });
+        };
 
-    // Run FFmpeg command
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        return res.status(500).send({ error: error.message });
-      }
-      if (stderr) {
-        return res.status(500).send({ error: stderr });
-      }
-      res.send({ message: 'Video processed successfully', output: outputFile });
-    });
+        await downloadFile(inputVideo, videoPath);
+        if (inputAudio) {
+            await downloadFile(inputAudio, audioPath);
+        }
 
-  } catch (err) {
-    res.status(500).send({ error: err.message });
-  }
+        // Construct the FFmpeg command
+        const command = audioPath
+            ? `ffmpeg -i ${videoPath} -i ${audioPath} ${options} ${outputPath}`
+            : `ffmpeg -i ${videoPath} ${options} ${outputPath}`;
+
+        // Execute the FFmpeg command
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error: ${error.message}`);
+                return res.status(500).send({ error: error.message });
+            }
+            if (stderr) {
+                console.error(`Stderr: ${stderr}`);
+                return res.status(500).send({ error: stderr });
+            }
+            res.status(200).send({ message: 'Video processed successfully', stdout });
+        });
+    } catch (error) {
+        res.status(500).send({ error: error.message });
+    }
 });
 
-app.listen(8080, () => {
-  console.log('FFmpeg API listening on port 8080');
+app.listen(port, () => {
+    console.log(`FFmpeg API listening on port ${port}`);
 });
