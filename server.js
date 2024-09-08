@@ -78,10 +78,22 @@ app.post('/edit-video', async (req, res) => {
     });
 
     // Step 4: Respond with the output file path
-    res.json({ message: 'Video processed successfully', outputFile: outputFilePath });
+    res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
   } catch (error) {
     console.error('Error processing video:', error);
     res.status(500).json({ error: 'Error processing video' });
+  }
+});
+
+// Serve the processed video files
+app.get('/video/:filename', (req, res) => {
+  const filePath = path.join(storageDir, req.params.filename);
+  
+  // Check if the file exists
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('File not found');
   }
 });
 
