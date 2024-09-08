@@ -1,97 +1,106 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-const axios = require('axios');
-const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+const { exec } = require('child_process');
+const util = require('util');
+
+// Promisify exec to use async/await
+const execPromise = util.promisify(exec);
+
 const app = express();
-const port = 8080;
+app.use(express.json());
 
-// Use a cross-platform way to define the temp folder
-const tempFolder = process.platform === 'win32' ? 'F:\\temp' : '/tmp';
+// Paths to volume-mounted directories
+const tempDir = '/app/storage/temp';
+const outputDir = '/app/storage/processed';
 
-app.use(bodyParser.json());
+// Ensure directories exist
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir, { recursive: true });
+}
 
-app.post('/edit-video', async (req, res) => {
-    try {
-        const { inputVideo, inputAudio, outputFile, options } = req.body;
-
-        if (!inputVideo || !outputFile) {
-            return res.status(400).send({ error: 'inputVideo and outputFile are required' });
-        }
-
-        // Define file paths for temp video, audio, and output
-        const videoPath = path.join(tempFolder, 'temp_input_video.mp4');
-        const audioPath = inputAudio ? path.join(tempFolder, 'temp_input_audio.mp3') : null;
-        const outputPath = path.join(tempFolder, 'processed_video.mp4');
-
-        // Helper function to delete a file if it exists
-        const deleteFileIfExists = (filePath) => {
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-                console.log(`Deleted existing file: ${filePath}`);
-            }
-        };
-
-        // Delete the existing files before downloading and processing
-        deleteFileIfExists(videoPath);
-        if (audioPath) deleteFileIfExists(audioPath);
-        deleteFileIfExists(outputPath);
-
-        // Download video and audio files
-        const downloadFile = (url, filePath) => {
-            return new Promise((resolve, reject) => {
-                axios({
-                    url,
-                    method: 'GET',
-                    responseType: 'stream'
-                }).then(response => {
-                    const writer = fs.createWriteStream(filePath);
-                    response.data.pipe(writer);
-                    writer.on('finish', resolve);
-                    writer.on('error', reject);
-                }).catch(reject);
-            });
-        };
-
-        // Download input video and audio if available
-        await downloadFile(inputVideo, videoPath);
-        if (inputAudio) {
-            await downloadFile(inputAudio, audioPath);
-        }
-
-        // Construct the FFmpeg command
-        const command = inputAudio
-            ? `ffmpeg -i ${videoPath} -i ${audioPath} ${options} ${outputPath}`
-            : `ffmpeg -i ${videoPath} ${options} ${outputPath}`;
-
-        console.log(`Executing command: ${command}`);
-
-        // Execute the FFmpeg command
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Error: ${error.message}`);
-                return res.status(500).send({ error: error.message });
-            }
-            if (stderr) {
-                console.error(`Stderr: ${stderr}`);
-                return res.status(500).send({ error: stderr });
-            }
-
-            // Send success response with the output path or desired details
-            res.status(200).send({ 
-                message: 'Video processed successfully', 
-                outputFile: outputPath, 
-                stdout: stdout.trim(),  // Trim to remove extra newlines
-                stderr: stderr.trim()   // Trim to remove extra newlines
-            });
-        });
-
-    } catch (error) {
-        res.status(500).send({ error: error.message });
+// Helper function to delete files in a directory
+function deleteFilesInDirectory(directory) {
+  fs.readdir(directory, (err, files) => {
+    if (err) {
+      console.error('Error reading directory:', err);
+      return;
     }
+
+    files.forEach(file => {
+      const filePath = path.join(directory, file);
+      fs.unlink(filePath, err => {
+        if (err) {
+          console.error('Error deleting file:', err);
+        }
+      });
+    });
+  });
+}
+
+// Endpoint to handle video editing
+app.post('/edit-video', async (req, res) => {
+  try {
+    const { inputVideo, outputFile, options } = req.body;
+
+    if (!inputVideo || !outputFile || !options) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const tempInputPath = path.join(tempDir, 'temp_input_video.mp4');
+    const outputFilePath = path.join(outputDir, outputFile);
+
+    // Clean up old files in temp directory
+    deleteFilesInDirectory(tempDir);
+
+    // Remove any existing output file
+    if (fs.existsSync(outputFilePath)) {
+      fs.unlinkSync(outputFilePath);
+    }
+
+    // Download the input video file
+    const response = await axios({
+      url: inputVideo,
+      responseType: 'stream',
+    });
+    const writer = fs.createWriteStream(tempInputPath);
+    response.data.pipe(writer);
+
+    writer.on('finish', async () => {
+      try {
+        // Run FFmpeg command
+        const command = `ffmpeg -i ${tempInputPath} ${options} ${outputFilePath}`;
+        await execPromise(command);
+
+        // Respond with success
+        res.json({ message: 'Video processed successfully', outputFile: outputFilePath });
+      } catch (error) {
+        console.error('Error processing video:', error);
+        res.status(500).json({ error: 'Error processing video' });
+      } finally {
+        // Clean up temporary files
+        if (fs.existsSync(tempInputPath)) {
+          fs.unlinkSync(tempInputPath);
+        }
+      }
+    });
+
+    writer.on('error', (err) => {
+      console.error('Error downloading video:', err);
+      res.status(500).json({ error: 'Error downloading video' });
+    });
+  } catch (error) {
+    console.error('Error handling request:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
+// Start the server
+const port = process.env.PORT || 8080;
 app.listen(port, () => {
-    console.log(`FFmpeg API listening on port ${port}`);
+  console.log(`Server is running on port ${port}`);
 });

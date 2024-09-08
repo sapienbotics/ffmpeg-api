@@ -1,21 +1,23 @@
-# Use Node.js base image
+# Use the official Node.js image as the base image
 FROM node:14
 
-# Set working directory
+# Create and change to the app directory
 WORKDIR /usr/src/app
+
+# Install FFmpeg
+RUN apt-get update && \
+    apt-get install -y ffmpeg && \
+    apt-get clean
 
 # Install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy app source code
+# Copy the rest of the application code
 COPY . .
 
-# Install FFmpeg
-RUN apt-get update && apt-get install -y ffmpeg
-
-# Expose port 8080
+# Expose port 8080 for the application
 EXPOSE 8080
 
-# Start the Node.js server
+# Define the command to run the application
 CMD ["node", "server.js"]
