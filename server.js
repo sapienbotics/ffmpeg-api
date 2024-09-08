@@ -10,11 +10,6 @@ const port = 8080;
 // Use a cross-platform way to define the temp folder
 const tempFolder = process.platform === 'win32' ? 'F:\\temp' : '/tmp';
 
-// Ensure the temp folder exists
-if (!fs.existsSync(tempFolder)) {
-    fs.mkdirSync(tempFolder, { recursive: true });
-}
-
 app.use(bodyParser.json());
 
 app.post('/edit-video', async (req, res) => {
@@ -70,27 +65,29 @@ app.post('/edit-video', async (req, res) => {
             ? `ffmpeg -i ${videoPath} -i ${audioPath} ${options} ${outputPath}`
             : `ffmpeg -i ${videoPath} ${options} ${outputPath}`;
 
-        console.log(`Running FFmpeg command: ${command}`);
+        console.log(`Executing command: ${command}`);
 
         // Execute the FFmpeg command
         exec(command, (error, stdout, stderr) => {
             if (error) {
                 console.error(`Error: ${error.message}`);
-                return res.status(500).send({ error: error.message, stdout, stderr });
+                return res.status(500).send({ error: error.message });
             }
             if (stderr) {
                 console.error(`Stderr: ${stderr}`);
-                return res.status(500).send({ error: stderr, stdout });
+                return res.status(500).send({ error: stderr });
             }
 
-            console.log(`FFmpeg output: ${stdout}`);
-
             // Send success response with the output path or desired details
-            res.status(200).send({ message: 'Video processed successfully', outputFile: outputPath, stdout });
+            res.status(200).send({ 
+                message: 'Video processed successfully', 
+                outputFile: outputPath, 
+                stdout: stdout.trim(),  // Trim to remove extra newlines
+                stderr: stderr.trim()   // Trim to remove extra newlines
+            });
         });
 
     } catch (error) {
-        console.error(`Exception: ${error.message}`);
         res.status(500).send({ error: error.message });
     }
 });
