@@ -34,40 +34,32 @@ async function downloadFile(url, outputPath) {
   }
 }
 
+// Function to verify if a file is valid
+const verifyFile = (filePath) => {
+  return new Promise((resolve, reject) => {
+    fs.stat(filePath, (err, stats) => {
+      if (err) {
+        reject(err);
+      } else if (stats.size === 0) {
+        reject(new Error('File is empty'));
+      } else {
+        resolve();
+      }
+    });
+  });
+};
+
 // Function to execute FFmpeg commands
 function executeFFmpegCommand(videoPath, audioPath, outputPath, options) {
   return new Promise((resolve, reject) => {
     const command = `ffmpeg -i ${videoPath} -i ${audioPath} ${options} ${outputPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg error:', error);
+        console.error('FFmpeg error:', stderr); // Log stderr for more details
         reject(error);
       } else {
         console.log('FFmpeg output:', stdout);
         resolve();
-      }
-    });
-  });
-}
-
-// Function to clean up old files
-function cleanupOldFiles() {
-  fs.readdir(storageDir, (err, files) => {
-    if (err) {
-      console.error('Error reading storage directory:', err);
-      return;
-    }
-
-    files.forEach(file => {
-      const filePath = path.join(storageDir, file);
-      if (!file.includes('_processed_video.mp4')) { // Exclude the final processed video
-        fs.unlink(filePath, err => {
-          if (err) {
-            console.error('Error deleting old file:', err);
-          } else {
-            console.log('Deleted old file:', filePath);
-          }
-        });
       }
     });
   });
@@ -79,15 +71,24 @@ app.post('/edit-video', async (req, res) => {
     console.log('Request received:', req.body);
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
-    const options = req.body.options || '-c:v copy -c:a aac -strict experimental'; // Default FFmpeg options
+    const options = req.body.options || '-c:v copy -c:a aac -strict experimental -shortest'; // Default FFmpeg options
     const uniqueFilename = `${uuidv4()}_processed_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
     const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`);
 
-    // Step 1: Cleanup old files before starting new processing
+    // Step 1: Clean up old files
     console.log('Cleaning up old files...');
-    cleanupOldFiles();
+    try {
+      fs.readdirSync(storageDir).forEach(file => {
+        if (file.endsWith('_processed_video.mp4')) {
+          fs.unlinkSync(path.join(storageDir, file));
+          console.log(`Deleted old file: ${file}`);
+        }
+      });
+    } catch (err) {
+      console.error('Error cleaning up old files:', err);
+    }
 
     // Step 2: Download the input video
     console.log('Downloading video from:', inputVideoUrl);
@@ -96,6 +97,10 @@ app.post('/edit-video', async (req, res) => {
     // Step 3: Download the input audio
     console.log('Downloading audio from:', inputAudioUrl);
     await downloadFile(inputAudioUrl, tempAudioPath);
+
+    // Verify downloaded files
+    await verifyFile(tempVideoPath);
+    await verifyFile(tempAudioPath);
 
     // Step 4: Process the video with FFmpeg
     console.log('Processing video...');
