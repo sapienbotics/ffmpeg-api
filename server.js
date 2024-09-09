@@ -99,6 +99,7 @@ app.post('/edit-video', async (req, res) => {
     await downloadFile(inputAudioUrl, tempAudioPath);
 
     // Verify downloaded files
+    console.log('Verifying downloaded files...');
     await verifyFile(tempVideoPath);
     await verifyFile(tempAudioPath);
 
@@ -108,23 +109,6 @@ app.post('/edit-video', async (req, res) => {
 
     // Step 5: Respond with the output file path
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
-
-    // Remove temporary files at the beginning of the process
-    fs.unlink(tempVideoPath, (err) => {
-      if (err) {
-        console.error('Error deleting temp video file:', err);
-      } else {
-        console.log('Temporary video file deleted:', tempVideoPath);
-      }
-    });
-    
-    fs.unlink(tempAudioPath, (err) => {
-      if (err) {
-        console.error('Error deleting temp audio file:', err);
-      } else {
-        console.log('Temporary audio file deleted:', tempAudioPath);
-      }
-    });
 
   } catch (error) {
     console.error('Error processing video:', error);
