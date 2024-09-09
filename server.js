@@ -50,6 +50,29 @@ function executeFFmpegCommand(videoPath, audioPath, outputPath, options) {
   });
 }
 
+// Function to clean up old files
+function cleanupOldFiles() {
+  fs.readdir(storageDir, (err, files) => {
+    if (err) {
+      console.error('Error reading storage directory:', err);
+      return;
+    }
+
+    files.forEach(file => {
+      const filePath = path.join(storageDir, file);
+      if (!file.includes('_processed_video.mp4')) { // Exclude the final processed video
+        fs.unlink(filePath, err => {
+          if (err) {
+            console.error('Error deleting old file:', err);
+          } else {
+            console.log('Deleted old file:', filePath);
+          }
+        });
+      }
+    });
+  });
+}
+
 // Main API to handle video editing
 app.post('/edit-video', async (req, res) => {
   try {
@@ -62,19 +85,23 @@ app.post('/edit-video', async (req, res) => {
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
     const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`);
 
-    // Step 1: Download the input video
+    // Step 1: Cleanup old files before starting new processing
+    console.log('Cleaning up old files...');
+    cleanupOldFiles();
+
+    // Step 2: Download the input video
     console.log('Downloading video from:', inputVideoUrl);
     await downloadFile(inputVideoUrl, tempVideoPath);
 
-    // Step 2: Download the input audio
+    // Step 3: Download the input audio
     console.log('Downloading audio from:', inputAudioUrl);
     await downloadFile(inputAudioUrl, tempAudioPath);
 
-    // Step 3: Process the video with FFmpeg
+    // Step 4: Process the video with FFmpeg
     console.log('Processing video...');
     await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath, options);
 
-    // Step 4: Delete temporary files after processing
+    // Step 5: Delete temporary files after processing
     fs.unlink(tempVideoPath, (err) => {
       if (err) {
         console.error('Error deleting temp video file:', err);
@@ -91,7 +118,7 @@ app.post('/edit-video', async (req, res) => {
       }
     });
 
-    // Step 5: Respond with the output file path
+    // Step 6: Respond with the output file path
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
   } catch (error) {
     console.error('Error processing video:', error);
