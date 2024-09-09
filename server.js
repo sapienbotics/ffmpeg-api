@@ -10,6 +10,7 @@ app.use(express.json());
 
 const storageDir = '/app/storage/processed';
 const tempDir = '/app/storage/temp';
+let isProcessing = false;
 
 // Ensure the directories exist
 if (!fs.existsSync(storageDir)) {
@@ -43,10 +44,8 @@ async function downloadFile(url, outputPath) {
 const verifyFile = (filePath) => {
   return new Promise((resolve, reject) => {
     fs.stat(filePath, (err, stats) => {
-      if (err) {
-        reject(err);
-      } else if (stats.size === 0) {
-        reject(new Error('File is empty'));
+      if (err || stats.size === 0) {
+        reject(new Error('File is invalid or empty'));
       } else {
         resolve();
       }
@@ -58,7 +57,7 @@ const verifyFile = (filePath) => {
 function executeFFmpegCommand(videoPath, audioPath, outputPath, options) {
   return new Promise((resolve, reject) => {
     const command = `ffmpeg -i ${videoPath} -i ${audioPath} ${options} ${outputPath}`;
-    console.log('Executing FFmpeg command:', command);
+    console.log(`[${new Date().toISOString()}] Executing FFmpeg command:`, command);
     exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error('FFmpeg error:', stderr); // Log stderr for more details
@@ -73,11 +72,16 @@ function executeFFmpegCommand(videoPath, audioPath, outputPath, options) {
 
 // Main API to handle video editing
 app.post('/edit-video', async (req, res) => {
+  if (isProcessing) {
+    return res.status(429).json({ message: 'A video is already being processed, please wait.' });
+  }
+  isProcessing = true;
+
   try {
-    console.log('Request received:', req.body);
+    console.log(`[${new Date().toISOString()}] Request received:`, req.body);
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
-    const options = req.body.options || '-c:v libx264 -c:a aac -strict experimental -shortest'; // Default FFmpeg options
+    const options = req.body.options || '-c:v libx264 -c:a aac -strict experimental -shortest';
 
     // Generate unique filenames for temp and output files
     const uniqueFilename = `${uuidv4()}_processed_video.mp4`;
@@ -85,18 +89,20 @@ app.post('/edit-video', async (req, res) => {
     const tempVideoPath = path.join(tempDir, `${uuidv4()}_temp_video.mp4`);
     const tempAudioPath = path.join(tempDir, `${uuidv4()}_temp_audio.mp3`);
 
-    // Step 1: Clean up old files
+    // Step 1: Clean up old processed files (older than 1 hour)
+    const maxFileAge = 60 * 60 * 1000; // 1 hour in milliseconds
+    const now = new Date().getTime();
     console.log('Cleaning up old processed files...');
-    try {
-      fs.readdirSync(storageDir).forEach(file => {
-        if (file.endsWith('_processed_video.mp4')) {
-          fs.unlinkSync(path.join(storageDir, file));
-          console.log(`Deleted old file: ${file}`);
-        }
-      });
-    } catch (err) {
-      console.error('Error cleaning up old files:', err);
-    }
+    fs.readdirSync(storageDir).forEach(file => {
+      const filePath = path.join(storageDir, file);
+      const stats = fs.statSync(filePath);
+      const fileAge = now - stats.mtime.getTime();
+
+      if (file.endsWith('_processed_video.mp4') && fileAge > maxFileAge) {
+        fs.unlinkSync(filePath);
+        console.log(`Deleted old file: ${file}`);
+      }
+    });
 
     // Step 2: Download the input video
     console.log('Downloading video from:', inputVideoUrl);
@@ -121,6 +127,11 @@ app.post('/edit-video', async (req, res) => {
   } catch (error) {
     console.error('Error processing video:', error);
     res.status(500).json({ error: 'Error processing video' });
+  } finally {
+    // Clean up temporary files
+    if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
+    if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath);
+    isProcessing = false;
   }
 });
 
