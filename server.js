@@ -9,39 +9,45 @@ const app = express();
 app.use(express.json());
 
 const storageDir = '/app/storage/processed';
+const tempDir = '/app/storage/temp';
 
-// Ensure the directory exists
+// Ensure directories exist
 if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });
 }
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
 
-// Function to download files with retry logic
+// Function to download files with retry logic and logging
 async function downloadFile(url, outputPath) {
   let retries = 3;
   while (retries > 0) {
     try {
-      const response = await axios.get(url, { responseType: 'stream' });
-      response.data.pipe(fs.createWriteStream(outputPath));
+      const response = await axios.get(url, { responseType: 'stream', timeout: 60000 }); // 60s timeout
+      const writer = fs.createWriteStream(outputPath);
+      response.data.pipe(writer);
+
       return new Promise((resolve, reject) => {
-        response.data.on('end', resolve);
-        response.data.on('error', reject);
+        writer.on('finish', resolve);
+        writer.on('error', reject);
       });
     } catch (error) {
-      console.error('Error downloading file, retrying...', error);
+      console.error(`Error downloading file from ${url}. Retries left: ${retries - 1}`, error.message);
       retries--;
-      if (retries === 0) throw new Error('Failed to download file after retries');
+      if (retries === 0) throw new Error(`Failed to download file from ${url} after retries`);
     }
   }
 }
 
-// Function to verify if a file is valid
+// Function to verify file validity after download
 const verifyFile = (filePath) => {
   return new Promise((resolve, reject) => {
     fs.stat(filePath, (err, stats) => {
       if (err) {
-        reject(err);
+        reject(new Error(`File not found: ${filePath}`));
       } else if (stats.size === 0) {
-        reject(new Error('File is empty'));
+        reject(new Error(`File is empty: ${filePath}`));
       } else {
         resolve();
       }
@@ -49,14 +55,16 @@ const verifyFile = (filePath) => {
   });
 };
 
-// Function to execute FFmpeg commands
+// Execute FFmpeg command with detailed logging
 function executeFFmpegCommand(videoPath, audioPath, outputPath, options) {
   return new Promise((resolve, reject) => {
     const command = `ffmpeg -i ${videoPath} -i ${audioPath} ${options} ${outputPath}`;
+    console.log(`Executing FFmpeg command: ${command}`);
+
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg error:', stderr); // Log stderr for more details
-        reject(error);
+        console.error('FFmpeg error:', stderr);
+        reject(new Error(`FFmpeg failed: ${stderr}`));
       } else {
         console.log('FFmpeg output:', stdout);
         resolve();
@@ -65,58 +73,66 @@ function executeFFmpegCommand(videoPath, audioPath, outputPath, options) {
   });
 }
 
-// Main API to handle video editing
+// Clean up old processed files
+function cleanUpOldFiles() {
+  console.log('Cleaning up old processed files...');
+  const files = fs.readdirSync(storageDir);
+  files.forEach(file => {
+    if (file.endsWith('_processed_video.mp4')) {
+      try {
+        fs.unlinkSync(path.join(storageDir, file));
+        console.log(`Deleted old file: ${file}`);
+      } catch (err) {
+        console.error('Error deleting old file:', file, err.message);
+      }
+    }
+  });
+}
+
+// Main API for editing video
 app.post('/edit-video', async (req, res) => {
   try {
-    console.log('Request received:', req.body);
-    const inputVideoUrl = req.body.inputVideo;
-    const inputAudioUrl = req.body.inputAudio;
-    const options = req.body.options || '-c:v copy -c:a aac -strict experimental -shortest'; // Default FFmpeg options
+    const { inputVideo, inputAudio, options = '-c:v copy -c:a aac -strict experimental -shortest' } = req.body;
+
     const uniqueFilename = `${uuidv4()}_processed_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-    const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`);
+    const tempVideoPath = path.join(tempDir, `${uuidv4()}_temp_video.mp4`);
+    const tempAudioPath = path.join(tempDir, `${uuidv4()}_temp_audio.mp3`);
 
     // Step 1: Clean up old files
-    console.log('Cleaning up old files...');
-    try {
-      fs.readdirSync(storageDir).forEach(file => {
-        if (file.endsWith('_processed_video.mp4')) {
-          fs.unlinkSync(path.join(storageDir, file));
-          console.log(`Deleted old file: ${file}`);
-        }
-      });
-    } catch (err) {
-      console.error('Error cleaning up old files:', err);
-    }
+    cleanUpOldFiles();
 
     // Step 2: Download the input video
-    console.log('Downloading video from:', inputVideoUrl);
-    await downloadFile(inputVideoUrl, tempVideoPath);
+    console.log('Downloading video from:', inputVideo);
+    await downloadFile(inputVideo, tempVideoPath);
 
     // Step 3: Download the input audio
-    console.log('Downloading audio from:', inputAudioUrl);
-    await downloadFile(inputAudioUrl, tempAudioPath);
+    console.log('Downloading audio from:', inputAudio);
+    await downloadFile(inputAudio, tempAudioPath);
 
-    // Verify downloaded files
+    // Step 4: Verify downloaded files
     console.log('Verifying downloaded files...');
     await verifyFile(tempVideoPath);
     await verifyFile(tempAudioPath);
 
-    // Step 4: Process the video with FFmpeg
-    console.log('Processing video...');
+    // Step 5: Process video using FFmpeg
+    console.log('Processing video with FFmpeg...');
     await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath, options);
 
-    // Step 5: Respond with the output file path
+    // Step 6: Respond with the output file path
+    console.log('Video processed successfully:', uniqueFilename);
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
-
   } catch (error) {
-    console.error('Error processing video:', error);
+    console.error('Error processing video:', error.message);
     res.status(500).json({ error: 'Error processing video' });
+  } finally {
+    // Clean up temporary files
+    if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath);
+    if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
   }
 });
 
-// Serve the processed video files
+// Serve processed video files
 app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
 
@@ -127,7 +143,7 @@ app.get('/video/:filename', (req, res) => {
   }
 });
 
-// Start the server
+// Start server
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
