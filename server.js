@@ -2,11 +2,10 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffprobe = require('ffprobe-static');
 const ffmpegPath = require('ffmpeg-static');
-const { execSync } = require('child_process');
 
 const app = express();
 app.use(express.json());
@@ -30,7 +29,7 @@ async function downloadFile(url, outputPath) {
         response.data.on('error', reject);
       });
     } catch (error) {
-      console.error('Error downloading file, retrying...', error);
+      console.error('Error downloading file, retrying...', error.message);
       retries--;
       if (retries === 0) throw new Error('Failed to download file after retries');
     }
@@ -43,18 +42,18 @@ function logFileProperties(filePath) {
     const output = execSync(`${ffprobe.path} -v error -show_format -show_streams ${filePath}`).toString();
     console.log(`File properties for ${filePath}:\n`, output);
   } catch (error) {
-    console.error(`Error logging properties for ${filePath}:`, error);
+    console.error(`Error logging properties for ${filePath}:`, error.message);
   }
 }
 
 // Function to execute FFmpeg commands
 function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath) {
   return new Promise((resolve, reject) => {
-    // Updated FFmpeg command to ensure proper handling of audio and video
     const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -map 0:v -map 1:a -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg error:', stderr);
+        console.error('FFmpeg error:', error.message);
+        console.error('FFmpeg stderr:', stderr);
         reject(error);
       } else {
         console.log('FFmpeg output:', stdout);
@@ -66,15 +65,14 @@ function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath) {
 
 // Main API to handle video editing
 app.post('/edit-video', async (req, res) => {
-  let tempVideoPath, tempAudioPath, outputFilePath;
   try {
     console.log('Request received:', req.body);
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
     const uniqueFilename = `${uuidv4()}_processed_video.mp4`; // Generate unique filename
-    outputFilePath = path.join(storageDir, uniqueFilename);
-    tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
-    tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`); // Temporary file for input audio
+    const outputFilePath = path.join(storageDir, uniqueFilename);
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
+    const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`); // Temporary file for input audio
 
     // Step 1: Download the input video and audio
     console.log('Downloading video from:', inputVideoUrl);
@@ -90,19 +88,19 @@ app.post('/edit-video', async (req, res) => {
     console.log('Processing video with audio...');
     await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath);
 
+    // Step 3: Delete the temporary files after processing
+    fs.unlink(tempVideoPath, (err) => {
+      if (err) console.error('Error deleting temp video file:', err.message);
+    });
+    fs.unlink(tempAudioPath, (err) => {
+      if (err) console.error('Error deleting temp audio file:', err.message);
+    });
+
     // Step 4: Respond with the output file path
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
   } catch (error) {
-    console.error('Error processing video:', error);
+    console.error('Error processing video:', error.message);
     res.status(500).json({ error: 'Error processing video' });
-  } finally {
-    // Ensure temporary files are deleted
-    if (tempVideoPath && fs.existsSync(tempVideoPath)) {
-      fs.unlinkSync(tempVideoPath);
-    }
-    if (tempAudioPath && fs.existsSync(tempAudioPath)) {
-      fs.unlinkSync(tempAudioPath);
-    }
   }
 });
 
@@ -118,8 +116,23 @@ app.get('/video/:filename', (req, res) => {
   }
 });
 
-// Start the server
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+// Graceful shutdown handling
+const server = app.listen(process.env.PORT || 8080, () => {
+  console.log(`Server running on port ${process.env.PORT || 8080}`);
+});
+
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received.');
+  server.close(() => {
+    console.log('HTTP server closed.');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received.');
+  server.close(() => {
+    console.log('HTTP server closed.');
+    process.exit(0);
+  });
 });
