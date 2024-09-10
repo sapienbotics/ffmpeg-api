@@ -10,7 +10,7 @@ const ffmpegPath = require('ffmpeg-static');
 const app = express();
 app.use(express.json());
 
-const storageDir = '/app/storage/processed'; // Directory for processed videos
+const storageDir = process.env.STORAGE_DIR || '/app/storage/processed';
 
 // Ensure the directory exists
 if (!fs.existsSync(storageDir)) {

@@ -18,9 +18,6 @@ RUN apt-get update && \
     apt-get install -y ffmpeg && \
     ffmpeg -version
 
-# Print Node.js version
-RUN node -v
-
 # Expose port 8080
 EXPOSE 8080
 
