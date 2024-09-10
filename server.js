@@ -11,7 +11,7 @@ const { execSync } = require('child_process');
 const app = express();
 app.use(express.json());
 
-const storageDir = '/app/storage/processed'; // Define the directory for processed videos
+const storageDir = '/app/storage/processed'; // Directory for processed videos
 
 // Ensure the directory exists
 if (!fs.existsSync(storageDir)) {
@@ -37,7 +37,7 @@ async function downloadFile(url, outputPath) {
   }
 }
 
-// Function to log file properties
+// Function to log file properties using ffprobe
 function logFileProperties(filePath) {
   try {
     const output = execSync(`${ffprobe.path} -v error -show_format -show_streams ${filePath}`).toString();
@@ -48,9 +48,9 @@ function logFileProperties(filePath) {
 }
 
 // Function to execute FFmpeg commands
-function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath, options) {
+function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath) {
   return new Promise((resolve, reject) => {
-    // Updated FFmpeg command with -map, stereo audio, and 44100 Hz sample rate
+    // Updated FFmpeg command to ensure proper handling of audio and video
     const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -map 0:v -map 1:a -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
@@ -70,7 +70,6 @@ app.post('/edit-video', async (req, res) => {
     console.log('Request received:', req.body);
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
-    const options = req.body.options || '-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest'; // Default FFmpeg options
     const uniqueFilename = `${uuidv4()}_processed_video.mp4`; // Generate unique filename
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
@@ -88,7 +87,7 @@ app.post('/edit-video', async (req, res) => {
 
     // Step 2: Process the video with FFmpeg
     console.log('Processing video with audio...');
-    await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath, options);
+    await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath);
 
     // Step 3: Delete the temporary files after processing
     fs.unlink(tempVideoPath, (err) => {
@@ -109,7 +108,7 @@ app.post('/edit-video', async (req, res) => {
 // Serve the processed video files
 app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
-  
+
   // Check if the file exists
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
