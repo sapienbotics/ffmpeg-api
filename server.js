@@ -3,60 +3,44 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require('uuid'); // For generating unique filenames
 
 const app = express();
 app.use(express.json());
 
-const storageDir = '/app/storage/processed';
-const tempDir = '/app/storage/temp';
+const storageDir = '/app/storage/processed'; // Define the directory for processed videos
 
-// Ensure the directories exist
+// Ensure the directory exists
 if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });
 }
-if (!fs.existsSync(tempDir)) {
-  fs.mkdirSync(tempDir, { recursive: true });
-}
 
-// Function to download files
-async function downloadFile(url, outputPath) {
-  try {
-    const response = await axios.get(url, { responseType: 'stream' });
-    const writer = fs.createWriteStream(outputPath);
-    response.data.pipe(writer);
-
-    return new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-  } catch (error) {
-    console.error('Error downloading file:', error);
-    throw error;
+// Function to download the video with retry logic
+async function downloadVideo(url, outputPath) {
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const response = await axios.get(url, { responseType: 'stream' });
+      response.data.pipe(fs.createWriteStream(outputPath));
+      return new Promise((resolve, reject) => {
+        response.data.on('end', resolve);
+        response.data.on('error', reject);
+      });
+    } catch (error) {
+      console.error('Error downloading video, retrying...', error);
+      retries--;
+      if (retries === 0) throw new Error('Failed to download video after retries');
+    }
   }
 }
 
-// Function to verify if a file is valid
-async function verifyFile(filePath) {
-  return new Promise((resolve, reject) => {
-    fs.stat(filePath, (err, stats) => {
-      if (err || stats.size === 0) {
-        reject(new Error('File is empty or does not exist'));
-      } else {
-        resolve();
-      }
-    });
-  });
-}
-
 // Function to execute FFmpeg commands
-function executeFFmpegCommand(videoPath, audioPath, outputPath, options) {
+function executeFFmpegCommand(inputPath, outputPath, options) {
   return new Promise((resolve, reject) => {
-    const command = `ffmpeg -i ${videoPath} -i ${audioPath} ${options} ${outputPath}`;
-    console.log('Executing FFmpeg command:', command);
+    const command = `ffmpeg -i ${inputPath} ${options} ${outputPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg error:', stderr);
+        console.error('FFmpeg error:', error);
         reject(error);
       } else {
         console.log('FFmpeg output:', stdout);
@@ -70,39 +54,30 @@ function executeFFmpegCommand(videoPath, audioPath, outputPath, options) {
 app.post('/edit-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
-    const { inputVideo, inputAudio, options = '-c:v libx264 -c:a aac -strict experimental -shortest' } = req.body;
-
-    const uniqueFilename = `${uuidv4()}_processed_video.mp4`;
+    const inputVideoUrl = req.body.inputVideo;
+    const options = req.body.options || '-c:v copy'; // Default FFmpeg options
+    const uniqueFilename = `${uuidv4()}_processed_video.mp4`; // Generate unique filename
     const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(tempDir, `${uuidv4()}_temp_video.mp4`);
-    const tempAudioPath = path.join(tempDir, `${uuidv4()}_temp_audio.mp3`);
+    const tempInputPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
 
-    // Clean up old files
-    console.log('Cleaning up old processed files...');
-    fs.readdirSync(storageDir).forEach(file => {
-      if (file.endsWith('_processed_video.mp4')) {
-        fs.unlinkSync(path.join(storageDir, file));
-        console.log(`Deleted old file: ${file}`);
+    // Step 1: Download the input video
+    console.log('Downloading video from:', inputVideoUrl);
+    await downloadVideo(inputVideoUrl, tempInputPath);
+
+    // Step 2: Process the video with FFmpeg
+    console.log('Processing video...');
+    await executeFFmpegCommand(tempInputPath, outputFilePath, options);
+
+    // Step 3: Delete the temporary input video file after processing
+    fs.unlink(tempInputPath, (err) => {
+      if (err) {
+        console.error('Error deleting temp input file:', err);
+      } else {
+        console.log('Temporary input file deleted:', tempInputPath);
       }
     });
 
-    // Download input files
-    console.log('Downloading video from:', inputVideo);
-    await downloadFile(inputVideo, tempVideoPath);
-
-    console.log('Downloading audio from:', inputAudio);
-    await downloadFile(inputAudio, tempAudioPath);
-
-    // Verify the files
-    console.log('Verifying downloaded files...');
-    await verifyFile(tempVideoPath);
-    await verifyFile(tempAudioPath);
-
-    // Process the video with FFmpeg
-    console.log('Processing video with FFmpeg...');
-    await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath, options);
-
-    // Respond with the output file path
+    // Step 4: Respond with the output file path
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
   } catch (error) {
     console.error('Error processing video:', error);
@@ -113,6 +88,8 @@ app.post('/edit-video', async (req, res) => {
 // Serve the processed video files
 app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
+  
+  // Check if the file exists
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
   } else {
