@@ -50,17 +50,14 @@ function logFileProperties(filePath) {
 // Function to execute FFmpeg commands
 function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath, options) {
   return new Promise((resolve, reject) => {
-    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} ${options} ${outputPath}`;
-    
-    console.log(`Executing FFmpeg command: ${command}`); // Log command for debugging
-
+    // Updated FFmpeg command with -map, stereo audio, and 44100 Hz sample rate
+    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -map 0:v -map 1:a -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg stderr:', stderr); // Log stderr for detailed error output
-        console.error('FFmpeg error:', error.message); // Log the error message
+        console.error('FFmpeg error:', error);
         reject(error);
       } else {
-        console.log('FFmpeg stdout:', stdout); // Log stdout to capture standard output
+        console.log('FFmpeg output:', stdout);
         resolve();
       }
     });
@@ -73,7 +70,7 @@ app.post('/edit-video', async (req, res) => {
     console.log('Request received:', req.body);
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
-    const options = req.body.options || '-c:v libx264 -c:a aac -strict experimental -shortest'; // Default FFmpeg options
+    const options = req.body.options || '-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest'; // Default FFmpeg options
     const uniqueFilename = `${uuidv4()}_processed_video.mp4`; // Generate unique filename
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
