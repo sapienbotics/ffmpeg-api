@@ -17,34 +17,24 @@ if (!fs.existsSync(storageDir)) {
 
 // Function to sanitize the URL
 function sanitizeUrl(url) {
-  // Remove any trailing single quote or URL-encoded characters that shouldn't be there
   return url.replace(/['"]+/g, ''); // Removes single or double quotes
 }
 
-// Function to download a file (video/audio) with retry logic
+// Function to download a file (video/audio)
 async function downloadFile(url, outputPath) {
-  let sanitizedUrl = sanitizeUrl(url); // Clean up the URL before using it
-  let retries = 3;
-  while (retries > 0) {
-    try {
-      const response = await axios.get(sanitizedUrl, { responseType: 'stream' });
-      response.data.pipe(fs.createWriteStream(outputPath));
-      return new Promise((resolve, reject) => {
-        response.data.on('end', resolve);
-        response.data.on('error', reject);
-      });
-    } catch (error) {
-      console.error(`Error downloading file from ${sanitizedUrl}, retrying...`, error);
-      retries--;
-      if (retries === 0) throw new Error(`Failed to download file from ${sanitizedUrl} after retries`);
-    }
-  }
+  const sanitizedUrl = sanitizeUrl(url);
+  const response = await axios.get(sanitizedUrl, { responseType: 'stream' });
+  return new Promise((resolve, reject) => {
+    response.data.pipe(fs.createWriteStream(outputPath))
+      .on('finish', resolve)
+      .on('error', reject);
+  });
 }
 
 // Function to execute FFmpeg commands
-function executeFFmpegCommand(inputPath, outputPath, options) {
+function executeFFmpegCommand(inputVideo, inputAudio, outputVideo) {
   return new Promise((resolve, reject) => {
-    const command = `ffmpeg -i ${inputPath} ${options} ${outputPath}`;
+    const command = `ffmpeg -i ${inputVideo} -i ${inputAudio} -c:v libx264 -c:a aac -strict experimental -shortest ${outputVideo}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error('FFmpeg error:', error);
@@ -63,11 +53,10 @@ app.post('/edit-video', async (req, res) => {
     console.log('Request received:', req.body);
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
-    const options = req.body.options || '-c:v copy'; // Default FFmpeg options
-    const uniqueFilename = `${uuidv4()}_processed_video.mp4`; // Generate unique filename
+    const uniqueFilename = `${uuidv4()}_processed_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
-    const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`); // Temporary file for input audio
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+    const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`);
 
     // Step 1: Download the input video
     console.log('Downloading video from:', inputVideoUrl);
@@ -79,8 +68,7 @@ app.post('/edit-video', async (req, res) => {
 
     // Step 3: Process the video with FFmpeg
     console.log('Processing video...');
-    const ffmpegOptions = `${options} -i ${tempAudioPath} -shortest`; // Merge audio and video
-    await executeFFmpegCommand(tempVideoPath, outputFilePath, ffmpegOptions);
+    await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath);
 
     // Step 4: Delete the temporary input video and audio files after processing
     fs.unlink(tempVideoPath, (err) => {
@@ -110,7 +98,6 @@ app.post('/edit-video', async (req, res) => {
 app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
   
-  // Check if the file exists
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
   } else {
