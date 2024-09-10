@@ -10,12 +10,17 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
+# Install FFmpeg and required dependencies
+RUN apt-get update && \
+    apt-get install -y ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ffprobe-static and ffmpeg-static to ensure availability
+RUN npm install ffprobe-static@latest ffmpeg-static@latest
+
 # Copy the rest of the application code
 COPY . .
-
-# Install FFmpeg
-RUN apt-get update && \
-    apt-get install -y ffmpeg
 
 # Expose port 8080
 EXPOSE 8080
