@@ -5,6 +5,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffprobe = require('ffprobe-static');
+const ffmpegPath = require('ffmpeg-static');
 const { execSync } = require('child_process');
 
 const app = express();
@@ -49,7 +50,7 @@ function logFileProperties(filePath) {
 // Function to execute FFmpeg commands
 function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath, options) {
   return new Promise((resolve, reject) => {
-    const command = `ffmpeg -i ${inputVideoPath} -i ${inputAudioPath} ${options} ${outputPath}`;
+    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} ${options} ${outputPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error('FFmpeg error:', error);
