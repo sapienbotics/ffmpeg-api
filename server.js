@@ -3,7 +3,9 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
-const { v4: uuidv4 } = require('uuid'); // For generating unique filenames
+const { v4: uuidv4 } = require('uuid');
+const ffprobe = require('ffprobe-static');
+const { execSync } = require('child_process');
 
 const app = express();
 app.use(express.json());
@@ -15,7 +17,7 @@ if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });
 }
 
-// Function to download a file with retry logic
+// Function to download the file with retry logic
 async function downloadFile(url, outputPath) {
   let retries = 3;
   while (retries > 0) {
@@ -27,10 +29,20 @@ async function downloadFile(url, outputPath) {
         response.data.on('error', reject);
       });
     } catch (error) {
-      console.error(`Error downloading file from ${url}, retries left: ${retries}`, error);
+      console.error('Error downloading file, retrying...', error);
       retries--;
-      if (retries === 0) throw new Error(`Failed to download file from ${url} after retries`);
+      if (retries === 0) throw new Error('Failed to download file after retries');
     }
+  }
+}
+
+// Function to log file properties
+function logFileProperties(filePath) {
+  try {
+    const output = execSync(`${ffprobe.path} -v error -show_format -show_streams ${filePath}`).toString();
+    console.log(`File properties for ${filePath}:\n`, output);
+  } catch (error) {
+    console.error(`Error logging properties for ${filePath}:`, error);
   }
 }
 
@@ -56,36 +68,35 @@ app.post('/edit-video', async (req, res) => {
     console.log('Request received:', req.body);
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
-    const options = req.body.options || '-c:v libx264 -c:a aac -strict experimental'; // Default FFmpeg options
+    const options = req.body.options || '-c:v libx264 -c:a aac -strict experimental -shortest'; // Default FFmpeg options
     const uniqueFilename = `${uuidv4()}_processed_video.mp4`; // Generate unique filename
     const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempInputVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
-    const tempInputAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`); // Temporary file for input audio
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
+    const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`); // Temporary file for input audio
 
-    // Step 1: Download the input video
+    // Step 1: Download the input video and audio
     console.log('Downloading video from:', inputVideoUrl);
-    await downloadFile(inputVideoUrl, tempInputVideoPath);
-
-    // Step 2: Download the input audio
+    await downloadFile(inputVideoUrl, tempVideoPath);
     console.log('Downloading audio from:', inputAudioUrl);
-    await downloadFile(inputAudioUrl, tempInputAudioPath);
+    await downloadFile(inputAudioUrl, tempAudioPath);
 
-    // Step 3: Process the video with FFmpeg
+    // Log file properties
+    logFileProperties(tempVideoPath);
+    logFileProperties(tempAudioPath);
+
+    // Step 2: Process the video with FFmpeg
     console.log('Processing video with audio...');
-    await executeFFmpegCommand(tempInputVideoPath, tempInputAudioPath, outputFilePath, options);
+    await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath, options);
 
-    // Step 4: Delete the temporary files after processing
-    [tempInputVideoPath, tempInputAudioPath].forEach(filePath => {
-      fs.unlink(filePath, (err) => {
-        if (err) {
-          console.error('Error deleting temp file:', err);
-        } else {
-          console.log('Temporary file deleted:', filePath);
-        }
-      });
+    // Step 3: Delete the temporary files after processing
+    fs.unlink(tempVideoPath, (err) => {
+      if (err) console.error('Error deleting temp video file:', err);
+    });
+    fs.unlink(tempAudioPath, (err) => {
+      if (err) console.error('Error deleting temp audio file:', err);
     });
 
-    // Step 5: Respond with the output file path
+    // Step 4: Respond with the output file path
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
   } catch (error) {
     console.error('Error processing video:', error);
