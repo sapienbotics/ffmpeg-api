@@ -50,14 +50,17 @@ function logFileProperties(filePath) {
 // Function to execute FFmpeg commands
 function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath, options) {
   return new Promise((resolve, reject) => {
-    const command = `"${ffmpegPath}" -i "${inputVideoPath}" -i "${inputAudioPath}" ${options} "${outputPath}"`;
+    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} ${options} ${outputPath}`;
+    
+    console.log(`Executing FFmpeg command: ${command}`); // Log command for debugging
+
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg error:', error);
-        console.error('FFmpeg stderr:', stderr);
+        console.error('FFmpeg stderr:', stderr); // Log stderr for detailed error output
+        console.error('FFmpeg error:', error.message); // Log the error message
         reject(error);
       } else {
-        console.log('FFmpeg output:', stdout);
+        console.log('FFmpeg stdout:', stdout); // Log stdout to capture standard output
         resolve();
       }
     });
@@ -66,33 +69,43 @@ function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath, option
 
 // Main API to handle video editing
 app.post('/edit-video', async (req, res) => {
-  const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-  const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`);
   try {
     console.log('Request received:', req.body);
-    console.log('Downloading video from:', req.body.inputVideo);
-    await downloadFile(req.body.inputVideo, tempVideoPath);
-    console.log('Downloading audio from:', req.body.inputAudio);
-    await downloadFile(req.body.inputAudio, tempAudioPath);
-    
+    const inputVideoUrl = req.body.inputVideo;
+    const inputAudioUrl = req.body.inputAudio;
+    const options = req.body.options || '-c:v libx264 -c:a aac -strict experimental -shortest'; // Default FFmpeg options
+    const uniqueFilename = `${uuidv4()}_processed_video.mp4`; // Generate unique filename
+    const outputFilePath = path.join(storageDir, uniqueFilename);
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
+    const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`); // Temporary file for input audio
+
+    // Step 1: Download the input video and audio
+    console.log('Downloading video from:', inputVideoUrl);
+    await downloadFile(inputVideoUrl, tempVideoPath);
+    console.log('Downloading audio from:', inputAudioUrl);
+    await downloadFile(inputAudioUrl, tempAudioPath);
+
+    // Log file properties
     logFileProperties(tempVideoPath);
     logFileProperties(tempAudioPath);
-    
-    const outputFilePath = path.join(storageDir, `${uuidv4()}_processed_video.mp4`);
-    const options = req.body.options || '-c:v libx264 -c:a aac -shortest'; // Default FFmpeg options
+
+    // Step 2: Process the video with FFmpeg
+    console.log('Processing video with audio...');
     await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath, options);
-    
-    res.json({ message: 'Video processed successfully', outputFile: path.basename(outputFilePath) });
-  } catch (error) {
-    console.error('Error processing video:', error);
-    res.status(500).json({ error: 'Error processing video' });
-  } finally {
+
+    // Step 3: Delete the temporary files after processing
     fs.unlink(tempVideoPath, (err) => {
       if (err) console.error('Error deleting temp video file:', err);
     });
     fs.unlink(tempAudioPath, (err) => {
       if (err) console.error('Error deleting temp audio file:', err);
     });
+
+    // Step 4: Respond with the output file path
+    res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
+  } catch (error) {
+    console.error('Error processing video:', error);
+    res.status(500).json({ error: 'Error processing video' });
   }
 });
 
@@ -100,6 +113,7 @@ app.post('/edit-video', async (req, res) => {
 app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
   
+  // Check if the file exists
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
   } else {
