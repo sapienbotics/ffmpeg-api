@@ -46,17 +46,34 @@ function logFileProperties(filePath) {
   }
 }
 
-// Function to execute FFmpeg commands
+// Function to preprocess audio with FFmpeg
+function preprocessAudio(inputAudioPath, outputAudioPath) {
+  return new Promise((resolve, reject) => {
+    const command = `${ffmpegPath} -i ${inputAudioPath} -ar 44100 -ac 2 ${outputAudioPath}`;
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('FFmpeg error during audio preprocessing:', error.message);
+        console.error('FFmpeg stderr:', stderr);
+        reject(error);
+      } else {
+        console.log('FFmpeg output during audio preprocessing:', stdout);
+        resolve();
+      }
+    });
+  });
+}
+
+// Function to execute FFmpeg commands for merging video and audio
 function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath) {
   return new Promise((resolve, reject) => {
     const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -map 0:v -map 1:a -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg error:', error.message);
+        console.error('FFmpeg error during merging:', error.message);
         console.error('FFmpeg stderr:', stderr);
         reject(error);
       } else {
-        console.log('FFmpeg output:', stdout);
+        console.log('FFmpeg output during merging:', stdout);
         resolve();
       }
     });
@@ -73,6 +90,7 @@ app.post('/edit-video', async (req, res) => {
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
     const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`); // Temporary file for input audio
+    const processedAudioPath = path.join(storageDir, `${uuidv4()}_processed_audio.mp4`); // Processed audio file
 
     // Step 1: Download the input video and audio
     console.log('Downloading video from:', inputVideoUrl);
@@ -84,19 +102,26 @@ app.post('/edit-video', async (req, res) => {
     logFileProperties(tempVideoPath);
     logFileProperties(tempAudioPath);
 
-    // Step 2: Process the video with FFmpeg
-    console.log('Processing video with audio...');
-    await executeFFmpegCommand(tempVideoPath, tempAudioPath, outputFilePath);
+    // Step 2: Preprocess the audio
+    console.log('Preprocessing audio...');
+    await preprocessAudio(tempAudioPath, processedAudioPath);
 
-    // Step 3: Delete the temporary files after processing
+    // Step 3: Process the video with FFmpeg
+    console.log('Processing video with audio...');
+    await executeFFmpegCommand(tempVideoPath, processedAudioPath, outputFilePath);
+
+    // Step 4: Delete the temporary files after processing
     fs.unlink(tempVideoPath, (err) => {
       if (err) console.error('Error deleting temp video file:', err.message);
     });
     fs.unlink(tempAudioPath, (err) => {
       if (err) console.error('Error deleting temp audio file:', err.message);
     });
+    fs.unlink(processedAudioPath, (err) => {
+      if (err) console.error('Error deleting processed audio file:', err.message);
+    });
 
-    // Step 4: Respond with the output file path
+    // Step 5: Respond with the output file path
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
   } catch (error) {
     console.error('Error processing video:', error.message);
