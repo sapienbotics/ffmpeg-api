@@ -64,9 +64,13 @@ function preprocessAudio(inputAudioPath, outputAudioPath) {
 }
 
 // Function to execute FFmpeg commands for merging video and audio
-function executeFFmpegCommand(inputVideoPath, inputAudioPath, outputPath) {
+function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPath, outputPath, mainAudioVolume = 1.0, bgAudioVolume = 1.0) {
   return new Promise((resolve, reject) => {
-    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -map 0:v -map 1:a -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
+    let filterComplex = `[1:a]volume=${mainAudioVolume}[main]`;
+    if (backgroundAudioPath) {
+      filterComplex += `;[2:a]volume=${bgAudioVolume}[bg];[main][bg]amix=inputs=2`;
+    }
+    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} ${backgroundAudioPath ? `-i ${backgroundAudioPath}` : ''} -filter_complex "${filterComplex}" -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error('FFmpeg error during merging:', error.message);
@@ -86,31 +90,49 @@ app.post('/edit-video', async (req, res) => {
     console.log('Request received:', req.body);
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
+    const backgroundAudioUrl = req.body.backgroundAudio;
+    const mainAudioVolume = req.body.mainAudioVolume || 1.0;
+    const bgAudioVolume = req.body.bgAudioVolume || 1.0;
     const uniqueFilename = `${uuidv4()}_processed_video.mp4`; // Generate unique filename
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`); // Temporary file for input video
     const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`); // Temporary file for input audio
     const processedAudioPath = path.join(storageDir, `${uuidv4()}_processed_audio.mp4`); // Processed audio file
+    const tempBackgroundAudioPath = backgroundAudioUrl ? path.join(storageDir, `${uuidv4()}_temp_bg_audio.mp3`) : null; // Temporary file for background audio
+    const processedBgAudioPath = backgroundAudioUrl ? path.join(storageDir, `${uuidv4()}_processed_bg_audio.mp4`) : null; // Processed background audio file
 
-    // Step 1: Download the input video and audio
+    // Step 1: Download the input video, audio, and background audio
     console.log('Downloading video from:', inputVideoUrl);
     await downloadFile(inputVideoUrl, tempVideoPath);
     console.log('Downloading audio from:', inputAudioUrl);
     await downloadFile(inputAudioUrl, tempAudioPath);
+    if (backgroundAudioUrl) {
+      console.log('Downloading background audio from:', backgroundAudioUrl);
+      await downloadFile(backgroundAudioUrl, tempBackgroundAudioPath);
+    }
 
     // Log file properties
     logFileProperties(tempVideoPath);
     logFileProperties(tempAudioPath);
+    if (backgroundAudioUrl) {
+      logFileProperties(tempBackgroundAudioPath);
+    }
 
-    // Step 2: Preprocess the audio
-    console.log('Preprocessing audio...');
+    // Step 2: Preprocess the main audio
+    console.log('Preprocessing main audio...');
     await preprocessAudio(tempAudioPath, processedAudioPath);
 
-    // Step 3: Process the video with FFmpeg
-    console.log('Processing video with audio...');
-    await executeFFmpegCommand(tempVideoPath, processedAudioPath, outputFilePath);
+    // Step 3: Preprocess the background audio if provided
+    if (backgroundAudioUrl) {
+      console.log('Preprocessing background audio...');
+      await preprocessAudio(tempBackgroundAudioPath, processedBgAudioPath);
+    }
 
-    // Step 4: Delete the temporary files after processing
+    // Step 4: Process the video with FFmpeg
+    console.log('Processing video with audio...');
+    await executeFFmpegCommand(tempVideoPath, processedAudioPath, backgroundAudioUrl ? processedBgAudioPath : null, outputFilePath, mainAudioVolume, bgAudioVolume);
+
+    // Step 5: Delete the temporary files after processing
     fs.unlink(tempVideoPath, (err) => {
       if (err) console.error('Error deleting temp video file:', err.message);
     });
@@ -120,8 +142,16 @@ app.post('/edit-video', async (req, res) => {
     fs.unlink(processedAudioPath, (err) => {
       if (err) console.error('Error deleting processed audio file:', err.message);
     });
+    if (backgroundAudioUrl) {
+      fs.unlink(tempBackgroundAudioPath, (err) => {
+        if (err) console.error('Error deleting temp background audio file:', err.message);
+      });
+      fs.unlink(processedBgAudioPath, (err) => {
+        if (err) console.error('Error deleting processed background audio file:', err.message);
+      });
+    }
 
-    // Step 5: Respond with the output file path
+    // Step 6: Respond with the output file path
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
   } catch (error) {
     console.error('Error processing video:', error.message);
