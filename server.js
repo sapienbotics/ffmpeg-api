@@ -64,8 +64,9 @@ function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPat
     const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -i ${backgroundAudioPath} ` +
       `-filter_complex "[1:a]volume=${options.inputAudioVolume}[a1]; ` +
       `[2:a]volume=${options.backgroundAudioVolume}[a2]; ` +
-      `[0:v][a1][a2]amerge=inputs=2[a]" ` +
-      `-map 0:v -map "[a]" -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
+      `[a1][a2]amix=inputs=2[a]" ` +
+      `-map 0:v -map "[a]" ` +
+      `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
 
     exec(command, (error, stdout, stderr) => {
       if (error) {
