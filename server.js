@@ -2,15 +2,18 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
-const { execSync } = require('child_process'); // Ensure execSync is imported
+const { exec, execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
 
 const app = express();
 app.use(express.json());
 
-const storageDir = process.env.STORAGE_DIR || '/app/storage/processed';
+// Set the storage directory
+const storageDir = process.env.STORAGE_DIR || path.join(__dirname, 'storage');
+
+// Serve static files from the storage directory
+app.use('/video', express.static(storageDir));
 
 // Ensure the storage directory exists
 if (!fs.existsSync(storageDir)) {
@@ -224,7 +227,7 @@ app.post('/merge-videos', async (req, res) => {
   }
 });
 
-// Endpoint to trim video
+// Endpoint to trim a video
 app.post('/trim-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
@@ -235,11 +238,14 @@ app.post('/trim-video', async (req, res) => {
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
-    // Download the video
+    // Download video
     console.log('Downloading video from:', inputVideoUrl);
     await downloadFile(inputVideoUrl, tempVideoPath);
 
-    // Trim the video
+    // Log file properties for debugging
+    logFileProperties(tempVideoPath);
+
+    // Trim video
     console.log('Trimming video...');
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
