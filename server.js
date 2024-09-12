@@ -3,7 +3,6 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
-const { execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
 const app = express();
@@ -36,14 +35,27 @@ async function downloadFile(url, outputPath) {
   }
 }
 
-// Function to log file properties
-function logFileProperties(filePath) {
-  try {
-    const output = execSync(`${ffmpegPath} -v error -show_format -show_streams ${filePath}`).toString();
-    console.log(`File properties for ${filePath}:\n`, output);
-  } catch (error) {
-    console.error(`Error logging properties for ${filePath}:`, error.message);
-  }
+// Function to execute FFmpeg command
+function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPath, outputPath, options) {
+  return new Promise((resolve, reject) => {
+    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -i ${backgroundAudioPath} ` +
+      `-filter_complex "[1:a]volume=${options.inputAudioVolume}[a1]; ` +
+      `[2:a]volume=${options.backgroundAudioVolume}[a2]; ` +
+      `[a1][a2]amix=inputs=2[a]" ` +
+      `-map 0:v -map "[a]" ` +
+      `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('FFmpeg error during merging:', error.message);
+        console.error('FFmpeg stderr:', stderr);
+        reject(error);
+      } else {
+        console.log('FFmpeg output during merging:', stdout);
+        resolve();
+      }
+    });
+  });
 }
 
 // Function to preprocess audio
@@ -74,29 +86,6 @@ function checkAndRemoveAudio(inputVideoPath, outputVideoPath) {
         reject(error);
       } else {
         console.log('FFmpeg output during audio removal:', stdout);
-        resolve();
-      }
-    });
-  });
-}
-
-// Function to execute FFmpeg command
-function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPath, outputPath, options) {
-  return new Promise((resolve, reject) => {
-    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -i ${backgroundAudioPath} ` +
-      `-filter_complex "[1:a]volume=${options.inputAudioVolume}[a1]; ` +
-      `[2:a]volume=${options.backgroundAudioVolume}[a2]; ` +
-      `[a1][a2]amix=inputs=2[a]" ` +
-      `-map 0:v -map "[a]" ` +
-      `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
-
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error during merging:', error.message);
-        console.error('FFmpeg stderr:', stderr);
-        reject(error);
-      } else {
-        console.log('FFmpeg output during merging:', stdout);
         resolve();
       }
     });
@@ -163,11 +152,6 @@ app.post('/edit-video', async (req, res) => {
     console.log('Downloading background audio from:', backgroundAudioUrl);
     await downloadFile(backgroundAudioUrl, tempBackgroundAudioPath);
 
-    // Log file properties for debugging
-    logFileProperties(tempVideoPath);
-    logFileProperties(tempAudioPath);
-    logFileProperties(tempBackgroundAudioPath);
-
     // Preprocess audio
     console.log('Preprocessing main audio...');
     await preprocessAudio(tempAudioPath, processedAudioPath, volume);
@@ -218,17 +202,19 @@ app.post('/merge-videos', async (req, res) => {
       const videoWithoutAudioPath = path.join(storageDir, `${uuidv4()}_video_without_audio.mp4`);
       console.log('Downloading video from:', url);
       await downloadFile(url, tempVideoPath);
-      
+
       // Remove audio from video
       console.log('Removing audio from video...');
       await checkAndRemoveAudio(tempVideoPath, videoWithoutAudioPath);
-      
+
       tempVideoPaths.push(tempVideoPath);
       tempVideoPathsWithoutAudio.push(videoWithoutAudioPath);
     }
 
     // Log file properties for debugging
-    tempVideoPathsWithoutAudio.forEach(logFileProperties);
+    tempVideoPathsWithoutAudio.forEach((filePath) => {
+      console.log('File properties for', filePath);
+    });
 
     // Merge videos
     console.log('Merging videos...');
@@ -270,7 +256,7 @@ app.post('/trim-video', async (req, res) => {
     await downloadFile(inputVideoUrl, tempVideoPath);
 
     // Log file properties for debugging
-    logFileProperties(tempVideoPath);
+    console.log('File properties for', tempVideoPath);
 
     // Trim video
     console.log('Trimming video...');
