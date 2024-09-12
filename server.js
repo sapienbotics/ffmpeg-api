@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
 const app = express();
@@ -200,8 +200,9 @@ app.post('/edit-video', async (req, res) => {
       if (err) console.error('Error deleting processed audio file:', err.message);
     });
 
-    // Respond to client
-    res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
+    // Serve the processed video
+    res.setHeader('Content-Disposition', `attachment; filename="${uniqueFilename}"`);
+    res.sendFile(outputFilePath);
   } catch (error) {
     console.error('Error processing video:', error.message);
     res.status(500).json({ error: 'Error processing video' });
@@ -215,9 +216,9 @@ app.post('/merge-videos', async (req, res) => {
     const videoUrls = req.body.videoUrls;
     const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
-
-    // Download all videos
     const tempVideoPaths = [];
+
+    // Download videos
     for (const url of videoUrls) {
       const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
       console.log('Downloading video from:', url);
@@ -236,8 +237,9 @@ app.post('/merge-videos', async (req, res) => {
       });
     });
 
-    // Respond to client
-    res.json({ message: 'Videos merged successfully', outputFile: uniqueFilename });
+    // Serve the merged video
+    res.setHeader('Content-Disposition', `attachment; filename="${uniqueFilename}"`);
+    res.sendFile(outputFilePath);
   } catch (error) {
     console.error('Error merging videos:', error.message);
     res.status(500).json({ error: 'Error merging videos' });
@@ -268,8 +270,9 @@ app.post('/trim-video', async (req, res) => {
       if (err) console.error('Error deleting temp video file:', err.message);
     });
 
-    // Respond to client
-    res.json({ message: 'Video trimmed successfully', outputFile: uniqueFilename });
+    // Serve the trimmed video
+    res.setHeader('Content-Disposition', `attachment; filename="${uniqueFilename}"`);
+    res.sendFile(outputFilePath);
   } catch (error) {
     console.error('Error trimming video:', error.message);
     res.status(500).json({ error: 'Error trimming video' });
