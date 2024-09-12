@@ -3,6 +3,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
+const { execSync } = require('child_process'); // Ensure execSync is imported
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
 
@@ -220,6 +221,38 @@ app.post('/merge-videos', async (req, res) => {
   } catch (error) {
     console.error('Error merging videos:', error.message);
     res.status(500).json({ error: 'Error merging videos' });
+  }
+});
+
+// Endpoint to trim video
+app.post('/trim-video', async (req, res) => {
+  try {
+    console.log('Request received:', req.body);
+    const inputVideoUrl = req.body.inputVideo;
+    const startTime = req.body.startTime;
+    const duration = req.body.duration;
+    const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
+    const outputFilePath = path.join(storageDir, uniqueFilename);
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+
+    // Download the video
+    console.log('Downloading video from:', inputVideoUrl);
+    await downloadFile(inputVideoUrl, tempVideoPath);
+
+    // Trim the video
+    console.log('Trimming video...');
+    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
+
+    // Cleanup temporary file
+    fs.unlink(tempVideoPath, (err) => {
+      if (err) console.error('Error deleting temp video file:', err.message);
+    });
+
+    // Respond to client
+    res.json({ message: 'Video trimmed successfully', outputFile: uniqueFilename });
+  } catch (error) {
+    console.error('Error trimming video:', error.message);
+    res.status(500).json({ error: 'Error trimming video' });
   }
 });
 
