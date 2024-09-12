@@ -5,15 +5,11 @@ const path = require('path');
 const { exec, execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
-
 const app = express();
+
 app.use(express.json());
 
-// Set the storage directory
-const storageDir = process.env.STORAGE_DIR || path.join(__dirname, 'storage');
-
-// Serve static files from the storage directory
-app.use('/video', express.static(storageDir));
+const storageDir = process.env.STORAGE_DIR || '/app/storage/processed';
 
 // Ensure the storage directory exists
 if (!fs.existsSync(storageDir)) {
@@ -227,51 +223,20 @@ app.post('/merge-videos', async (req, res) => {
   }
 });
 
-// Endpoint to trim a video
-app.post('/trim-video', async (req, res) => {
-  try {
-    console.log('Request received:', req.body);
-    const inputVideoUrl = req.body.inputVideo;
-    const startTime = req.body.startTime;
-    const duration = req.body.duration;
-    const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+// Endpoint to serve files for download
+app.get('/download/:filename', (req, res) => {
+  const filePath = path.join(storageDir, req.params.filename);
 
-    // Download video
-    console.log('Downloading video from:', inputVideoUrl);
-    await downloadFile(inputVideoUrl, tempVideoPath);
-
-    // Log file properties for debugging
-    logFileProperties(tempVideoPath);
-
-    // Trim video
-    console.log('Trimming video...');
-    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
-
-    // Cleanup temporary file
-    fs.unlink(tempVideoPath, (err) => {
-      if (err) console.error('Error deleting temp video file:', err.message);
-    });
-
-    // Respond to client
-    res.json({ message: 'Video trimmed successfully', outputFile: uniqueFilename });
-  } catch (error) {
-    console.error('Error trimming video:', error.message);
-    res.status(500).json({ error: 'Error trimming video' });
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
+    res.sendFile(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
   }
 });
 
-// Start server
-const server = app.listen(process.env.PORT || 8080, () => {
-  console.log(`Server running on port ${process.env.PORT || 8080}`);
-});
-
-// Handle uncaught exceptions and unhandled rejections
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error.message);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection:', reason);
+// Start the server
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
