@@ -4,7 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const { exec, execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
-const ffprobe = require('ffprobe-static');
 const ffmpegPath = require('ffmpeg-static');
 
 const app = express();
@@ -36,7 +35,7 @@ async function downloadFile(url, outputPath) {
 
 function logFileProperties(filePath) {
   try {
-    const output = execSync(`${ffprobe.path} -v error -show_format -show_streams ${filePath}`).toString();
+    const output = execSync(`${ffmpegPath} -v error -show_format -show_streams ${filePath}`).toString();
     console.log(`File properties for ${filePath}:\n`, output);
   } catch (error) {
     console.error(`Error logging properties for ${filePath}:`, error.message);
@@ -68,6 +67,41 @@ function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPat
       `-map 0:v -map "[a]" ` +
       `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
 
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('FFmpeg error during merging:', error.message);
+        console.error('FFmpeg stderr:', stderr);
+        reject(error);
+      } else {
+        console.log('FFmpeg output during merging:', stdout);
+        resolve();
+      }
+    });
+  });
+}
+
+function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
+  return new Promise((resolve, reject) => {
+    const command = `${ffmpegPath} -i ${inputVideoPath} -ss ${startTime} -t ${duration} -c copy ${outputVideoPath}`;
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('FFmpeg error during trimming:', error.message);
+        console.error('FFmpeg stderr:', stderr);
+        reject(error);
+      } else {
+        console.log('FFmpeg output during trimming:', stdout);
+        resolve();
+      }
+    });
+  });
+}
+
+function mergeVideos(inputVideoPaths, outputPath) {
+  return new Promise((resolve, reject) => {
+    const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
+    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v][${i}:a]`).join('');
+    const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}concat=n=${inputVideoPaths.length}:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
+    
     exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error('FFmpeg error during merging:', error.message);
@@ -133,6 +167,70 @@ app.post('/edit-video', async (req, res) => {
   } catch (error) {
     console.error('Error processing video:', error.message);
     res.status(500).json({ error: 'Error processing video' });
+  }
+});
+
+app.post('/merge-videos', async (req, res) => {
+  try {
+    console.log('Request received:', req.body);
+    const videoUrls = req.body.videoUrls; // Expect an array of video URLs
+    if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
+      return res.status(400).json({ error: 'At least two video URLs are required' });
+    }
+
+    const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
+    const outputFilePath = path.join(storageDir, uniqueFilename);
+
+    // Download each video
+    const tempVideoPaths = await Promise.all(
+      videoUrls.map(async (url) => {
+        const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+        await downloadFile(url, tempVideoPath);
+        return tempVideoPath;
+      })
+    );
+
+    // Merge videos
+    await mergeVideos(tempVideoPaths, outputFilePath);
+
+    // Clean up temp files
+    tempVideoPaths.forEach((filePath) => {
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Error deleting temp file:', err.message);
+      });
+    });
+
+    res.json({ message: 'Videos merged successfully', outputFile: uniqueFilename });
+  } catch (error) {
+    console.error('Error merging videos:', error.message);
+    res.status(500).json({ error: 'Error merging videos' });
+  }
+});
+
+app.post('/trim-video', async (req, res) => {
+  try {
+    console.log('Request received:', req.body);
+    const inputVideoUrl = req.body.inputVideo;
+    const startTime = req.body.startTime;
+    const duration = req.body.duration;
+    const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
+    const outputFilePath = path.join(storageDir, uniqueFilename);
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+
+    console.log('Downloading video from:', inputVideoUrl);
+    await downloadFile(inputVideoUrl, tempVideoPath);
+
+    console.log('Trimming video...');
+    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
+
+    fs.unlink(tempVideoPath, (err) => {
+      if (err) console.error('Error deleting temp video file:', err.message);
+    });
+
+    res.json({ message: 'Video trimmed successfully', outputFile: uniqueFilename });
+  } catch (error) {
+    console.error('Error trimming video:', error.message);
+    res.status(500).json({ error: 'Error trimming video' });
   }
 });
 
