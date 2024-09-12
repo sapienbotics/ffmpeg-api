@@ -3,6 +3,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
+const { execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
 const app = express();
@@ -56,6 +57,23 @@ function preprocessAudio(inputAudioPath, outputAudioPath, volume) {
         reject(error);
       } else {
         console.log('FFmpeg output during audio preprocessing:', stdout);
+        resolve();
+      }
+    });
+  });
+}
+
+// Function to remove audio from a video
+function checkAndRemoveAudio(inputVideoPath, outputVideoPath) {
+  return new Promise((resolve, reject) => {
+    const command = `${ffmpegPath} -i ${inputVideoPath} -an ${outputVideoPath}`;
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('FFmpeg error during audio removal:', error.message);
+        console.error('FFmpeg stderr:', stderr);
+        reject(error);
+      } else {
+        console.log('FFmpeg output during audio removal:', stdout);
         resolve();
       }
     });
@@ -194,24 +212,37 @@ app.post('/merge-videos', async (req, res) => {
 
     // Download all videos
     const tempVideoPaths = [];
+    const tempVideoPathsWithoutAudio = [];
     for (const url of videoUrls) {
       const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+      const videoWithoutAudioPath = path.join(storageDir, `${uuidv4()}_video_without_audio.mp4`);
       console.log('Downloading video from:', url);
       await downloadFile(url, tempVideoPath);
+      
+      // Remove audio from video
+      console.log('Removing audio from video...');
+      await checkAndRemoveAudio(tempVideoPath, videoWithoutAudioPath);
+      
       tempVideoPaths.push(tempVideoPath);
+      tempVideoPathsWithoutAudio.push(videoWithoutAudioPath);
     }
 
     // Log file properties for debugging
-    tempVideoPaths.forEach(logFileProperties);
+    tempVideoPathsWithoutAudio.forEach(logFileProperties);
 
     // Merge videos
     console.log('Merging videos...');
-    await mergeVideos(tempVideoPaths, outputFilePath);
+    await mergeVideos(tempVideoPathsWithoutAudio, outputFilePath);
 
     // Cleanup temporary files
     tempVideoPaths.forEach((filePath) => {
       fs.unlink(filePath, (err) => {
         if (err) console.error('Error deleting temp video file:', err.message);
+      });
+    });
+    tempVideoPathsWithoutAudio.forEach((filePath) => {
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Error deleting video without audio file:', err.message);
       });
     });
 
@@ -223,7 +254,7 @@ app.post('/merge-videos', async (req, res) => {
   }
 });
 
-// Endpoint to trim video
+// Endpoint to trim a video
 app.post('/trim-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
@@ -234,7 +265,7 @@ app.post('/trim-video', async (req, res) => {
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
-    // Download the video
+    // Download video
     console.log('Downloading video from:', inputVideoUrl);
     await downloadFile(inputVideoUrl, tempVideoPath);
 
@@ -245,7 +276,7 @@ app.post('/trim-video', async (req, res) => {
     console.log('Trimming video...');
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
-    // Cleanup temporary files
+    // Cleanup temporary file
     fs.unlink(tempVideoPath, (err) => {
       if (err) console.error('Error deleting temp video file:', err.message);
     });
@@ -258,20 +289,8 @@ app.post('/trim-video', async (req, res) => {
   }
 });
 
-// Endpoint to serve files for download
-app.get('/download/:filename', (req, res) => {
-  const filePath = path.join(storageDir, req.params.filename);
-
-  if (fs.existsSync(filePath)) {
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
-    res.sendFile(filePath);
-  } else {
-    res.status(404).json({ error: 'File not found' });
-  }
-});
-
 // Start the server
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
