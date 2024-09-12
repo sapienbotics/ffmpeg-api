@@ -1,286 +1,188 @@
 const express = require('express');
-const axios = require('axios');
+const ffmpeg = require('fluent-ffmpeg');
+const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
-const { exec, execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
-const ffmpegPath = require('ffmpeg-static');
-const app = express();
 
+const app = express();
 app.use(express.json());
 
-const storageDir = process.env.STORAGE_DIR || '/app/storage/processed';
-
-// Ensure the storage directory exists
-if (!fs.existsSync(storageDir)) {
-  fs.mkdirSync(storageDir, { recursive: true });
-}
-
-// Function to download files with retry logic
-async function downloadFile(url, outputPath) {
-  let retries = 3;
-  while (retries > 0) {
-    try {
-      const response = await axios.get(url, { responseType: 'stream' });
-      const writer = fs.createWriteStream(outputPath);
-
-      response.data.pipe(writer);
-
-      return new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
-      });
-    } catch (error) {
-      console.error('Error downloading file, retrying...', error.message);
-      retries--;
-      if (retries === 0) throw new Error('Failed to download file after retries');
-    }
-  }
-}
-
-// Function to log file properties
-function logFileProperties(filePath) {
-  try {
-    const output = execSync(`${ffmpegPath} -v error -show_format -show_streams ${filePath}`).toString();
-    console.log(`File properties for ${filePath}:\n`, output);
-  } catch (error) {
-    console.error(`Error logging properties for ${filePath}:`, error.message);
-  }
-}
-
-// Function to preprocess audio
-function preprocessAudio(inputAudioPath, outputAudioPath, volume) {
-  return new Promise((resolve, reject) => {
-    const command = `${ffmpegPath} -i ${inputAudioPath} -ar 44100 -ac 2 -filter:a "volume=${volume}" ${outputAudioPath}`;
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error during audio preprocessing:', error.message);
-        console.error('FFmpeg stderr:', stderr);
-        reject(error);
-      } else {
-        console.log('FFmpeg output during audio preprocessing:', stdout);
-        resolve();
-      }
-    });
+// Helper function to download files
+const downloadFile = async (url, outputPath) => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to download file: ${response.statusText}`);
+  const fileStream = fs.createWriteStream(outputPath);
+  await new Promise((resolve, reject) => {
+    response.body.pipe(fileStream);
+    response.body.on('error', reject);
+    fileStream.on('finish', resolve);
   });
-}
-
-// Function to remove audio from video
-function removeAudio(inputVideoPath, outputVideoPath) {
-  return new Promise((resolve, reject) => {
-    const command = `${ffmpegPath} -i ${inputVideoPath} -an ${outputVideoPath}`;
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error during removing audio:', error.message);
-        console.error('FFmpeg stderr:', stderr);
-        reject(error);
-      } else {
-        console.log('FFmpeg output during removing audio:', stdout);
-        resolve();
-      }
-    });
-  });
-}
-
-// Function to execute FFmpeg command
-function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPath, outputPath, options) {
-  return new Promise((resolve, reject) => {
-    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -i ${backgroundAudioPath} ` +
-      `-filter_complex "[1:a]volume=${options.inputAudioVolume}[a1]; ` +
-      `[2:a]volume=${options.backgroundAudioVolume}[a2]; ` +
-      `[a1][a2]amix=inputs=2[a]" ` +
-      `-map 0:v -map "[a]" ` +
-      `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
-
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error during merging:', error.message);
-        console.error('FFmpeg stderr:', stderr);
-        reject(error);
-      } else {
-        console.log('FFmpeg output during merging:', stdout);
-        resolve();
-      }
-    });
-  });
-}
-
-// Function to trim video
-function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
-  return new Promise((resolve, reject) => {
-    const command = `${ffmpegPath} -i ${inputVideoPath} -ss ${startTime} -t ${duration} -c copy ${outputVideoPath}`;
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error during trimming:', error.message);
-        console.error('FFmpeg stderr:', stderr);
-        reject(error);
-      } else {
-        console.log('FFmpeg output during trimming:', stdout);
-        resolve();
-      }
-    });
-  });
-}
-
-// Function to merge videos
-function mergeVideos(inputVideoPaths, outputPath) {
-  return new Promise((resolve, reject) => {
-    const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
-    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v][${i}:a]`).join('');
-    const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}concat=n=${inputVideoPaths.length}:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
-    
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error during merging:', error.message);
-        console.error('FFmpeg stderr:', stderr);
-        reject(error);
-      } else {
-        console.log('FFmpeg output during merging:', stdout);
-        resolve();
-      }
-    });
-  });
-}
-
-// Endpoint to process video
-app.post('/edit-video', async (req, res) => {
-  try {
-    console.log('Request received:', req.body);
-    const inputVideoUrl = req.body.inputVideo;
-    const inputAudioUrl = req.body.inputAudio;
-    const backgroundAudioUrl = req.body.backgroundAudio;
-    const volume = req.body.volume || '1';  // Default volume to 1 if not provided
-    const uniqueFilename = `${uuidv4()}_processed_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-    const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`);
-    const tempBackgroundAudioPath = path.join(storageDir, `${uuidv4()}_temp_background_audio.mp3`);
-    const processedAudioPath = path.join(storageDir, `${uuidv4()}_processed_audio.mp4`);
-
-    // Download files
-    console.log('Downloading video from:', inputVideoUrl);
-    await downloadFile(inputVideoUrl, tempVideoPath);
-    console.log('Downloading audio from:', inputAudioUrl);
-    await downloadFile(inputAudioUrl, tempAudioPath);
-    console.log('Downloading background audio from:', backgroundAudioUrl);
-    await downloadFile(backgroundAudioUrl, tempBackgroundAudioPath);
-
-    // Log file properties for debugging
-    logFileProperties(tempVideoPath);
-    logFileProperties(tempAudioPath);
-    logFileProperties(tempBackgroundAudioPath);
-
-    // Preprocess audio
-    console.log('Preprocessing main audio...');
-    await preprocessAudio(tempAudioPath, processedAudioPath, volume);
-
-    // Process video with audio
-    console.log('Processing video with audio...');
-    const options = {
-      inputAudioVolume: req.body.inputAudioVolume || '1.0',
-      backgroundAudioVolume: req.body.backgroundAudioVolume || '0.0',
-    };
-
-    // Remove audio from video before merging if necessary
-    await removeAudio(tempVideoPath, tempVideoPath);
-
-    await executeFFmpegCommand(tempVideoPath, processedAudioPath, tempBackgroundAudioPath, outputFilePath, options);
-
-    // Cleanup temporary files
-    fs.unlink(tempVideoPath, (err) => {
-      if (err) console.error('Error deleting temp video file:', err.message);
-    });
-    fs.unlink(tempAudioPath, (err) => {
-      if (err) console.error('Error deleting temp audio file:', err.message);
-    });
-    fs.unlink(tempBackgroundAudioPath, (err) => {
-      if (err) console.error('Error deleting temp background audio file:', err.message);
-    });
-    fs.unlink(processedAudioPath, (err) => {
-      if (err) console.error('Error deleting processed audio file:', err.message);
-    });
-
-    // Serve the processed video
-    res.setHeader('Content-Disposition', `attachment; filename="${uniqueFilename}"`);
-    res.sendFile(outputFilePath);
-  } catch (error) {
-    console.error('Error processing video:', error.message);
-    res.status(500).json({ error: 'Error processing video' });
-  }
-});
-
-// Endpoint to merge multiple videos
-app.post('/merge-videos', async (req, res) => {
-  try {
-    console.log('Request received:', req.body);
-    const videoUrls = req.body.videoUrls;
-    const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPaths = [];
-
-    // Download videos
-    for (const url of videoUrls) {
-      const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-      console.log('Downloading video from:', url);
-      await downloadFile(url, tempVideoPath);
-      tempVideoPaths.push(tempVideoPath);
-    }
-
-    // Merge videos
-    console.log('Merging videos...');
-    await mergeVideos(tempVideoPaths, outputFilePath);
-
-    // Cleanup temporary files
-    tempVideoPaths.forEach((videoPath) => {
-      fs.unlink(videoPath, (err) => {
-        if (err) console.error('Error deleting temp video file:', err.message);
-      });
-    });
-
-    // Serve the merged video
-    res.setHeader('Content-Disposition', `attachment; filename="${uniqueFilename}"`);
-    res.sendFile(outputFilePath);
-  } catch (error) {
-    console.error('Error merging videos:', error.message);
-    res.status(500).json({ error: 'Error merging videos' });
-  }
-});
+};
 
 // Endpoint to trim video
 app.post('/trim-video', async (req, res) => {
+  const { inputVideo, startTime, duration } = req.body;
+
+  if (!inputVideo || !startTime || !duration) {
+    return res.status(400).send('Missing required parameters.');
+  }
+
+  const tempFile = path.join(__dirname, 'temp', uuidv4() + '_temp_video.mp4');
+  const trimmedFile = path.join(__dirname, 'temp', uuidv4() + '_trimmed_video.mp4');
+
   try {
-    console.log('Request received:', req.body);
-    const inputVideoUrl = req.body.inputVideo;
-    const startTime = req.body.startTime;
-    const duration = req.body.duration;
-    const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+    // Download the input video
+    await downloadFile(inputVideo, tempFile);
 
-    // Download video
-    console.log('Downloading video from:', inputVideoUrl);
-    await downloadFile(inputVideoUrl, tempVideoPath);
-
-    // Trim video
-    console.log('Trimming video...');
-    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
-
-    // Cleanup temporary files
-    fs.unlink(tempVideoPath, (err) => {
-      if (err) console.error('Error deleting temp video file:', err.message);
+    // Trim the video
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempFile)
+        .setStartTime(startTime)
+        .setDuration(duration)
+        .output(trimmedFile)
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
     });
 
-    // Serve the trimmed video
-    res.setHeader('Content-Disposition', `attachment; filename="${uniqueFilename}"`);
-    res.sendFile(outputFilePath);
+    // Send response with the trimmed video URL
+    res.json({ videoUrl: `https://yourserver.com/download/${path.basename(trimmedFile)}` });
+
   } catch (error) {
-    console.error('Error trimming video:', error.message);
-    res.status(500).json({ error: 'Error trimming video' });
+    console.error('Error processing video:', error);
+    res.status(500).send('Error processing video.');
   }
 });
 
-// Start server
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+// Endpoint to merge videos
+app.post('/merge-videos', async (req, res) => {
+  const { videoUrls } = req.body;
+
+  if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length < 2) {
+    return res.status(400).send('Invalid video URLs.');
+  }
+
+  const inputFiles = videoUrls.map(url => {
+    const filePath = path.join(__dirname, 'temp', uuidv4() + '_input_video.mp4');
+    return { url, filePath };
+  });
+
+  try {
+    // Download all input videos
+    await Promise.all(inputFiles.map(async ({ url, filePath }) => await downloadFile(url, filePath)));
+
+    // Create file list for merging
+    const mergeCommand = inputFiles.map(file => `file '${file.filePath}'`).join('\n');
+    const fileListPath = path.join(__dirname, 'temp', 'filelist.txt');
+    fs.writeFileSync(fileListPath, mergeCommand);
+
+    // Merge videos
+    const mergedFile = path.join(__dirname, 'temp', uuidv4() + '_merged_video.mp4');
+    await new Promise((resolve, reject) => {
+      ffmpeg()
+        .input(fileListPath)
+        .inputFormat('concat')
+        .videoCodec('copy')
+        .audioCodec('copy')
+        .output(mergedFile)
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
+    });
+
+    // Send response with the merged video URL
+    res.json({ videoUrl: `https://yourserver.com/download/${path.basename(mergedFile)}` });
+
+  } catch (error) {
+    console.error('Error processing videos:', error);
+    res.status(500).send('Error processing videos.');
+  }
+});
+
+// Endpoint to remove audio
+app.post('/remove-audio', async (req, res) => {
+  const { inputVideo } = req.body;
+
+  if (!inputVideo) {
+    return res.status(400).send('Missing input video URL.');
+  }
+
+  const tempFile = path.join(__dirname, 'temp', uuidv4() + '_temp_video.mp4');
+  const outputFile = path.join(__dirname, 'temp', uuidv4() + '_no_audio_video.mp4');
+
+  try {
+    // Download the input video
+    await downloadFile(inputVideo, tempFile);
+
+    // Remove audio from the video
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempFile)
+        .noAudio()
+        .output(outputFile)
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
+    });
+
+    // Send response with the video URL without audio
+    res.json({ outputFile: `https://yourserver.com/download/${path.basename(outputFile)}` });
+
+  } catch (error) {
+    console.error('Error processing video:', error);
+    res.status(500).send('Error processing video.');
+  }
+});
+
+// Endpoint to handle video processing with audio merging
+app.post('/process-video', async (req, res) => {
+  const { inputVideo, audioUrls } = req.body;
+
+  if (!inputVideo || !audioUrls || !Array.isArray(audioUrls)) {
+    return res.status(400).send('Missing input video or audio URLs.');
+  }
+
+  const tempVideo = path.join(__dirname, 'temp', uuidv4() + '_temp_video.mp4');
+  const tempAudioFiles = audioUrls.map(url => ({
+    url,
+    filePath: path.join(__dirname, 'temp', uuidv4() + '_audio.mp3')
+  }));
+  const outputVideo = path.join(__dirname, 'temp', uuidv4() + '_final_video.mp4');
+
+  try {
+    // Download the input video and audio files
+    await downloadFile(inputVideo, tempVideo);
+    await Promise.all(tempAudioFiles.map(async ({ url, filePath }) => await downloadFile(url, filePath)));
+
+    // Merge audio and video
+    const filterComplex = tempAudioFiles.map(({ filePath }) => `[0:v][${filePath}]amix=inputs=1:duration=longest`).join(';');
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempVideo)
+        .complexFilter(filterComplex)
+        .output(outputVideo)
+        .on('end', resolve)
+        .on('error', reject)
+        .run();
+    });
+
+    // Send response with the processed video URL
+    res.json({ videoUrl: `https://yourserver.com/download/${path.basename(outputVideo)}` });
+
+  } catch (error) {
+    console.error('Error processing video and audio:', error);
+    res.status(500).send('Error processing video and audio.');
+  }
+});
+
+// Serve files for download
+app.use('/download', express.static(path.join(__dirname, 'temp'), {
+  setHeaders: (res, path) => {
+    res.setHeader('Content-Disposition', `attachment; filename=${path.basename(path)}`);
+  }
+}));
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
