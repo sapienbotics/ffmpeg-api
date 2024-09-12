@@ -16,16 +16,19 @@ if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });
 }
 
-// Function to download files
+// Function to download files with retry logic
 async function downloadFile(url, outputPath) {
   let retries = 3;
   while (retries > 0) {
     try {
       const response = await axios.get(url, { responseType: 'stream' });
-      response.data.pipe(fs.createWriteStream(outputPath));
+      const writer = fs.createWriteStream(outputPath);
+
+      response.data.pipe(writer);
+
       return new Promise((resolve, reject) => {
-        response.data.on('end', resolve);
-        response.data.on('error', reject);
+        writer.on('finish', resolve);
+        writer.on('error', reject);
       });
     } catch (error) {
       console.error('Error downloading file, retrying...', error.message);
@@ -35,27 +38,14 @@ async function downloadFile(url, outputPath) {
   }
 }
 
-// Function to execute FFmpeg command
-function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPath, outputPath, options) {
-  return new Promise((resolve, reject) => {
-    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -i ${backgroundAudioPath} ` +
-      `-filter_complex "[1:a]volume=${options.inputAudioVolume}[a1]; ` +
-      `[2:a]volume=${options.backgroundAudioVolume}[a2]; ` +
-      `[a1][a2]amix=inputs=2[a]" ` +
-      `-map 0:v -map "[a]" ` +
-      `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
-
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error during merging:', error.message);
-        console.error('FFmpeg stderr:', stderr);
-        reject(error);
-      } else {
-        console.log('FFmpeg output during merging:', stdout);
-        resolve();
-      }
-    });
-  });
+// Function to log file properties
+function logFileProperties(filePath) {
+  try {
+    const output = execSync(`${ffmpegPath} -v error -show_format -show_streams ${filePath}`).toString();
+    console.log(`File properties for ${filePath}:\n`, output);
+  } catch (error) {
+    console.error(`Error logging properties for ${filePath}:`, error.message);
+  }
 }
 
 // Function to preprocess audio
@@ -75,17 +65,40 @@ function preprocessAudio(inputAudioPath, outputAudioPath, volume) {
   });
 }
 
-// Function to remove audio from a video
-function checkAndRemoveAudio(inputVideoPath, outputVideoPath) {
+// Function to remove audio from video
+function removeAudio(inputVideoPath, outputVideoPath) {
   return new Promise((resolve, reject) => {
     const command = `${ffmpegPath} -i ${inputVideoPath} -an ${outputVideoPath}`;
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg error during audio removal:', error.message);
+        console.error('FFmpeg error during removing audio:', error.message);
         console.error('FFmpeg stderr:', stderr);
         reject(error);
       } else {
-        console.log('FFmpeg output during audio removal:', stdout);
+        console.log('FFmpeg output during removing audio:', stdout);
+        resolve();
+      }
+    });
+  });
+}
+
+// Function to execute FFmpeg command
+function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPath, outputPath, options) {
+  return new Promise((resolve, reject) => {
+    const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -i ${backgroundAudioPath} ` +
+      `-filter_complex "[1:a]volume=${options.inputAudioVolume}[a1]; ` +
+      `[2:a]volume=${options.backgroundAudioVolume}[a2]; ` +
+      `[a1][a2]amix=inputs=2[a]" ` +
+      `-map 0:v -map "[a]" ` +
+      `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('FFmpeg error during merging:', error.message);
+        console.error('FFmpeg stderr:', stderr);
+        reject(error);
+      } else {
+        console.log('FFmpeg output during merging:', stdout);
         resolve();
       }
     });
@@ -152,6 +165,11 @@ app.post('/edit-video', async (req, res) => {
     console.log('Downloading background audio from:', backgroundAudioUrl);
     await downloadFile(backgroundAudioUrl, tempBackgroundAudioPath);
 
+    // Log file properties for debugging
+    logFileProperties(tempVideoPath);
+    logFileProperties(tempAudioPath);
+    logFileProperties(tempBackgroundAudioPath);
+
     // Preprocess audio
     console.log('Preprocessing main audio...');
     await preprocessAudio(tempAudioPath, processedAudioPath, volume);
@@ -162,6 +180,10 @@ app.post('/edit-video', async (req, res) => {
       inputAudioVolume: req.body.inputAudioVolume || '1.0',
       backgroundAudioVolume: req.body.backgroundAudioVolume || '0.0',
     };
+
+    // Remove audio from video before merging if necessary
+    await removeAudio(tempVideoPath, tempVideoPath);
+
     await executeFFmpegCommand(tempVideoPath, processedAudioPath, tempBackgroundAudioPath, outputFilePath, options);
 
     // Cleanup temporary files
@@ -196,39 +218,21 @@ app.post('/merge-videos', async (req, res) => {
 
     // Download all videos
     const tempVideoPaths = [];
-    const tempVideoPathsWithoutAudio = [];
     for (const url of videoUrls) {
       const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-      const videoWithoutAudioPath = path.join(storageDir, `${uuidv4()}_video_without_audio.mp4`);
       console.log('Downloading video from:', url);
       await downloadFile(url, tempVideoPath);
-
-      // Remove audio from video
-      console.log('Removing audio from video...');
-      await checkAndRemoveAudio(tempVideoPath, videoWithoutAudioPath);
-
       tempVideoPaths.push(tempVideoPath);
-      tempVideoPathsWithoutAudio.push(videoWithoutAudioPath);
     }
-
-    // Log file properties for debugging
-    tempVideoPathsWithoutAudio.forEach((filePath) => {
-      console.log('File properties for', filePath);
-    });
 
     // Merge videos
     console.log('Merging videos...');
-    await mergeVideos(tempVideoPathsWithoutAudio, outputFilePath);
+    await mergeVideos(tempVideoPaths, outputFilePath);
 
     // Cleanup temporary files
-    tempVideoPaths.forEach((filePath) => {
-      fs.unlink(filePath, (err) => {
+    tempVideoPaths.forEach((videoPath) => {
+      fs.unlink(videoPath, (err) => {
         if (err) console.error('Error deleting temp video file:', err.message);
-      });
-    });
-    tempVideoPathsWithoutAudio.forEach((filePath) => {
-      fs.unlink(filePath, (err) => {
-        if (err) console.error('Error deleting video without audio file:', err.message);
       });
     });
 
@@ -240,7 +244,7 @@ app.post('/merge-videos', async (req, res) => {
   }
 });
 
-// Endpoint to trim a video
+// Endpoint to trim video
 app.post('/trim-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
@@ -255,14 +259,11 @@ app.post('/trim-video', async (req, res) => {
     console.log('Downloading video from:', inputVideoUrl);
     await downloadFile(inputVideoUrl, tempVideoPath);
 
-    // Log file properties for debugging
-    console.log('File properties for', tempVideoPath);
-
     // Trim video
     console.log('Trimming video...');
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
-    // Cleanup temporary file
+    // Cleanup temporary files
     fs.unlink(tempVideoPath, (err) => {
       if (err) console.error('Error deleting temp video file:', err.message);
     });
@@ -275,8 +276,8 @@ app.post('/trim-video', async (req, res) => {
   }
 });
 
-// Start the server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Start server
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
