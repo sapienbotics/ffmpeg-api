@@ -96,7 +96,7 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
   });
 }
 
-function resizeAndMergeVideos(inputVideoPaths, outputPath, orientation) {
+function resizeAndMergeVideos(videoData, outputPath, orientation) {
   return new Promise((resolve, reject) => {
     let paddingOptions;
     switch (orientation) {
@@ -113,13 +113,11 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, orientation) {
         return reject(new Error('Invalid orientation'));
     }
 
-    // Generate FFmpeg input options
-    const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
+    const inputOptions = videoData.map((_, i) => `-i ${_[i].path}`).join(' ');
 
-    // Create the filter complex command for scaling, padding, and concatenation
-    const filterComplex = inputVideoPaths.map((_, i) => {
-      return `[${i}:v]${paddingOptions}[v${i}]`;
-    }).join('; ') + `; ${inputVideoPaths.map((_, i) => `[v${i}]`).join('')}concat=n=${inputVideoPaths.length}:v=1 [v]`;
+    const filterComplex = videoData.map((video, i) => {
+      return `[${i}:v]scale=${video.width}:${video.height},${paddingOptions}[v${i}]`;
+    }).join('; ') + `; ${videoData.map((_, i) => `[v${i}]`).join('')}concat=n=${videoData.length}:v=1 [v]`;
 
     const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -an -c:v libx264 -shortest ${outputPath}`;
 
@@ -220,10 +218,10 @@ app.post('/trim-video', async (req, res) => {
 app.post('/merge-videos', async (req, res) => {
   try {
     console.log('Request received:', req.body);
-    const videoUrls = req.body.videoUrls;
+    const videoData = req.body.videoUrls;
     const orientation = req.body.orientation;
 
-    if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
+    if (!Array.isArray(videoData) || videoData.length < 2) {
       return res.status(400).json({ error: 'At least two video URLs are required' });
     }
 
@@ -232,10 +230,10 @@ app.post('/merge-videos', async (req, res) => {
 
     // Download each video
     const tempVideoPaths = await Promise.all(
-      videoUrls.map(async (url) => {
-        const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-        await downloadFile(url, tempVideoPath);
-        return tempVideoPath;
+      videoData.map(async (video, index) => {
+        const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video_${index}.mp4`);
+        await downloadFile(video.url, tempVideoPath);
+        return { path: tempVideoPath, width: video.width, height: video.height };
       })
     );
 
@@ -243,8 +241,8 @@ app.post('/merge-videos', async (req, res) => {
     await resizeAndMergeVideos(tempVideoPaths, outputFilePath, orientation);
 
     // Clean up temporary files
-    tempVideoPaths.forEach((tempVideoPath) => {
-      fs.unlink(tempVideoPath, (err) => {
+    tempVideoPaths.forEach((video) => {
+      fs.unlink(video.path, (err) => {
         if (err) console.error('Error deleting temp video file:', err.message);
       });
     });
