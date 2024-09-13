@@ -114,11 +114,11 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     // Execute FFmpeg command
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error('FFmpeg error during merging:', error.message);
+        console.error('FFmpeg error during resizing and merging:', error.message);
         console.error('FFmpeg stderr:', stderr);
         reject(error);
       } else {
-        console.log('FFmpeg output during merging:', stdout);
+        console.log('FFmpeg output during resizing and merging:', stdout);
         resolve();
       }
     });
