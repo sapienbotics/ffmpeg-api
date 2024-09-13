@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
 
@@ -96,18 +96,29 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
   });
 }
 
-function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
+function resizeAndMergeVideos(inputVideoPaths, outputPath, orientation) {
   return new Promise((resolve, reject) => {
-    // Extract width and height from the aspect ratio
-    const [targetWidth, targetHeight] = targetAspectRatio.split(':').map(Number);
-    const targetRatio = targetWidth / targetHeight;
+    let paddingOptions;
+    switch (orientation) {
+      case 'portrait':
+        paddingOptions = 'pad=16:9:(ow-iw)/2:(oh-ih)/2:color=black';
+        break;
+      case 'landscape':
+        paddingOptions = 'pad=16:9:(ow-iw)/2:(oh-ih)/2:color=black';
+        break;
+      case 'square':
+        paddingOptions = 'pad=16:16:(ow-iw)/2:(oh-ih)/2:color=black';
+        break;
+      default:
+        return reject(new Error('Invalid orientation'));
+    }
 
     // Generate FFmpeg input options
     const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
 
     // Create the filter complex command for scaling, padding, and concatenation
     const filterComplex = inputVideoPaths.map((_, i) => {
-      return `[${i}:v]scale='if(gte(iw/ih,${targetRatio}),${targetWidth},-1)':'if(gte(iw/ih,${targetRatio}),-1,${targetHeight})',pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black[v${i}]`;
+      return `[${i}:v]${paddingOptions}[v${i}]`;
     }).join('; ') + `; ${inputVideoPaths.map((_, i) => `[v${i}]`).join('')}concat=n=${inputVideoPaths.length}:v=1 [v]`;
 
     const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -an -c:v libx264 -shortest ${outputPath}`;
@@ -124,8 +135,6 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     });
   });
 }
-
-
 
 app.post('/edit-video', async (req, res) => {
   try {
@@ -212,7 +221,7 @@ app.post('/merge-videos', async (req, res) => {
   try {
     console.log('Request received:', req.body);
     const videoUrls = req.body.videoUrls;
-    const targetAspectRatio = req.body.targetAspectRatio || '16:9';
+    const orientation = req.body.orientation;
 
     if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
       return res.status(400).json({ error: 'At least two video URLs are required' });
@@ -231,7 +240,7 @@ app.post('/merge-videos', async (req, res) => {
     );
 
     console.log('Merging videos...');
-    await resizeAndMergeVideos(tempVideoPaths, outputFilePath, targetAspectRatio);
+    await resizeAndMergeVideos(tempVideoPaths, outputFilePath, orientation);
 
     // Clean up temporary files
     tempVideoPaths.forEach((tempVideoPath) => {
@@ -246,7 +255,6 @@ app.post('/merge-videos', async (req, res) => {
     res.status(500).json({ error: 'Error merging videos' });
   }
 });
-
 
 app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
