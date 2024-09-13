@@ -104,11 +104,12 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
 
     // Generate FFmpeg filter complex command
     const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
-    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v]`).join(' ') +
-      `concat=n=${inputVideoPaths.length}:v=1 [v];` +
-      `[v]scale='if(gte(iw/ih,${targetRatio}),${targetWidth},-1)':'if(gte(iw/ih,${targetRatio}),-1,${targetHeight})',pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black[v]`;
 
-    // Generate FFmpeg command with "-an" to remove all audio streams
+    // **Updated Filter Complex Logic**
+    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v]scale='if(gte(iw/ih,${targetRatio}),${targetWidth},-1)':'if(gte(iw/ih,${targetRatio}),-1,${targetHeight})',pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black[v${i}]`).join('; ') +
+      `; ${inputVideoPaths.map((_, i) => `[v${i}]`).join('')}concat=n=${inputVideoPaths.length}:v=1 [v]`;
+
+    // **Updated FFmpeg Command**
     const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -an -c:v libx264 -shortest ${outputPath}`;
 
     // Execute FFmpeg command
@@ -124,6 +125,7 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     });
   });
 }
+
 
 app.post('/edit-video', async (req, res) => {
   try {
