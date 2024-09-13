@@ -217,6 +217,10 @@ app.post('/trim-video', async (req, res) => {
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
+    if (!inputVideoUrl || !startTime || !duration) {
+      return res.status(400).json({ error: 'inputVideo, startTime, and duration are required' });
+    }
+
     console.log('Downloading video from:', inputVideoUrl);
     await downloadFile(inputVideoUrl, tempVideoPath);
 
@@ -234,20 +238,23 @@ app.post('/trim-video', async (req, res) => {
   }
 });
 
-app.get('/video/:filename', (req, res) => {
+app.get('/download/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
-
   if (fs.existsSync(filePath)) {
-    res.sendFile(filePath);
+    res.download(filePath, (err) => {
+      if (err) console.error('Error sending file:', err.message);
+    });
   } else {
-    res.status(404).send('File not found');
+    res.status(404).json({ error: 'File not found' });
   }
 });
 
-const server = app.listen(process.env.PORT || 8080, () => {
-  console.log(`Server running on port ${process.env.PORT || 8080}`);
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, () => {
+  console.log(`Server is listening on port ${PORT}`);
 });
 
+// Handling server shutdown signals
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received.');
   server.close(() => {
