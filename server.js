@@ -99,9 +99,9 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
 function mergeVideos(inputVideoPaths, outputPath) {
   return new Promise((resolve, reject) => {
     const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
-    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v][${i}:a]`).join('');
-    const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}concat=n=${inputVideoPaths.length}:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
-    
+    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v] [${i}:a]`).join(' ') + `concat=n=${inputVideoPaths.length}:v=1:a=1 [v] [a]`;
+    const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -map "[a]" -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
+
     exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error('FFmpeg error during merging:', error.message);
