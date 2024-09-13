@@ -210,8 +210,8 @@ app.post('/trim-video', async (req, res) => {
 app.post('/merge-videos', async (req, res) => {
   try {
     console.log('Request received:', req.body);
-    const videoUrls = req.body.videoUrls; // Expect an array of video URLs
-    const targetAspectRatio = req.body.targetAspectRatio || '16:9'; // Default to 16:9 if not provided
+    const videoUrls = req.body.videoUrls;
+    const targetAspectRatio = req.body.targetAspectRatio || '16:9';
 
     if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
       return res.status(400).json({ error: 'At least two video URLs are required' });
@@ -245,6 +245,7 @@ app.post('/merge-videos', async (req, res) => {
     res.status(500).json({ error: 'Error merging videos' });
   }
 });
+
 
 app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
