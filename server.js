@@ -238,6 +238,9 @@ app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
 
   if (fs.existsSync(filePath)) {
+    // Set the appropriate headers to force the file download
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
+    res.setHeader('Content-Type', 'video/mp4');  // Assuming all videos are mp4, adjust if needed
     res.sendFile(filePath);
   } else {
     res.status(404).send('File not found');
