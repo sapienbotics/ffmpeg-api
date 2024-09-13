@@ -202,13 +202,13 @@ app.post('/merge-videos', async (req, res) => {
       })
     );
 
-    // Resize and merge videos
+    console.log('Merging videos...');
     await resizeAndMergeVideos(tempVideoPaths, outputFilePath, targetAspectRatio);
 
-    // Clean up temp files
-    tempVideoPaths.forEach((filePath) => {
-      fs.unlink(filePath, (err) => {
-        if (err) console.error('Error deleting temp file:', err.message);
+    // Clean up temporary files
+    tempVideoPaths.forEach((tempVideoPath) => {
+      fs.unlink(tempVideoPath, (err) => {
+        if (err) console.error('Error deleting temp video file:', err.message);
       });
     });
 
@@ -222,9 +222,12 @@ app.post('/merge-videos', async (req, res) => {
 app.post('/trim-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
-    const inputVideoUrl = req.body.inputVideo;
-    const startTime = req.body.startTime;
-    const duration = req.body.duration;
+    const { inputVideoUrl, startTime, duration } = req.body;
+
+    if (!inputVideoUrl || !startTime || !duration) {
+      return res.status(400).json({ error: 'inputVideoUrl, startTime, and duration are required' });
+    }
+
     const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
@@ -247,34 +250,17 @@ app.post('/trim-video', async (req, res) => {
 });
 
 app.get('/video/:filename', (req, res) => {
-  const filePath = path.join(storageDir, req.params.filename);
+  const filename = req.params.filename;
+  const filePath = path.join(storageDir, filename);
 
   if (fs.existsSync(filePath)) {
-    // Set the appropriate headers to force the file download
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
-    res.setHeader('Content-Type', 'video/mp4');  // Assuming all videos are mp4, adjust if needed
     res.sendFile(filePath);
   } else {
-    res.status(404).send('File not found');
+    res.status(404).json({ error: 'File not found' });
   }
 });
 
-const server = app.listen(process.env.PORT || 8080, () => {
-  console.log(`Server running on port ${process.env.PORT || 8080}`);
-});
-
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received.');
-  server.close(() => {
-    console.log('HTTP server closed.');
-    process.exit(0);
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT signal received.');
-  server.close(() => {
-    console.log('HTTP server closed.');
-    process.exit(0);
-  });
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
 });
