@@ -102,7 +102,7 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     const [targetWidth, targetHeight] = targetAspectRatio.split(':').map(Number);
     const targetRatio = targetWidth / targetHeight;
 
-    // Generate FFmpeg filter complex command
+    // Generate FFmpeg input options
     const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
 
     // Create the filter complex command for scaling, padding, and concatenation
@@ -124,6 +124,7 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     });
   });
 }
+
 
 
 app.post('/edit-video', async (req, res) => {
