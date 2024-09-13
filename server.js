@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { exec, execSync } = require('child_process');
+const { exec } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
 
@@ -105,14 +105,11 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     // Generate FFmpeg filter complex command
     const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
 
-    // **Updated Filter Complex Logic**
     const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v]scale='if(gte(iw/ih,${targetRatio}),${targetWidth},-1)':'if(gte(iw/ih,${targetRatio}),-1,${targetHeight})',pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black[v${i}]`).join('; ') +
       `; ${inputVideoPaths.map((_, i) => `[v${i}]`).join('')}concat=n=${inputVideoPaths.length}:v=1 [v]`;
 
-    // **Updated FFmpeg Command**
     const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -an -c:v libx264 -shortest ${outputPath}`;
 
-    // Execute FFmpeg command
     exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error('FFmpeg error during resizing and merging:', error.message);
@@ -125,7 +122,6 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     });
   });
 }
-
 
 app.post('/edit-video', async (req, res) => {
   try {
@@ -162,17 +158,11 @@ app.post('/edit-video', async (req, res) => {
     };
     await executeFFmpegCommand(tempVideoPath, processedAudioPath, tempBackgroundAudioPath, outputFilePath, options);
 
-    fs.unlink(tempVideoPath, (err) => {
-      if (err) console.error('Error deleting temp video file:', err.message);
-    });
-    fs.unlink(tempAudioPath, (err) => {
-      if (err) console.error('Error deleting temp audio file:', err.message);
-    });
-    fs.unlink(tempBackgroundAudioPath, (err) => {
-      if (err) console.error('Error deleting temp background audio file:', err.message);
-    });
-    fs.unlink(processedAudioPath, (err) => {
-      if (err) console.error('Error deleting processed audio file:', err.message);
+    // Clean up temporary files
+    [tempVideoPath, tempAudioPath, tempBackgroundAudioPath, processedAudioPath].forEach((filePath) => {
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Error deleting temp file:', err.message);
+      });
     });
 
     res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
