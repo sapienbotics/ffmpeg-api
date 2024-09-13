@@ -96,12 +96,22 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
   });
 }
 
-function mergeVideos(inputVideoPaths, outputPath) {
+function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
   return new Promise((resolve, reject) => {
+    // Extract width and height from the aspect ratio
+    const [targetWidth, targetHeight] = targetAspectRatio.split(':').map(Number);
+    const targetRatio = targetWidth / targetHeight;
+
+    // Generate FFmpeg filter complex command
     const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
-    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v] [${i}:a]`).join(' ') + `concat=n=${inputVideoPaths.length}:v=1:a=1 [v] [a]`;
+    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v] [${i}:a]`).join(' ') +
+      `concat=n=${inputVideoPaths.length}:v=1:a=1 [v] [a];` +
+      `[v]scale='if(gte(iw/ih,${targetRatio}),${targetWidth},-1)':'if(gte(iw/ih,${targetRatio}),-1,${targetHeight})',pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black[v]`;
+
+    // Generate FFmpeg command
     const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -map "[a]" -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
 
+    // Execute FFmpeg command
     exec(command, (error, stdout, stderr) => {
       if (error) {
         console.error('FFmpeg error during merging:', error.message);
@@ -174,6 +184,8 @@ app.post('/merge-videos', async (req, res) => {
   try {
     console.log('Request received:', req.body);
     const videoUrls = req.body.videoUrls; // Expect an array of video URLs
+    const targetAspectRatio = req.body.targetAspectRatio || '16:9'; // Default to 16:9 if not provided
+
     if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
       return res.status(400).json({ error: 'At least two video URLs are required' });
     }
@@ -190,8 +202,8 @@ app.post('/merge-videos', async (req, res) => {
       })
     );
 
-    // Merge videos
-    await mergeVideos(tempVideoPaths, outputFilePath);
+    // Resize and merge videos
+    await resizeAndMergeVideos(tempVideoPaths, outputFilePath, targetAspectRatio);
 
     // Clean up temp files
     tempVideoPaths.forEach((filePath) => {
