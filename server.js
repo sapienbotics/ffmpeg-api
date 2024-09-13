@@ -104,12 +104,12 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
 
     // Generate FFmpeg filter complex command
     const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
-    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v] [${i}:a]`).join(' ') +
-      `concat=n=${inputVideoPaths.length}:v=1:a=1 [v] [a];` +
+    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v]`).join(' ') +
+      `concat=n=${inputVideoPaths.length}:v=1 [v];` +
       `[v]scale='if(gte(iw/ih,${targetRatio}),${targetWidth},-1)':'if(gte(iw/ih,${targetRatio}),-1,${targetHeight})',pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black[v]`;
 
-    // Generate FFmpeg command
-    const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -map "[a]" -c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
+    // Generate FFmpeg command with "-an" to remove all audio streams
+    const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -an -c:v libx264 -shortest ${outputPath}`;
 
     // Execute FFmpeg command
     exec(command, (error, stdout, stderr) => {
@@ -180,6 +180,38 @@ app.post('/edit-video', async (req, res) => {
   }
 });
 
+app.post('/trim-video', async (req, res) => {
+  try {
+    console.log('Request received:', req.body);
+    const videoUrl = req.body.videoUrl;
+    const startTime = req.body.startTime;
+    const duration = req.body.duration;
+
+    if (!videoUrl || !startTime || !duration) {
+      return res.status(400).json({ error: 'Missing videoUrl, startTime, or duration' });
+    }
+
+    const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
+    const outputFilePath = path.join(storageDir, uniqueFilename);
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+
+    console.log('Downloading video from:', videoUrl);
+    await downloadFile(videoUrl, tempVideoPath);
+
+    console.log('Trimming video...');
+    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
+
+    fs.unlink(tempVideoPath, (err) => {
+      if (err) console.error('Error deleting temp video file:', err.message);
+    });
+
+    res.json({ message: 'Video trimmed successfully', outputFile: uniqueFilename });
+  } catch (error) {
+    console.error('Error trimming video:', error.message);
+    res.status(500).json({ error: 'Error trimming video' });
+  }
+});
+
 app.post('/merge-videos', async (req, res) => {
   try {
     console.log('Request received:', req.body);
@@ -216,36 +248,6 @@ app.post('/merge-videos', async (req, res) => {
   } catch (error) {
     console.error('Error merging videos:', error.message);
     res.status(500).json({ error: 'Error merging videos' });
-  }
-});
-
-app.post('/trim-video', async (req, res) => {
-  try {
-    console.log('Request received:', req.body);
-    const { inputVideoUrl, startTime, duration } = req.body;
-
-    if (!inputVideoUrl || !startTime || !duration) {
-      return res.status(400).json({ error: 'inputVideoUrl, startTime, and duration are required' });
-    }
-
-    const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-
-    console.log('Downloading video from:', inputVideoUrl);
-    await downloadFile(inputVideoUrl, tempVideoPath);
-
-    console.log('Trimming video...');
-    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
-
-    fs.unlink(tempVideoPath, (err) => {
-      if (err) console.error('Error deleting temp video file:', err.message);
-    });
-
-    res.json({ message: 'Video trimmed successfully', outputFile: uniqueFilename });
-  } catch (error) {
-    console.error('Error trimming video:', error.message);
-    res.status(500).json({ error: 'Error trimming video' });
   }
 });
 
