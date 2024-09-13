@@ -250,13 +250,15 @@ app.post('/trim-video', async (req, res) => {
 });
 
 app.get('/video/:filename', (req, res) => {
-  const filename = req.params.filename;
-  const filePath = path.join(storageDir, filename);
+  const filePath = path.join(storageDir, req.params.filename);
 
   if (fs.existsSync(filePath)) {
+    // Set headers to force download
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');  // Change to 'application/octet-stream' for forced download
     res.sendFile(filePath);
   } else {
-    res.status(404).json({ error: 'File not found' });
+    res.status(404).send('File not found');
   }
 });
 
