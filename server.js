@@ -105,8 +105,11 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     // Generate FFmpeg filter complex command
     const inputOptions = inputVideoPaths.map((videoPath) => `-i ${videoPath}`).join(' ');
 
-    const filterComplex = inputVideoPaths.map((_, i) => `[${i}:v]scale='if(gte(iw/ih,${targetRatio}),${targetWidth},-1)':'if(gte(iw/ih,${targetRatio}),-1,${targetHeight})',pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black[v${i}]`).join('; ') +
-      `; ${inputVideoPaths.map((_, i) => `[v${i}]`).join('')}concat=n=${inputVideoPaths.length}:v=1 [v]`;
+    // Create the filter complex command for scaling, padding, and concatenation
+    const filterComplex = inputVideoPaths.map((_, i) => {
+      return `[${i}:v]scale='if(gte(iw/ih,${targetRatio}),${targetWidth},-1)':'if(gte(iw/ih,${targetRatio}),-1,${targetHeight})',pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=black[v${i}]`;
+    }).join('; ') + 
+    `; ${inputVideoPaths.map((_, i) => `[v${i}]`).join('')}concat=n=${inputVideoPaths.length}:v=1 [v]`;
 
     const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -an -c:v libx264 -shortest ${outputPath}`;
 
@@ -122,6 +125,7 @@ function resizeAndMergeVideos(inputVideoPaths, outputPath, targetAspectRatio) {
     });
   });
 }
+
 
 app.post('/edit-video', async (req, res) => {
   try {
