@@ -268,8 +268,8 @@ app.post('/trim-video', async (req, res) => {
 
 app.get('/video/:filename', (req, res) => {
     const filePath = path.join(storageDir, req.params.filename);
-
     if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Disposition', 'attachment; filename="' + req.params.filename + '"');
         res.sendFile(filePath);
     } else {
         res.status(404).send('File not found');
