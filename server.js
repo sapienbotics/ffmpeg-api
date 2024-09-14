@@ -222,8 +222,8 @@ app.post('/trim-video', async (req, res) => {
     }
 
     const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_trim_video.mp4`);
     const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
     console.log('Downloading video from:', videoUrl);
     await downloadFile(videoUrl, tempVideoPath);
@@ -231,8 +231,9 @@ app.post('/trim-video', async (req, res) => {
     console.log('Trimming video...');
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
+    // Clean up temporary files
     fs.unlink(tempVideoPath, (err) => {
-      if (err) console.error('Error deleting temp video file:', err.message);
+      if (err) console.error('Error deleting temp file:', err.message);
     });
 
     res.json({ message: 'Video trimmed successfully', outputFile: uniqueFilename });
@@ -244,53 +245,43 @@ app.post('/trim-video', async (req, res) => {
 
 app.post('/merge-videos', async (req, res) => {
   try {
-    const { videoUrls, orientation } = req.body;
-
-    if (!videoUrls || !orientation) {
-      return res.status(400).json({ error: 'Invalid request body' });
+    console.log('Request received:', req.body);
+    const { videos, orientation } = req.body;
+    if (!videos || !orientation) {
+      return res.status(400).json({ error: 'Missing videos or orientation' });
     }
 
-    // Map video URLs and their dimensions
-    const videoData = videoUrls.map((video, index) => {
+    const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
+    const outputFilePath = path.join(storageDir, uniqueFilename);
+
+    const videoData = await Promise.all(videos.map(async (video) => {
+      const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+      await downloadFile(video.url, tempVideoPath);
       return {
-        path: video.url, // Path or URL to the video
-        width: video.width, // Width provided in the request body
-        height: video.height // Height provided in the request body
+        path: tempVideoPath,
+        width: video.width,
+        height: video.height,
       };
+    }));
+
+    console.log('Merging videos...');
+    await resizeAndMergeVideos(videoData, outputFilePath, orientation);
+
+    // Clean up temporary video files
+    videoData.forEach((video) => {
+      fs.unlink(video.path, (err) => {
+        if (err) console.error('Error deleting temp file:', err.message);
+      });
     });
 
-    // Define output path for the merged video
-    const outputPath = `merged_output_${Date.now()}.mp4`;
-
-    // Call the merge function, passing in videoData, outputPath, and orientation
-    await resizeAndMergeVideos(videoData, outputPath, orientation);
-
-    // Respond with the URL of the merged video
-    res.json({
-      message: 'Videos merged successfully',
-      mergedVideoUrl: `${req.protocol}://${req.get('host')}/video/${outputPath}`
-    });
+    res.json({ message: 'Videos merged successfully', outputFile: uniqueFilename });
   } catch (error) {
     console.error('Error merging videos:', error.message);
     res.status(500).json({ error: 'Error merging videos' });
   }
 });
 
-
-app.get('/video/:filename', (req, res) => {
-  const filePath = path.join(storageDir, req.params.filename);
-
-  if (fs.existsSync(filePath)) {
-    // Set headers to force download
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
-    res.setHeader('Content-Type', 'application/octet-stream');  // Change to 'application/octet-stream' for forced download
-    res.sendFile(filePath);
-  } else {
-    res.status(404).send('File not found');
-  }
-});
-
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
