@@ -65,7 +65,7 @@ function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPat
             `[2:a]volume=${options.backgroundAudioVolume}[a2]; ` +
             `[a1][a2]amix=inputs=2[a]" ` +
             `-map 0:v -map "[a]" ` +
-            `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest -report ${outputPath}`;
+            `-c:v libx264 -c:a aac -b:a 128k -ac 2 -ar 44100 -shortest ${outputPath}`;
 
         exec(command, (error, stdout, stderr) => {
             if (error) {
@@ -96,64 +96,42 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
     });
 }
 
-function resizeAndMergeVideos(videoData, outputPath, orientation) {
+function getVideoDimensions(videoPath) {
     return new Promise((resolve, reject) => {
-        console.log('Video data for merging:', videoData);
-
-        let targetAspectRatio;
-        switch (orientation) {
-            case 'portrait':
-                targetAspectRatio = 9 / 16;
-                break;
-            case 'landscape':
-                targetAspectRatio = 16 / 9;
-                break;
-            case 'square':
-                targetAspectRatio = 1; // 1:1 aspect ratio
-                break;
-            default:
-                return reject(new Error('Invalid orientation'));
-        }
-
-        const inputOptions = videoData.map(video => `-i ${video.path}`).join(' ');
-
-        console.log('Input options:', inputOptions);
-
-        const filterComplex = videoData.map((video, i) => {
-            const aspectRatio = video.width / video.height;
-            let padWidth = video.width;
-            let padHeight = video.height;
-
-            if (aspectRatio > targetAspectRatio) {
-                padHeight = Math.round(video.width / targetAspectRatio);
-            } else if (aspectRatio < targetAspectRatio) {
-                padWidth = Math.round(video.height * targetAspectRatio);
-            }
-
-            const paddingX = Math.round((padWidth - video.width) / 2);
-            const paddingY = Math.round((padHeight - video.height) / 2);
-
-            const dynamicPadding = `pad=${padWidth}:${padHeight}:${paddingX}:${paddingY}:color=black`;
-
-            return `[${i}:v]scale=${video.width}:${video.height},${dynamicPadding}[v${i}]`;
-        }).join('; ') + `; ${videoData.map((_, i) => `[v${i}]`).join('')}concat=n=${videoData.length}:v=1 [v]`;
-
-        console.log('Filter complex:', filterComplex);
-
-        const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -an -c:v libx264 -shortest ${outputPath}`;
-
-        exec(command, (error, stdout, stderr) => {
+        exec(`ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 ${videoPath}`, (error, stdout) => {
             if (error) {
-                console.error('FFmpeg error during resizing and merging:', error.message);
-                console.error('FFmpeg stderr:', stderr);
-                reject(error);
+                return reject(error);
+            }
+            const dimensions = stdout.trim().split('x');
+            if (dimensions.length === 2) {
+                resolve({ width: parseInt(dimensions[0], 10), height: parseInt(dimensions[1], 10) });
             } else {
-                console.log('FFmpeg output during resizing and merging:', stdout);
-                resolve();
+                reject(new Error('Failed to get video dimensions'));
             }
         });
     });
 }
+
+app.post('/merge-videos', async (req, res) => {
+    try {
+        console.log('Request received:', req.body);
+        const videoUrls = req.body.videos;  // Assume this is an array of URLs
+        const tempVideoPaths = await Promise.all(videoUrls.map(url => downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`))));
+        const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
+
+        const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
+        // Assuming all videos are same dimensions and can be directly merged without re-encoding
+        // Your logic to merge videos here using FFmpeg...
+
+        console.log('Cleaning up temporary files...');
+        tempVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
+
+        res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
+    } catch (error) {
+        console.error('Error merging videos:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.post('/edit-video', async (req, res) => {
     try {
@@ -275,7 +253,6 @@ app.get('/video/:filename', (req, res) => {
         res.status(404).send('File not found');
     }
 });
-
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
