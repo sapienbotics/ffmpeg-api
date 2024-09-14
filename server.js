@@ -15,6 +15,23 @@ if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });
 }
 
+// Utility function to delete all files in storage directory
+function cleanUpOldFiles() {
+  fs.readdir(storageDir, (err, files) => {
+    if (err) {
+      console.error('Error reading storage directory:', err);
+      return;
+    }
+    files.forEach(file => {
+      fs.unlink(path.join(storageDir, file), err => {
+        if (err) {
+          console.error('Error deleting file:', err);
+        }
+      });
+    });
+  });
+}
+
 async function downloadFile(url, outputPath) {
   let retries = 3;
   while (retries > 0) {
@@ -161,6 +178,7 @@ function resizeAndMergeVideos(videoData, outputPath, orientation) {
 app.post('/edit-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
+    cleanUpOldFiles(); // Clean up old files at the beginning of the process
     const inputVideoUrl = req.body.inputVideo;
     const inputAudioUrl = req.body.inputAudio;
     const backgroundAudioUrl = req.body.backgroundAudio;
@@ -193,13 +211,8 @@ app.post('/edit-video', async (req, res) => {
     };
     await executeFFmpegCommand(tempVideoPath, processedAudioPath, tempBackgroundAudioPath, outputFilePath, options);
 
-    console.log('Cleaning up temporary files...');
-    fs.unlinkSync(tempVideoPath);
-    fs.unlinkSync(tempAudioPath);
-    fs.unlinkSync(tempBackgroundAudioPath);
-    fs.unlinkSync(processedAudioPath);
-
-    res.status(200).json({ message: 'Video processed successfully', outputUrl: outputFilePath });
+    console.log('Successfully processed video');
+    res.json({ message: 'Video processing completed successfully', url: outputFilePath });
   } catch (error) {
     console.error('Error processing video:', error.message);
     res.status(500).json({ error: error.message });
@@ -208,39 +221,30 @@ app.post('/edit-video', async (req, res) => {
 
 app.post('/merge-videos', async (req, res) => {
   try {
-    console.log('Request received:', req.body);
+    console.log('Merge request received:', req.body);
+    cleanUpOldFiles(); // Clean up old files at the beginning of the process
     const videoData = req.body.videos;
-    const orientation = req.body.orientation;
+    const orientation = req.body.orientation || 'landscape'; // Default to landscape if not provided
     const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
-   
-    const tempVideoPaths = videoData.map(video => path.join(storageDir, `${uuidv4()}_temp_video.mp4`));
 
-    if (!videoData || !orientation) {
-      throw new Error('Missing videos or orientation');
+    if (!Array.isArray(videoData) || videoData.length === 0) {
+      throw new Error('No video data provided');
     }
 
-    // Download each video
-    for (let i = 0; i < videoData.length; i++) {
-      const video = videoData[i];
-      console.log(`Downloading video from: ${video.url}`);
-      await downloadFile(video.url, tempVideoPaths[i]);
-    }
-
-    // Resize and merge videos
-    console.log('Resizing and merging videos...');
-    const videoInfos = videoData.map((video, index) => ({
-      path: tempVideoPaths[index],
-      width: video.width,
-      height: video.height
+    // Download all video files
+    await Promise.all(videoData.map(video => {
+      const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+      return downloadFile(video.url, tempVideoPath).then(() => {
+        video.path = tempVideoPath; // Add path property for use in resizeAndMergeVideos
+      });
     }));
 
-    await resizeAndMergeVideos(videoInfos, outputFilePath, orientation);
+    // Resize and merge videos
+    await resizeAndMergeVideos(videoData, outputFilePath, orientation);
 
-    // Clean up temporary video files
-    tempVideoPaths.forEach(tempVideoPath => fs.unlinkSync(tempVideoPath));
-
-    res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
+    console.log('Successfully merged videos');
+    res.json({ message: 'Videos merged successfully', url: outputFilePath });
   } catch (error) {
     console.error('Error merging videos:', error.message);
     res.status(500).json({ error: error.message });
@@ -249,46 +253,31 @@ app.post('/merge-videos', async (req, res) => {
 
 app.post('/trim-video', async (req, res) => {
   try {
-    console.log('Request received:', req.body);
-    const inputVideoUrl = req.body.videoUrl;
-    const startTime = req.body.startTime;
-    const duration = req.body.duration;
-
-    if (!inputVideoUrl || !startTime || !duration) {
-      throw new Error('Missing inputVideo, startTime, or duration');
+    console.log('Trim request received:', req.body);
+    cleanUpOldFiles(); // Clean up old files at the beginning of the process
+    const { videoUrl, startTime, duration } = req.body;
+    if (!videoUrl || !startTime || !duration) {
+      throw new Error('Video URL, start time, and duration are required');
     }
 
     const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
-    console.log('Downloading video from:', inputVideoUrl);
-    await downloadFile(inputVideoUrl, tempVideoPath);
+    console.log('Downloading video from:', videoUrl);
+    await downloadFile(videoUrl, tempVideoPath);
 
     console.log('Trimming video...');
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
-    // Clean up temporary video file
-    fs.unlinkSync(tempVideoPath);
-
-    res.status(200).json({ message: 'Video trimmed successfully', outputUrl: outputFilePath });
+    console.log('Successfully trimmed video');
+    res.json({ message: 'Video trimmed successfully', url: outputFilePath });
   } catch (error) {
     console.error('Error trimming video:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/video/:filename', (req, res) => {
-  const filePath = path.join(storageDir, req.params.filename);
-
-  if (fs.existsSync(filePath)) {
-    res.sendFile(filePath);
-  } else {
-    res.status(404).send('File not found');
-  }
-});
-
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+app.listen(8080, () => {
+  console.log('Server is running on port 8080');
 });
