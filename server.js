@@ -216,14 +216,9 @@ app.post('/trim-video', async (req, res) => {
     const videoUrl = req.body.videoUrl;
     const startTime = req.body.startTime;
     const duration = req.body.duration;
-
-    if (!videoUrl || !startTime || !duration) {
-      return res.status(400).json({ error: 'Missing videoUrl, startTime, or duration' });
-    }
-
     const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_trim_video.mp4`);
     const outputFilePath = path.join(storageDir, uniqueFilename);
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
     console.log('Downloading video from:', videoUrl);
     await downloadFile(videoUrl, tempVideoPath);
@@ -231,7 +226,7 @@ app.post('/trim-video', async (req, res) => {
     console.log('Trimming video...');
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
-    // Clean up temporary files
+    // Clean up temporary file
     fs.unlink(tempVideoPath, (err) => {
       if (err) console.error('Error deleting temp file:', err.message);
     });
@@ -243,45 +238,18 @@ app.post('/trim-video', async (req, res) => {
   }
 });
 
-app.post('/merge-videos', async (req, res) => {
-  try {
-    console.log('Request received:', req.body);
-    const { videos, orientation } = req.body;
-    if (!videos || !orientation) {
-      return res.status(400).json({ error: 'Missing videos or orientation' });
-    }
+// Restoring the endpoint to serve video files
+app.get('/video/:filename', (req, res) => {
+  const filePath = path.join(storageDir, req.params.filename);
 
-    const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-
-    const videoData = await Promise.all(videos.map(async (video) => {
-      const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-      await downloadFile(video.url, tempVideoPath);
-      return {
-        path: tempVideoPath,
-        width: video.width,
-        height: video.height,
-      };
-    }));
-
-    console.log('Merging videos...');
-    await resizeAndMergeVideos(videoData, outputFilePath, orientation);
-
-    // Clean up temporary video files
-    videoData.forEach((video) => {
-      fs.unlink(video.path, (err) => {
-        if (err) console.error('Error deleting temp file:', err.message);
-      });
-    });
-
-    res.json({ message: 'Videos merged successfully', outputFile: uniqueFilename });
-  } catch (error) {
-    console.error('Error merging videos:', error.message);
-    res.status(500).json({ error: 'Error merging videos' });
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('File not found');
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const port = process.env.PORT || 80800;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
