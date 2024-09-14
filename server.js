@@ -217,22 +217,28 @@ app.post('/merge-videos', async (req, res) => {
     const tempVideoPaths = videoData.map(video => path.join(storageDir, `${uuidv4()}_temp_video.mp4`));
 
     if (!videoData || !orientation) {
-      throw new Error('Missing videos or orientation in request body');
+      throw new Error('Missing videos or orientation');
     }
 
+    // Download each video
     for (let i = 0; i < videoData.length; i++) {
-      await downloadFile(videoData[i].url, tempVideoPaths[i]);
+      const video = videoData[i];
+      console.log(`Downloading video from: ${video.url}`);
+      await downloadFile(video.url, tempVideoPaths[i]);
     }
 
-    console.log('Merging videos...');
-    await resizeAndMergeVideos(
-      videoData.map((video, i) => ({ path: tempVideoPaths[i], width: video.width, height: video.height })),
-      outputFilePath,
-      orientation
-    );
+    // Resize and merge videos
+    console.log('Resizing and merging videos...');
+    const videoInfos = videoData.map((video, index) => ({
+      path: tempVideoPaths[index],
+      width: video.width,
+      height: video.height
+    }));
 
-    console.log('Cleaning up temporary files...');
-    tempVideoPaths.forEach(tempPath => fs.unlinkSync(tempPath));
+    await resizeAndMergeVideos(videoInfos, outputFilePath, orientation);
+
+    // Clean up temporary video files
+    tempVideoPaths.forEach(tempVideoPath => fs.unlinkSync(tempVideoPath));
 
     res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
   } catch (error) {
@@ -244,16 +250,17 @@ app.post('/merge-videos', async (req, res) => {
 app.post('/trim-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
-    const inputVideoUrl = req.body.inputVideo;
+    const inputVideoUrl = req.body.videoUrl;
     const startTime = req.body.startTime;
     const duration = req.body.duration;
+
+    if (!inputVideoUrl || !startTime || !duration) {
+      throw new Error('Missing inputVideo, startTime, or duration');
+    }
+
     const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-
-    if (!inputVideoUrl || !startTime || !duration) {
-      throw new Error('Missing input video URL, start time, or duration in request body');
-    }
 
     console.log('Downloading video from:', inputVideoUrl);
     await downloadFile(inputVideoUrl, tempVideoPath);
@@ -261,7 +268,7 @@ app.post('/trim-video', async (req, res) => {
     console.log('Trimming video...');
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
-    console.log('Cleaning up temporary files...');
+    // Clean up temporary video file
     fs.unlinkSync(tempVideoPath);
 
     res.status(200).json({ message: 'Video trimmed successfully', outputUrl: outputFilePath });
@@ -272,17 +279,16 @@ app.post('/trim-video', async (req, res) => {
 });
 
 app.get('/video/:filename', (req, res) => {
-  const { filename } = req.params;
-  const filePath = path.join(storageDir, filename);
+  const filePath = path.join(storageDir, req.params.filename);
 
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
   } else {
-    res.status(404).json({ error: 'File not found' });
+    res.status(404).send('File not found');
   }
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
