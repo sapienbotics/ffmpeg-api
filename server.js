@@ -100,16 +100,16 @@ function resizeAndMergeVideos(videoData, outputPath, orientation) {
   return new Promise((resolve, reject) => {
     console.log('Video data for merging:', videoData);
 
-    let paddingOptions;
+    let targetAspectRatio;
     switch (orientation) {
       case 'portrait':
-        paddingOptions = 'pad=16:9:(ow-iw)/2:(oh-ih)/2:color=black';
+        targetAspectRatio = 9 / 16;
         break;
       case 'landscape':
-        paddingOptions = 'pad=16:9:(ow-iw)/2:(oh-ih)/2:color=black';
+        targetAspectRatio = 16 / 9;
         break;
       case 'square':
-        paddingOptions = 'pad=16:16:(ow-iw)/2:(oh-ih)/2:color=black';
+        targetAspectRatio = 1; // 1:1 aspect ratio
         break;
       default:
         return reject(new Error('Invalid orientation'));
@@ -120,12 +120,28 @@ function resizeAndMergeVideos(videoData, outputPath, orientation) {
 
     console.log('Input options:', inputOptions);
 
+    // Construct filter_complex dynamically based on input video dimensions
     const filterComplex = videoData.map((video, i) => {
-      if (!video || !video.width || !video.height) {
-        console.error('Video data missing width or height:', video);
-        return '';
+      const aspectRatio = video.width / video.height;
+      let padWidth = video.width;
+      let padHeight = video.height;
+
+      // Calculate padding based on the difference between the target and actual aspect ratios
+      if (aspectRatio > targetAspectRatio) {
+        // Video is wider than the target aspect ratio
+        padHeight = Math.round(video.width / targetAspectRatio);
+      } else if (aspectRatio < targetAspectRatio) {
+        // Video is taller than the target aspect ratio
+        padWidth = Math.round(video.height * targetAspectRatio);
       }
-      return `[${i}:v]scale=${video.width}:${video.height},${paddingOptions}[v${i}]`;
+
+      const paddingX = Math.round((padWidth - video.width) / 2);
+      const paddingY = Math.round((padHeight - video.height) / 2);
+
+      // Dynamic padding option for FFmpeg
+      const dynamicPadding = `pad=${padWidth}:${padHeight}:${paddingX}:${paddingY}:color=black`;
+
+      return `[${i}:v]scale=${video.width}:${video.height},${dynamicPadding}[v${i}]`;
     }).join('; ') + `; ${videoData.map((_, i) => `[v${i}]`).join('')}concat=n=${videoData.length}:v=1 [v]`;
 
     console.log('Filter complex:', filterComplex);
@@ -228,42 +244,38 @@ app.post('/trim-video', async (req, res) => {
 
 app.post('/merge-videos', async (req, res) => {
   try {
-    console.log('Request received:', req.body);
-    const videoData = req.body.videoUrls;
-    const orientation = req.body.orientation;
+    const { videoUrls, orientation } = req.body;
 
-    if (!Array.isArray(videoData) || videoData.length < 2) {
-      return res.status(400).json({ error: 'At least two video URLs are required' });
+    if (!videoUrls || !orientation) {
+      return res.status(400).json({ error: 'Invalid request body' });
     }
 
-    const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-
-    // Download each video
-    const tempVideoPaths = await Promise.all(
-      videoData.map(async (video, index) => {
-        const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video_${index}.mp4`);
-        await downloadFile(video.url, tempVideoPath);
-        return { path: tempVideoPath, width: video.width, height: video.height };
-      })
-    );
-
-    console.log('Merging videos...');
-    await resizeAndMergeVideos(tempVideoPaths, outputFilePath, orientation);
-
-    // Clean up temporary files
-    tempVideoPaths.forEach((video) => {
-      fs.unlink(video.path, (err) => {
-        if (err) console.error('Error deleting temp video file:', err.message);
-      });
+    // Map video URLs and their dimensions
+    const videoData = videoUrls.map((video, index) => {
+      return {
+        path: video.url, // Path or URL to the video
+        width: video.width, // Width provided in the request body
+        height: video.height // Height provided in the request body
+      };
     });
 
-    res.json({ message: 'Videos merged successfully', outputFile: uniqueFilename });
+    // Define output path for the merged video
+    const outputPath = `merged_output_${Date.now()}.mp4`;
+
+    // Call the merge function, passing in videoData, outputPath, and orientation
+    await resizeAndMergeVideos(videoData, outputPath, orientation);
+
+    // Respond with the URL of the merged video
+    res.json({
+      message: 'Videos merged successfully',
+      mergedVideoUrl: `${req.protocol}://${req.get('host')}/video/${outputPath}`
+    });
   } catch (error) {
     console.error('Error merging videos:', error.message);
     res.status(500).json({ error: 'Error merging videos' });
   }
 });
+
 
 app.get('/video/:filename', (req, res) => {
   const filePath = path.join(storageDir, req.params.filename);
