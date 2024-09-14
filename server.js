@@ -98,6 +98,8 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
 
 function resizeAndMergeVideos(videoData, outputPath, orientation) {
   return new Promise((resolve, reject) => {
+    console.log('Video data for merging:', videoData);
+
     let paddingOptions;
     switch (orientation) {
       case 'portrait':
@@ -113,11 +115,20 @@ function resizeAndMergeVideos(videoData, outputPath, orientation) {
         return reject(new Error('Invalid orientation'));
     }
 
-    const inputOptions = videoData.map((_, i) => `-i ${_[i].path}`).join(' ');
+    // Correct mapping of input video files
+    const inputOptions = videoData.map(video => `-i ${video.path}`).join(' ');
+
+    console.log('Input options:', inputOptions);
 
     const filterComplex = videoData.map((video, i) => {
+      if (!video || !video.width || !video.height) {
+        console.error('Video data missing width or height:', video);
+        return '';
+      }
       return `[${i}:v]scale=${video.width}:${video.height},${paddingOptions}[v${i}]`;
     }).join('; ') + `; ${videoData.map((_, i) => `[v${i}]`).join('')}concat=n=${videoData.length}:v=1 [v]`;
+
+    console.log('Filter complex:', filterComplex);
 
     const command = `${ffmpegPath} ${inputOptions} -filter_complex "${filterComplex}" -map "[v]" -an -c:v libx264 -shortest ${outputPath}`;
 
