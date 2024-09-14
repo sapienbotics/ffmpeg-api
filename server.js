@@ -9,12 +9,24 @@ const ffmpegPath = require('ffmpeg-static');
 const app = express();
 app.use(express.json());
 
-const storageDir = process.env.STORAGE_DIR || '/app/storage/processed';
+// Directory to store uploaded and processed files
+const storageDir = process.env.STORAGE_DIR || 'storage/processed';
 
 if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir, { recursive: true });
 }
 
+// Serve video files from the storage directory
+app.get('/video/:filename', (req, res) => {
+  const filePath = path.join(storageDir, req.params.filename);
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('File not found');
+  }
+});
+
+// Download file utility function
 async function downloadFile(url, outputPath) {
   let retries = 3;
   while (retries > 0) {
@@ -26,13 +38,17 @@ async function downloadFile(url, outputPath) {
         response.data.on('error', reject);
       });
     } catch (error) {
-      console.error('Error downloading file, retrying...', error.message);
+      console.error(`Error downloading file from ${url}:`, error.message);
+      if (error.response && error.response.status === 404) {
+        console.error('File not found at the URL:', url);
+      }
       retries--;
-      if (retries === 0) throw new Error('Failed to download file after retries');
+      if (retries === 0) throw new Error(`Failed to download file from ${url} after retries`);
     }
   }
 }
 
+// Log file properties utility function
 function logFileProperties(filePath) {
   try {
     const output = execSync(`${ffmpegPath} -v error -show_format -show_streams ${filePath}`).toString();
@@ -42,6 +58,7 @@ function logFileProperties(filePath) {
   }
 }
 
+// Preprocess audio utility function
 function preprocessAudio(inputAudioPath, outputAudioPath, volume) {
   return new Promise((resolve, reject) => {
     const command = `${ffmpegPath} -i ${inputAudioPath} -ar 44100 -ac 2 -filter:a "volume=${volume}" ${outputAudioPath}`;
@@ -58,6 +75,7 @@ function preprocessAudio(inputAudioPath, outputAudioPath, volume) {
   });
 }
 
+// Execute FFmpeg command utility function
 function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPath, outputPath, options) {
   return new Promise((resolve, reject) => {
     const command = `${ffmpegPath} -i ${inputVideoPath} -i ${inputAudioPath} -i ${backgroundAudioPath} ` +
@@ -80,6 +98,7 @@ function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPat
   });
 }
 
+// Trim video utility function
 function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
   return new Promise((resolve, reject) => {
     const command = `${ffmpegPath} -i ${inputVideoPath} -ss ${startTime} -t ${duration} -c copy ${outputVideoPath}`;
@@ -96,6 +115,7 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
   });
 }
 
+// Resize and merge videos utility function
 function resizeAndMergeVideos(videoData, outputPath, orientation) {
   return new Promise((resolve, reject) => {
     console.log('Video data for merging:', videoData);
@@ -115,30 +135,24 @@ function resizeAndMergeVideos(videoData, outputPath, orientation) {
         return reject(new Error('Invalid orientation'));
     }
 
-    // Correct mapping of input video files
     const inputOptions = videoData.map(video => `-i ${video.path}`).join(' ');
 
     console.log('Input options:', inputOptions);
 
-    // Construct filter_complex dynamically based on input video dimensions
     const filterComplex = videoData.map((video, i) => {
       const aspectRatio = video.width / video.height;
       let padWidth = video.width;
       let padHeight = video.height;
 
-      // Calculate padding based on the difference between the target and actual aspect ratios
       if (aspectRatio > targetAspectRatio) {
-        // Video is wider than the target aspect ratio
         padHeight = Math.round(video.width / targetAspectRatio);
       } else if (aspectRatio < targetAspectRatio) {
-        // Video is taller than the target aspect ratio
         padWidth = Math.round(video.height * targetAspectRatio);
       }
 
       const paddingX = Math.round((padWidth - video.width) / 2);
       const paddingY = Math.round((padHeight - video.height) / 2);
 
-      // Dynamic padding option for FFmpeg
       const dynamicPadding = `pad=${padWidth}:${padHeight}:${paddingX}:${paddingY}:color=black`;
 
       return `[${i}:v]scale=${video.width}:${video.height},${dynamicPadding}[v${i}]`;
@@ -161,6 +175,7 @@ function resizeAndMergeVideos(videoData, outputPath, orientation) {
   });
 }
 
+// Endpoint to process video with audio
 app.post('/edit-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
@@ -191,65 +206,81 @@ app.post('/edit-video', async (req, res) => {
 
     console.log('Processing video with audio...');
     const options = {
-      inputAudioVolume: req.body.inputAudioVolume || '1.0',
-      backgroundAudioVolume: req.body.backgroundAudioVolume || '0.0',
+      inputAudioVolume: req.body.inputAudioVolume || 1,
+      backgroundAudioVolume: req.body.backgroundAudioVolume || 1
     };
     await executeFFmpegCommand(tempVideoPath, processedAudioPath, tempBackgroundAudioPath, outputFilePath, options);
 
-    // Clean up temporary files
-    [tempVideoPath, tempAudioPath, tempBackgroundAudioPath, processedAudioPath].forEach((filePath) => {
-      fs.unlink(filePath, (err) => {
-        if (err) console.error('Error deleting temp file:', err.message);
-      });
-    });
+    console.log('Cleaning up temporary files...');
+    fs.unlinkSync(tempVideoPath);
+    fs.unlinkSync(tempAudioPath);
+    fs.unlinkSync(tempBackgroundAudioPath);
+    fs.unlinkSync(processedAudioPath);
 
-    res.json({ message: 'Video processed successfully', outputFile: uniqueFilename });
+    res.status(200).json({ message: 'Video processed successfully', outputUrl: outputFilePath });
   } catch (error) {
     console.error('Error processing video:', error.message);
-    res.status(500).json({ error: 'Error processing video' });
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Endpoint to merge videos
+app.post('/merge-videos', async (req, res) => {
+  try {
+    console.log('Request received:', req.body);
+    const videoData = req.body.videos;
+    const orientation = req.body.orientation;
+
+    if (!videoData || !orientation) {
+      throw new Error('Missing videos or orientation');
+    }
+
+    const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
+    const outputFilePath = path.join(storageDir, uniqueFilename);
+
+    await resizeAndMergeVideos(videoData, outputFilePath, orientation);
+
+    res.json({ message: 'Videos merged successfully', outputFile: uniqueFilename });
+  } catch (error) {
+    console.error('Error merging videos:', error.message);
+    res.status(500).json({ error: 'Error merging videos' });
+  }
+});
+
+// Endpoint to trim video
 app.post('/trim-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
-    const videoUrl = req.body.videoUrl;
+    const inputVideoUrl = req.body.inputVideo;
     const startTime = req.body.startTime;
     const duration = req.body.duration;
+    
+    if (!inputVideoUrl || !startTime || !duration) {
+      throw new Error('Missing inputVideo, startTime, or duration');
+    }
+
     const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
-    console.log('Downloading video from:', videoUrl);
-    await downloadFile(videoUrl, tempVideoPath);
+    console.log('Downloading video from:', inputVideoUrl);
+    await downloadFile(inputVideoUrl, tempVideoPath);
 
     console.log('Trimming video...');
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
-    // Clean up temporary file
-    fs.unlink(tempVideoPath, (err) => {
-      if (err) console.error('Error deleting temp file:', err.message);
-    });
+    console.log('Cleaning up temporary files...');
+    fs.unlinkSync(tempVideoPath);
 
-    res.json({ message: 'Video trimmed successfully', outputFile: uniqueFilename });
+    res.status(200).json({ message: 'Video trimmed successfully', outputUrl: outputFilePath });
   } catch (error) {
     console.error('Error trimming video:', error.message);
-    res.status(500).json({ error: 'Error trimming video' });
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Restoring the endpoint to serve video files
-app.get('/video/:filename', (req, res) => {
-  const filePath = path.join(storageDir, req.params.filename);
-
-  if (fs.existsSync(filePath)) {
-    res.sendFile(filePath);
-  } else {
-    res.status(404).send('File not found');
-  }
-});
-
-const port = process.env.PORT || 80800;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
