@@ -239,27 +239,6 @@ app.post('/edit-video', async (req, res) => {
 });
 
 
-app.post('/merge-videos', async (req, res) => {
-    try {
-
-        console.log('Request received:', req.body);
-        const videoUrls = req.body.videoData.map(video => video.url); // Extract URLs from videoData
-        const tempVideoPaths = await Promise.all(videoUrls.map(url => downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`))));
-        const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
-
-        const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
-        // Your logic to merge videos here using FFmpeg...
-
-
-        res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
-    } catch (error) {
-        console.error('Error merging videos:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-
-
 app.post('/trim-video', async (req, res) => {
     try {
 
