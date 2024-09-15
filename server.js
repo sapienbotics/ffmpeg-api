@@ -45,9 +45,16 @@ function logFileProperties(filePath) {
 
 function processVideo(inputPath, outputPath, targetWidth, targetHeight) {
     return new Promise((resolve, reject) => {
+        // Ensure targetWidth and targetHeight are valid integers
+        if (!Number.isInteger(targetWidth) || !Number.isInteger(targetHeight) || targetWidth <= 0 || targetHeight <= 0) {
+            return reject(new Error('Invalid target dimensions'));
+        }
+
         // FFmpeg command to scale or pad video to target dimensions
         const command = `${ffmpegPath} -i ${inputPath} -vf "scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2" -c:a copy ${outputPath}`;
         
+        console.log('Executing FFmpeg command:', command);
+
         exec(command, (error, stdout, stderr) => {
             if (error) {
                 console.error('FFmpeg error during video processing:', error.message);
@@ -55,11 +62,13 @@ function processVideo(inputPath, outputPath, targetWidth, targetHeight) {
                 reject(error);
             } else {
                 console.log('FFmpeg output during video processing:', stdout);
+                console.log('FFmpeg stderr during video processing:', stderr);
                 resolve();
             }
         });
     });
 }
+
 
 function preprocessAudio(inputAudioPath, outputAudioPath, volume) {
     return new Promise((resolve, reject) => {
