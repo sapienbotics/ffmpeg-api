@@ -44,6 +44,21 @@ async function getVideoDimensions(filePath) {
     }
 }
 
+function execPromise(command) {
+    return new Promise((resolve, reject) => {
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                console.error('FFmpeg error:', error.message);
+                console.error('FFmpeg stderr:', stderr);
+                reject(error);
+            } else {
+                resolve(stdout);
+            }
+        });
+    });
+}
+
+
 async function processVideo(inputPath, outputPath, targetWidth, targetHeight) {
     const command = `${ffmpegPath} -i ${inputPath} -vf "scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2" -c:a copy ${outputPath}`;
     console.log('Executing FFmpeg command:', command);
@@ -53,16 +68,25 @@ async function processVideo(inputPath, outputPath, targetWidth, targetHeight) {
 }
 
 async function mergeVideos(inputPaths, outputPath) {
-    const listFilePath = path.join(storageDir, `${uuidv4()}_file_list.txt`);
-    const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
-    fs.writeFileSync(listFilePath, fileListContent);
-    const command = `${ffmpegPath} -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath}`;
-    console.log('Executing FFmpeg command for merging:', command);
-    const { stdout, stderr } = await execPromise(command);
-    console.log('FFmpeg output during merging:', stdout);
-    console.error('FFmpeg stderr during merging:', stderr);
-    fs.unlinkSync(listFilePath);
+    try {
+        // Create a file with the list of video paths
+        const listFilePath = path.join(storageDir, `${uuidv4()}_file_list.txt`);
+        const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
+        fs.writeFileSync(listFilePath, fileListContent);
+
+        // FFmpeg command to merge videos
+        const command = `${ffmpegPath} -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath}`;
+        console.log('Executing FFmpeg command:', command);
+
+        await execPromise(command);
+
+        // Clean up the list file
+        fs.unlinkSync(listFilePath);
+    } catch (error) {
+        throw new Error('Error merging videos: ' + error.message);
+    }
 }
+
 
 
 function logFileProperties(filePath) {
