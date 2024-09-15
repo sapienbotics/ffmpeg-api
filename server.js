@@ -34,6 +34,7 @@ async function downloadFile(url, outputPath) {
     }
 }
 
+
 function logFileProperties(filePath) {
     try {
         const output = execSync(`${ffmpegPath} -v error -show_format -show_streams ${filePath}`).toString();
