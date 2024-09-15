@@ -154,13 +154,7 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
     });
 }
 
-
-const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
 const { downloadFile, getVideoDimensions, processVideo, mergeVideos } = require('./utils'); // Assuming these utility functions exist
-
-const storageDir = '/app/storage/processed'; // Adjust path if necessary
 
 app.post('/merge-videos', async (req, res) => {
     const videoUrls = req.body.videos;
