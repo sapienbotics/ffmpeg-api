@@ -34,7 +34,6 @@ async function downloadFile(url, outputPath) {
     }
 }
 
-
 function logFileProperties(filePath) {
     try {
         const output = execSync(`${ffmpegPath} -v error -show_format -show_streams ${filePath}`).toString();
@@ -61,7 +60,6 @@ function processVideo(inputPath, outputPath, targetWidth, targetHeight) {
         });
     });
 }
-
 
 function preprocessAudio(inputAudioPath, outputAudioPath, volume) {
     return new Promise((resolve, reject) => {
@@ -100,8 +98,6 @@ function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPat
         });
     });
 }
-
-
 
 function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
     return new Promise((resolve, reject) => {
@@ -159,7 +155,6 @@ function mergeVideos(inputPaths, outputPath) {
     });
 }
 
-
 app.post('/merge-videos', async (req, res) => {
     try {
         console.log('Request received:', req.body);
@@ -205,6 +200,9 @@ app.post('/merge-videos', async (req, res) => {
             return processedPath;
         }));
 
+        // Log processed video paths for debugging
+        console.log('Processed video paths:', processedVideoPaths);
+
         const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
         await mergeVideos(processedVideoPaths, outputFilePath);
 
@@ -219,39 +217,29 @@ app.post('/merge-videos', async (req, res) => {
     }
 });
 
-
-
 app.post('/edit-video', async (req, res) => {
     try {
-
         const inputVideoUrl = req.body.inputVideo;
         const inputAudioUrl = req.body.inputAudio;
         const backgroundAudioUrl = req.body.backgroundAudio;
         const volume = req.body.volume || '1';  // Default volume to 1 if not provided
         const uniqueFilename = `${uuidv4()}_processed_video.mp4`;
         const outputFilePath = path.join(storageDir, uniqueFilename);
-        const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-        const tempAudioPath = path.join(storageDir, `${uuidv4()}_temp_audio.mp3`);
-        const tempBackgroundAudioPath = path.join(storageDir, `${uuidv4()}_temp_background_audio.mp3`);
-        const processedAudioPath = path.join(storageDir, `${uuidv4()}_processed_audio.mp4`);
 
-        await downloadFile(inputVideoUrl, tempVideoPath);
-        await downloadFile(inputAudioUrl, tempAudioPath);
-        await downloadFile(backgroundAudioUrl, tempBackgroundAudioPath);
+        console.log('Processing video:', inputVideoUrl);
+        console.log('Processing audio:', inputAudioUrl);
+        console.log('Background audio:', backgroundAudioUrl);
 
-        logFileProperties(tempVideoPath);
-        logFileProperties(tempAudioPath);
-        logFileProperties(tempBackgroundAudioPath);
+        const tempInputVideoPath = await downloadFile(inputVideoUrl, path.join(storageDir, 'input_video.mp4'));
+        const tempInputAudioPath = await downloadFile(inputAudioUrl, path.join(storageDir, 'input_audio.mp3'));
+        const tempBackgroundAudioPath = await downloadFile(backgroundAudioUrl, path.join(storageDir, 'background_audio.mp3'));
 
-        await preprocessAudio(tempAudioPath, processedAudioPath, volume);
+        console.log('Downloaded files:', tempInputVideoPath, tempInputAudioPath, tempBackgroundAudioPath);
 
-        const options = {
-            inputAudioVolume: req.body.inputAudioVolume || 1,
-            backgroundAudioVolume: req.body.backgroundAudioVolume || 1
-        };
-        await executeFFmpegCommand(tempVideoPath, processedAudioPath, tempBackgroundAudioPath, outputFilePath, options);
+        await preprocessAudio(tempInputAudioPath, path.join(storageDir, 'preprocessed_input_audio.mp3'), volume);
+        await executeFFmpegCommand(tempInputVideoPath, path.join(storageDir, 'preprocessed_input_audio.mp3'), tempBackgroundAudioPath, outputFilePath, { inputAudioVolume: 1, backgroundAudioVolume: 0.5 });
 
-        res.status(200).json({ message: 'Video processed successfully', outputUrl: outputFilePath });
+        res.json({ message: 'Video edited successfully', outputUrl: `/video/${uniqueFilename}` });
     } catch (error) {
         console.error('Error processing video:', error.message);
         res.status(500).json({ error: error.message });
