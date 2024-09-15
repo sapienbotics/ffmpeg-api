@@ -163,37 +163,56 @@ function mergeVideos(inputPaths, outputPath) {
 app.post('/merge-videos', async (req, res) => {
     try {
         console.log('Request received:', req.body);
-        
-        const videoUrls = req.body.videos.map(video => video.url); // Extract URLs from videoData
-        const commonDimensions = { width: 1920, height: 1080 }; // Desired dimensions for all videos
 
-        // Download the videos
-        const tempVideoPaths = await Promise.all(videoUrls.map(url => 
-            downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`))
-        ));
+        const videoUrls = req.body.videos; // Extract URLs from request body
 
-        // Process each video to match the common dimensions (scale or pad)
-        const processedVideoPaths = await Promise.all(tempVideoPaths.map(async (videoPath) => {
-            const outputFilePath = path.join(storageDir, `${uuidv4()}_processed_video.mp4`);
-            await processVideo(videoPath, outputFilePath, commonDimensions.width, commonDimensions.height);
-            return outputFilePath;
+        // Validate the URLs
+        if (!Array.isArray(videoUrls) || videoUrls.some(url => typeof url !== 'string' || !url.startsWith('http'))) {
+            throw new Error('Invalid URLs provided');
+        }
+
+        console.log('Video URLs:', videoUrls);
+
+        // Ensure all URLs are defined and valid
+        const tempVideoPaths = await Promise.all(videoUrls.map(async (url) => {
+            if (!url) {
+                throw new Error('URL is undefined');
+            }
+            console.log('Downloading file from URL:', url);
+            try {
+                return await downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`));
+            } catch (error) {
+                throw new Error(`Failed to download file from ${url}: ${error.message}`);
+            }
         }));
-        
-        // Create a file list for merging
-        const fileListPath = path.join(storageDir, 'filelist.txt');
-        fs.writeFileSync(fileListPath, processedVideoPaths.map(filePath => `file '${filePath}'`).join('\n'));
 
-        // Merge videos
-        const mergedOutputPath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
-        const mergeCommand = `ffmpeg -f concat -safe 0 -i ${fileListPath} -c copy ${mergedOutputPath}`;
-        execSync(mergeCommand); // Run FFmpeg command synchronously
+        const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
 
-        // Clean up temporary and processed video files
+        // Log video details for debugging
+        console.log('Video details:', videoDetails);
+
+        // Ensure video dimensions are consistent
+        const dimensions = videoDetails[0];
+        for (const detail of videoDetails) {
+            if (detail.width !== dimensions.width || detail.height !== dimensions.height) {
+                throw new Error('All videos must have the same dimensions');
+            }
+        }
+
+        const processedVideoPaths = await Promise.all(tempVideoPaths.map(async tempPath => {
+            const processedPath = path.join(storageDir, path.basename(tempPath));
+            await processVideo(tempPath, processedPath, dimensions.width, dimensions.height);
+            return processedPath;
+        }));
+
+        const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
+        await mergeVideos(processedVideoPaths, outputFilePath);
+
+        // Cleanup temporary files
         tempVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
         processedVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
-        fs.unlinkSync(fileListPath);
 
-        res.status(200).json({ message: 'Videos merged successfully', outputUrl: `https://ffmpeg-api-production.up.railway.app/video/${path.basename(mergedOutputPath)}` });
+        res.status(200).json({ message: 'Videos merged successfully', outputUrl: `/video/${path.basename(outputFilePath)}` });
     } catch (error) {
         console.error('Error merging videos:', error.message);
         res.status(500).json({ error: error.message });
