@@ -80,22 +80,6 @@ function executeFFmpegCommand(inputVideoPath, inputAudioPath, backgroundAudioPat
     });
 }
 
-function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
-    return new Promise((resolve, reject) => {
-        const command = `${ffmpegPath} -i ${inputVideoPath} -ss ${startTime} -t ${duration} -c copy ${outputVideoPath}`;
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error('FFmpeg error during trimming:', error.message);
-                console.error('FFmpeg stderr:', stderr);
-                reject(error);
-            } else {
-                console.log('FFmpeg output during trimming:', stdout);
-                resolve();
-            }
-        });
-    });
-}
-
 function getVideoDimensions(videoPath) {
     return new Promise((resolve, reject) => {
         exec(`ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 ${videoPath}`, (error, stdout) => {
@@ -112,30 +96,8 @@ function getVideoDimensions(videoPath) {
     });
 }
 
-app.post('/merge-videos', async (req, res) => {
-    try {
-        console.log('Request received:', req.body);
-        const videoUrls = req.body.videos;  // Assume this is an array of URLs
-        const tempVideoPaths = await Promise.all(videoUrls.map(url => downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`))));
-        const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
-
-        const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
-        // Assuming all videos are same dimensions and can be directly merged without re-encoding
-        // Your logic to merge videos here using FFmpeg...
-
-        console.log('Cleaning up temporary files...');
-        tempVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
-
-        res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
-    } catch (error) {
-        console.error('Error merging videos:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 app.post('/edit-video', async (req, res) => {
     try {
-        console.log('Request received:', req.body);
         const inputVideoUrl = req.body.inputVideo;
         const inputAudioUrl = req.body.inputAudio;
         const backgroundAudioUrl = req.body.backgroundAudio;
@@ -147,28 +109,22 @@ app.post('/edit-video', async (req, res) => {
         const tempBackgroundAudioPath = path.join(storageDir, `${uuidv4()}_temp_background_audio.mp3`);
         const processedAudioPath = path.join(storageDir, `${uuidv4()}_processed_audio.mp4`);
 
-        console.log('Downloading video from:', inputVideoUrl);
         await downloadFile(inputVideoUrl, tempVideoPath);
-        console.log('Downloading audio from:', inputAudioUrl);
         await downloadFile(inputAudioUrl, tempAudioPath);
-        console.log('Downloading background audio from:', backgroundAudioUrl);
         await downloadFile(backgroundAudioUrl, tempBackgroundAudioPath);
 
         logFileProperties(tempVideoPath);
         logFileProperties(tempAudioPath);
         logFileProperties(tempBackgroundAudioPath);
 
-        console.log('Preprocessing main audio...');
         await preprocessAudio(tempAudioPath, processedAudioPath, volume);
 
-        console.log('Processing video with audio...');
         const options = {
             inputAudioVolume: req.body.inputAudioVolume || 1,
             backgroundAudioVolume: req.body.backgroundAudioVolume || 1
         };
         await executeFFmpegCommand(tempVideoPath, processedAudioPath, tempBackgroundAudioPath, outputFilePath, options);
 
-        console.log('Cleaning up temporary files...');
         fs.unlinkSync(tempVideoPath);
         fs.unlinkSync(tempAudioPath);
         fs.unlinkSync(tempBackgroundAudioPath);
@@ -183,28 +139,15 @@ app.post('/edit-video', async (req, res) => {
 
 app.post('/merge-videos', async (req, res) => {
     try {
-        console.log('Request received:', req.body);
-        const videoData = req.body.videos;
-        const orientation = req.body.orientation;
-        const uniqueFilename = `${uuidv4()}_merged_video.mp4`;
-        const outputFilePath = path.join(storageDir, uniqueFilename);
+        const videoUrls = req.body.videoData.map(video => video.url);
+        const tempVideoPaths = await Promise.all(videoUrls.map(url => downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`))));
+        const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
 
-        if (!videoData || !orientation) {
-            throw new Error('Missing videos or orientation');
-        }
+        const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
+        // Assuming all videos are same dimensions and can be directly merged without re-encoding
+        // Your logic to merge videos here using FFmpeg...
 
-        const tempVideoPaths = await Promise.all(videoData.map(video => downloadFile(video.url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`))));
-
-        const videoInfos = videoData.map((video, index) => ({
-            path: tempVideoPaths[index],
-            width: video.width,
-            height: video.height
-        }));
-
-        await resizeAndMergeVideos(videoInfos, outputFilePath, orientation);
-
-        console.log('Cleaning up temporary files...');
-        tempVideoPaths.forEach(tempVideoPath => fs.unlinkSync(tempVideoPath));
+        tempVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
 
         res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
     } catch (error) {
@@ -215,26 +158,18 @@ app.post('/merge-videos', async (req, res) => {
 
 app.post('/trim-video', async (req, res) => {
     try {
-        console.log('Request received:', req.body);
         const inputVideoUrl = req.body.videoUrl;
         const startTime = req.body.startTime;
         const duration = req.body.duration;
-
-        if (!inputVideoUrl || !startTime || !duration) {
-            throw new Error('Missing inputVideo, startTime, or duration');
-        }
 
         const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
         const outputFilePath = path.join(storageDir, uniqueFilename);
         const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
-        console.log('Downloading video from:', inputVideoUrl);
         await downloadFile(inputVideoUrl, tempVideoPath);
 
-        console.log('Trimming video...');
         await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
-        console.log('Cleaning up temporary video file...');
         fs.unlinkSync(tempVideoPath);
 
         res.status(200).json({ message: 'Video trimmed successfully', outputUrl: outputFilePath });
@@ -253,6 +188,7 @@ app.get('/video/:filename', (req, res) => {
         res.status(404).send('File not found');
     }
 });
+
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
