@@ -115,25 +115,72 @@ function getVideoDimensions(videoPath) {
     });
 }
 
+function mergeVideos(inputPaths, outputPath) {
+    return new Promise((resolve, reject) => {
+        // Create a file with the list of video paths
+        const listFilePath = path.join(storageDir, `${uuidv4()}_file_list.txt`);
+        const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
+        fs.writeFileSync(listFilePath, fileListContent);
+
+        // FFmpeg command to merge videos
+        const command = `${ffmpegPath} -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath}`;
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                console.error('FFmpeg error during merging:', error.message);
+                console.error('FFmpeg stderr:', stderr);
+                reject(error);
+            } else {
+                console.log('FFmpeg output during merging:', stdout);
+                // Clean up the list file
+                fs.unlinkSync(listFilePath);
+                resolve();
+            }
+        });
+    });
+}
+
+
 app.post('/merge-videos', async (req, res) => {
     try {
         console.log('Request received:', req.body);
-        const videoUrls = req.body.videos;  // Assume this is an array of URLs
-        const tempVideoPaths = await Promise.all(videoUrls.map(url => downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`))));
+
+        // Extract video URLs from the request body
+        const videoUrls = req.body.videos; // Assuming req.body.videos is an array of video URLs
+
+        // Download the videos to temporary file paths
+        const tempVideoPaths = await Promise.all(videoUrls.map(url => 
+            downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`))
+        ));
+
+        // Get dimensions of the downloaded videos
         const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
-
+        
+        // Example: Check if all videos have the same dimensions
+        const dimensionsSet = new Set(videoDetails.map(d => `${d.width}x${d.height}`));
+        if (dimensionsSet.size > 1) {
+            throw new Error('All videos must have the same dimensions');
+        }
+        
+        // Define the output file path
         const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
-        // Assuming all videos are same dimensions and can be directly merged without re-encoding
-        // Your logic to merge videos here using FFmpeg...
 
+        // Your logic to merge videos here using FFmpeg...
+        // Example FFmpeg command to merge videos, assuming videos have the same dimensions
+        const ffmpegCommand = `ffmpeg -i "concat:${tempVideoPaths.join('|')}" -c copy ${outputFilePath}`;
+        execSync(ffmpegCommand); // Run FFmpeg command synchronously
+
+        // Clean up temporary video files
         tempVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
 
-        res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
+        // Respond with the output file URL
+        res.status(200).json({ message: 'Videos merged successfully', outputUrl: `https://ffmpeg-api-production.up.railway.app/video/${path.basename(outputFilePath)}` });
     } catch (error) {
         console.error('Error merging videos:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
+
+
 
 app.post('/edit-video', async (req, res) => {
     try {
