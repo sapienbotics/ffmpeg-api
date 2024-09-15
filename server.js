@@ -184,7 +184,7 @@ app.post('/merge-videos', async (req, res) => {
         const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
 
         // Log video details for debugging
-        console.log('Video details:', videoDetails);
+        console.log('Video details (before processing):', videoDetails);
 
         // Ensure video dimensions are consistent
         const dimensions = videoDetails[0];
@@ -194,9 +194,18 @@ app.post('/merge-videos', async (req, res) => {
             }
         }
 
-        const processedVideoPaths = await Promise.all(tempVideoPaths.map(async tempPath => {
+        // Process each video to ensure they are resized or padded correctly
+        const processedVideoPaths = await Promise.all(tempVideoPaths.map(async (tempPath, index) => {
             const processedPath = path.join(storageDir, path.basename(tempPath));
+            console.log(`Original dimensions of video ${index + 1}:`, videoDetails[index]);
+
+            // Resize or pad the video to match the dimensions
             await processVideo(tempPath, processedPath, dimensions.width, dimensions.height);
+
+            // Get dimensions of processed video for verification
+            const processedDimensions = await getVideoDimensions(processedPath);
+            console.log(`Processed dimensions of video ${index + 1}:`, processedDimensions);
+
             return processedPath;
         }));
 
