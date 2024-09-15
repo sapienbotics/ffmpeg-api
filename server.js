@@ -155,38 +155,50 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
 }
 
 
+const fs = require('fs');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+const { downloadFile, getVideoDimensions, processVideo, mergeVideos } = require('./utils'); // Assuming these utility functions exist
+
+const storageDir = '/app/storage/processed'; // Adjust path if necessary
+
 app.post('/merge-videos', async (req, res) => {
+    const videoUrls = req.body.videos;
+    let tempVideoPaths = [];
+    let processedVideoPaths = [];
+
     try {
         console.log('Request received:', req.body);
 
-        const videoUrls = req.body.videos;
-
-        if (!Array.isArray(videoUrls) || videoUrls.some(url => typeof url !== 'string' || !url.startsWith('http'))) {
-            throw new Error('Invalid URLs provided');
+        // Check if 'videos' is defined and is an array
+        if (!Array.isArray(videoUrls) || videoUrls.some(url => typeof url !== 'string' || !url.trim().startsWith('http'))) {
+            throw new Error('Invalid video URLs provided');
         }
-
         console.log('Video URLs:', videoUrls);
 
-        const tempVideoPaths = await Promise.all(videoUrls.map(async (url) => {
-            if (!url) throw new Error('URL is undefined');
+        // Download videos to temporary paths
+        tempVideoPaths = await Promise.all(videoUrls.map(async (url) => {
             const tempPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
             console.log('Downloading file from URL:', url);
-            return downloadFile(url, tempPath);
+            await downloadFile(url, tempPath);
+            return tempPath;
         }));
 
+        // Get dimensions of all videos
         const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
+        console.log('Video details:', videoDetails);
 
-        console.log('Video details (before processing):', videoDetails);
-
+        // Ensure all videos have the same dimensions
         const { width, height } = videoDetails[0];
         videoDetails.forEach(detail => {
             if (detail.width !== width || detail.height !== height) {
-                throw new Error('All videos must have the same dimensions');
+                throw new Error('All videos must have the same dimensions for merging');
             }
         });
 
-        const processedVideoPaths = await Promise.all(tempVideoPaths.map(async (tempPath, index) => {
-            const processedPath = path.join(storageDir, path.basename(tempPath));
+        // Process videos (e.g., padding or resizing if necessary)
+        processedVideoPaths = await Promise.all(tempVideoPaths.map(async (tempPath, index) => {
+            const processedPath = path.join(storageDir, `${uuidv4()}_processed_video.mp4`);
             console.log(`Processing video ${index + 1}:`, tempPath);
             await processVideo(tempPath, processedPath, width, height);
             return processedPath;
@@ -194,16 +206,24 @@ app.post('/merge-videos', async (req, res) => {
 
         console.log('Processed video paths:', processedVideoPaths);
 
+        // Merge processed videos
         const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
         await mergeVideos(processedVideoPaths, outputFilePath);
 
-        tempVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
-        processedVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
+        // Clean up temporary and processed video files
+        tempVideoPaths.forEach(fs.unlinkSync);
+        processedVideoPaths.forEach(fs.unlinkSync);
 
+        // Respond with success and the URL of the merged video
         res.status(200).json({ message: 'Videos merged successfully', outputUrl: `/video/${path.basename(outputFilePath)}` });
+
     } catch (error) {
         console.error('Error merging videos:', error.message);
         res.status(500).json({ error: error.message });
+    } finally {
+        // Cleanup temporary files in case of an error
+        tempVideoPaths.forEach(filePath => fs.existsSync(filePath) && fs.unlinkSync(filePath));
+        processedVideoPaths.forEach(filePath => fs.existsSync(filePath) && fs.unlinkSync(filePath));
     }
 });
 
