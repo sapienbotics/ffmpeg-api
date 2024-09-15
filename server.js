@@ -34,6 +34,37 @@ async function downloadFile(url, outputPath) {
     }
 }
 
+async function getVideoDimensions(filePath) {
+    const { stdout } = await execPromise(`ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 ${filePath}`);
+    const dimensions = stdout.trim().split('x');
+    if (dimensions.length === 2) {
+        return { width: parseInt(dimensions[0], 10), height: parseInt(dimensions[1], 10) };
+    } else {
+        throw new Error('Failed to get video dimensions');
+    }
+}
+
+async function processVideo(inputPath, outputPath, targetWidth, targetHeight) {
+    const command = `${ffmpegPath} -i ${inputPath} -vf "scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2" -c:a copy ${outputPath}`;
+    console.log('Executing FFmpeg command:', command);
+    const { stdout, stderr } = await execPromise(command);
+    console.log('FFmpeg output during video processing:', stdout);
+    console.error('FFmpeg stderr during video processing:', stderr);
+}
+
+async function mergeVideos(inputPaths, outputPath) {
+    const listFilePath = path.join(storageDir, `${uuidv4()}_file_list.txt`);
+    const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
+    fs.writeFileSync(listFilePath, fileListContent);
+    const command = `${ffmpegPath} -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath}`;
+    console.log('Executing FFmpeg command for merging:', command);
+    const { stdout, stderr } = await execPromise(command);
+    console.log('FFmpeg output during merging:', stdout);
+    console.error('FFmpeg stderr during merging:', stderr);
+    fs.unlinkSync(listFilePath);
+}
+
+
 function logFileProperties(filePath) {
     try {
         const output = execSync(`${ffmpegPath} -v error -show_format -show_streams ${filePath}`).toString();
@@ -43,31 +74,6 @@ function logFileProperties(filePath) {
     }
 }
 
-function processVideo(inputPath, outputPath, targetWidth, targetHeight) {
-    return new Promise((resolve, reject) => {
-        // Ensure targetWidth and targetHeight are valid integers
-        if (!Number.isInteger(targetWidth) || !Number.isInteger(targetHeight) || targetWidth <= 0 || targetHeight <= 0) {
-            return reject(new Error('Invalid target dimensions'));
-        }
-
-        // FFmpeg command to scale or pad video to target dimensions
-        const command = `${ffmpegPath} -i ${inputPath} -vf "scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2" -c:a copy ${outputPath}`;
-        
-        console.log('Executing FFmpeg command:', command);
-
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error('FFmpeg error during video processing:', error.message);
-                console.error('FFmpeg stderr:', stderr);
-                reject(error);
-            } else {
-                console.log('FFmpeg output during video processing:', stdout);
-                console.log('FFmpeg stderr during video processing:', stderr);
-                resolve();
-            }
-        });
-    });
-}
 
 
 function preprocessAudio(inputAudioPath, outputAudioPath, volume) {
@@ -124,107 +130,49 @@ function trimVideo(inputVideoPath, outputVideoPath, startTime, duration) {
     });
 }
 
-function getVideoDimensions(videoPath) {
-    return new Promise((resolve, reject) => {
-        exec(`ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 ${videoPath}`, (error, stdout) => {
-            if (error) {
-                return reject(error);
-            }
-            const dimensions = stdout.trim().split('x');
-            if (dimensions.length === 2) {
-                resolve({ width: parseInt(dimensions[0], 10), height: parseInt(dimensions[1], 10) });
-            } else {
-                reject(new Error('Failed to get video dimensions'));
-            }
-        });
-    });
-}
-
-function mergeVideos(inputPaths, outputPath) {
-    return new Promise((resolve, reject) => {
-        // Create a file with the list of video paths
-        const listFilePath = path.join(storageDir, `${uuidv4()}_file_list.txt`);
-        const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
-        fs.writeFileSync(listFilePath, fileListContent);
-
-        // FFmpeg command to merge videos
-        const command = `${ffmpegPath} -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath}`;
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error('FFmpeg error during merging:', error.message);
-                console.error('FFmpeg stderr:', stderr);
-                reject(error);
-            } else {
-                console.log('FFmpeg output during merging:', stdout);
-                // Clean up the list file
-                fs.unlinkSync(listFilePath);
-                resolve();
-            }
-        });
-    });
-}
 
 app.post('/merge-videos', async (req, res) => {
     try {
         console.log('Request received:', req.body);
 
-        const videoUrls = req.body.videos; // Extract URLs from request body
+        const videoUrls = req.body.videos;
 
-        // Validate the URLs
         if (!Array.isArray(videoUrls) || videoUrls.some(url => typeof url !== 'string' || !url.startsWith('http'))) {
             throw new Error('Invalid URLs provided');
         }
 
         console.log('Video URLs:', videoUrls);
 
-        // Ensure all URLs are defined and valid
         const tempVideoPaths = await Promise.all(videoUrls.map(async (url) => {
-            if (!url) {
-                throw new Error('URL is undefined');
-            }
+            if (!url) throw new Error('URL is undefined');
+            const tempPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
             console.log('Downloading file from URL:', url);
-            try {
-                return await downloadFile(url, path.join(storageDir, `${uuidv4()}_temp_video.mp4`));
-            } catch (error) {
-                throw new Error(`Failed to download file from ${url}: ${error.message}`);
-            }
+            return downloadFile(url, tempPath);
         }));
 
         const videoDetails = await Promise.all(tempVideoPaths.map(getVideoDimensions));
 
-        // Log video details for debugging
         console.log('Video details (before processing):', videoDetails);
 
-        // Ensure video dimensions are consistent
-        const dimensions = videoDetails[0];
-        for (const detail of videoDetails) {
-            if (detail.width !== dimensions.width || detail.height !== dimensions.height) {
+        const { width, height } = videoDetails[0];
+        videoDetails.forEach(detail => {
+            if (detail.width !== width || detail.height !== height) {
                 throw new Error('All videos must have the same dimensions');
             }
-        }
+        });
 
-        // Process each video to ensure they are resized or padded correctly
         const processedVideoPaths = await Promise.all(tempVideoPaths.map(async (tempPath, index) => {
             const processedPath = path.join(storageDir, path.basename(tempPath));
-            console.log(`Original dimensions of video ${index + 1}:`, videoDetails[index]);
-
-            // Resize or pad the video to match the dimensions
-            await processVideo(tempPath, processedPath, dimensions.width, dimensions.height);
-
-            // Get dimensions of processed video for verification
-            const processedDimensions = await getVideoDimensions(processedPath);
-            console.log(`Processed dimensions of video ${index + 1}:`, processedDimensions);
-
+            console.log(`Processing video ${index + 1}:`, tempPath);
+            await processVideo(tempPath, processedPath, width, height);
             return processedPath;
         }));
 
-        // Log processed video paths for debugging
         console.log('Processed video paths:', processedVideoPaths);
 
         const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
         await mergeVideos(processedVideoPaths, outputFilePath);
 
-        // Cleanup temporary files
         tempVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
         processedVideoPaths.forEach(videoPath => fs.unlinkSync(videoPath));
 
@@ -240,7 +188,7 @@ app.post('/edit-video', async (req, res) => {
         const inputVideoUrl = req.body.inputVideo;
         const inputAudioUrl = req.body.inputAudio;
         const backgroundAudioUrl = req.body.backgroundAudio;
-        const volume = req.body.volume || '1';  // Default volume to 1 if not provided
+        const volume = req.body.volume || '1';
         const uniqueFilename = `${uuidv4()}_processed_video.mp4`;
         const outputFilePath = path.join(storageDir, uniqueFilename);
 
@@ -264,11 +212,8 @@ app.post('/edit-video', async (req, res) => {
     }
 });
 
-
 app.post('/trim-video', async (req, res) => {
     try {
-
-
         const inputVideoUrl = req.body.videoUrl;
         const startTime = req.body.startTime;
         const duration = req.body.duration;
@@ -278,17 +223,14 @@ app.post('/trim-video', async (req, res) => {
         const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
         await downloadFile(inputVideoUrl, tempVideoPath);
-
         await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
 
-
-        res.status(200).json({ message: 'Video trimmed successfully', outputUrl: outputFilePath });
+        res.status(200).json({ message: 'Video trimmed successfully', outputUrl: `/video/${uniqueFilename}` });
     } catch (error) {
         console.error('Error trimming video:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
-
 
 app.get('/video/:filename', (req, res) => {
     const filePath = path.join(storageDir, req.params.filename);
