@@ -7,9 +7,10 @@ const { exec } = require('child_process');
 const app = express();
 app.use(express.json());
 
-// Update this path to your local storage folder
-const storageDir = '/app/storage/processed'; // Adjust for Railway
+// Set storage directory for Railway environment
+const storageDir = '/app/storage/processed';
 
+// Download video file
 const downloadFile = async (url, filepath) => {
   const writer = fs.createWriteStream(filepath);
   const response = await axios({
@@ -26,25 +27,7 @@ const downloadFile = async (url, filepath) => {
   });
 };
 
-function execPromise(command, timeout = 60000) { // 60 seconds default
-  return new Promise((resolve, reject) => {
-    const process = exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Command error:', stderr);
-        reject(error);
-      } else {
-        resolve({ stdout, stderr });
-      }
-    });
-
-    // Set timeout for the process
-    setTimeout(() => {
-      process.kill(); // Kill the process if it exceeds the timeout
-      reject(new Error('FFmpeg process timed out'));
-    }, timeout);
-  });
-}
-
+// Merge videos
 async function mergeVideos(inputPaths, outputPath) {
   try {
     const listFilePath = path.join(storageDir, 'file_list.txt');
@@ -54,10 +37,7 @@ async function mergeVideos(inputPaths, outputPath) {
     const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
     console.log('Executing FFmpeg command:', command);
 
-    const { stdout, stderr } = await execPromise(command);
-
-    console.log('FFmpeg output:', stdout);
-    console.error('FFmpeg errors:', stderr);
+    await execPromise(command, 600000); // 10 minutes timeout
 
     fs.unlinkSync(listFilePath); // Clean up the list file
   } catch (error) {
@@ -65,7 +45,29 @@ async function mergeVideos(inputPaths, outputPath) {
   }
 }
 
+// Execute shell command and handle timeout
+function execPromise(command, timeout) {
+  return new Promise((resolve, reject) => {
+    const child = exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('FFmpeg error:', stderr);
+        reject(error);
+      } else {
+        resolve(stdout);
+      }
+    });
+
+    // Set a timeout for the command
+    setTimeout(() => {
+      child.kill('SIGTERM'); // Terminate the process if it exceeds the timeout
+      reject(new Error('FFmpeg process timed out'));
+    }, timeout);
+  });
+}
+
 app.post('/merge-videos', async (req, res) => {
+  let validVideos = []; // Define validVideos here
+
   try {
     const { videos } = req.body;
 
@@ -76,7 +78,7 @@ app.post('/merge-videos', async (req, res) => {
     console.log('Request received:', req.body);
 
     // Clean and validate video URLs
-    const validVideos = videos.filter(url => typeof url === 'string' && url.trim() !== '');
+    validVideos = videos.filter(url => typeof url === 'string' && url.trim() !== '');
     if (validVideos.length === 0) {
       return res.status(400).json({ error: 'No valid video URLs provided.' });
     }
@@ -103,7 +105,9 @@ app.post('/merge-videos', async (req, res) => {
     res.status(500).json({ error: 'Server error.' });
   } finally {
     // Cleanup temporary files
-    validVideos.forEach(filePath => fs.existsSync(filePath) && fs.unlinkSync(filePath));
+    if (validVideos.length > 0) {
+      validVideos.forEach(filePath => fs.existsSync(filePath) && fs.unlinkSync(filePath));
+    }
   }
 });
 
