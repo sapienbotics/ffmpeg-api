@@ -234,4 +234,20 @@ app.post('/edit-video', async (req, res) => {
 });
 
 // Endpoint to download a file
-app.get('/download/:filename', (req
+app.get('/download/:filename', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(storageDir, filename);
+
+  if (fs.existsSync(filePath)) {
+    res.download(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
+  }
+});
+
+// Start the server
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
+
