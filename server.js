@@ -57,11 +57,6 @@ const mergeVideos = async (inputPaths, outputPath) => {
   fs.unlinkSync(listFilePath); // Clean up the list file
 };
 
-// Function to trim video using FFmpeg
-const trimVideo = async (inputPath, outputPath, startTime, duration) => {
-  const command = `ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} -c:v libx264 -c:a aac "${outputPath}"`;
-  await execPromise(command);
-};
 
 // Function to resize video using FFmpeg
 const resizeVideo = async (inputPath, outputPath, width, height) => {
@@ -83,26 +78,60 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
-// Endpoint to trim video
-app.post('/trim-video', async (req, res) => {
+const downloadFile = require('./downloadFile'); // Assuming this function exists to download the video
+
+// Trim video function
+async function trimVideo(inputPath, outputPath, startTime, duration) {
   try {
-    const { inputVideoUrl, startTime, duration } = req.body;
-    if (!inputVideoUrl || !startTime || !duration) {
-      throw new Error('Missing input video URL, start time, or duration in request body');
+    // Ensure startTime and duration are valid
+    if (!startTime || !duration) {
+      throw new Error('Invalid startTime or duration');
     }
 
-    const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+    // Construct ffmpeg command for trimming
+    const command = `ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} -c:v libx264 -c:a aac "${outputPath}"`;
 
-    await downloadFile(inputVideoUrl, tempVideoPath);
-    await trimVideo(tempVideoPath, outputFilePath);
+    // Log the command for debugging purposes
+    console.log(`Executing command: ${command}`);
 
-    fs.unlinkSync(tempVideoPath);
-    res.status(200).json({ message: 'Video trimmed successfully', outputUrl: outputFilePath });
+    // Execute the ffmpeg command
+    await execPromise(command);
   } catch (error) {
-    console.error('Error trimming video:', error.message);
-    res.status(500).json({ error: error.message });
+    console.error('Error trimming video:', error);
+    throw error;
+  }
+}
+
+// Endpoint to trim the video
+app.post('/trim-video', async (req, res) => {
+  try {
+    // Extract input parameters from request body
+    const { inputVideoUrl, startTime, duration } = req.body;
+
+    // Validate request parameters
+    if (!inputVideoUrl || startTime === undefined || duration === undefined) {
+      return res.status(400).json({ error: 'Missing or invalid inputVideoUrl, startTime, or duration' });
+    }
+
+    // Log the received values for debugging
+    console.log(`Received inputVideoUrl: ${inputVideoUrl}, startTime: ${startTime}, duration: ${duration}`);
+
+    // Define paths for temp and output video files
+    const tempVideoPath = path.join('/app/storage/processed', `${uuidv4()}_temp_video.mp4`);
+    const outputFilePath = path.join('/app/storage/processed', `${uuidv4()}_trimmed_video.mp4`);
+
+    // Download the input video to the temp path (assuming downloadFile is defined)
+    await downloadFile(inputVideoUrl, tempVideoPath);
+
+    // Call trimVideo to perform the trimming operation
+    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
+
+    // Respond with the path to the trimmed video
+    res.json({ trimmedVideoUrl: outputFilePath });
+
+  } catch (error) {
+    console.error('Error processing trim-video request:', error);
+    res.status(500).json({ error: 'An error occurred while trimming the video.' });
   }
 });
 
