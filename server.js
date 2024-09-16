@@ -3,33 +3,47 @@ const fs = require('fs');
 const axios = require('axios');
 const path = require('path');
 const { exec } = require('child_process');
-const checkDiskSpace = require('check-disk-space').default;
 
 const app = express();
 app.use(express.json());
 
-// Update this path to your Railway storage folder
-const storageDir = process.env.STORAGE_DIR || '/app/storage/processed';
+// Update this path to your local storage folder
+const storageDir = '/app/storage/processed'; // Adjust for Railway
 
 const downloadFile = async (url, filepath) => {
-  try {
-    const writer = fs.createWriteStream(filepath);
-    const response = await axios({
-      url,
-      method: 'GET',
-      responseType: 'stream',
-    });
+  const writer = fs.createWriteStream(filepath);
+  const response = await axios({
+    url,
+    method: 'GET',
+    responseType: 'stream',
+  });
 
-    response.data.pipe(writer);
+  response.data.pipe(writer);
 
-    return new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-  } catch (error) {
-    throw new Error('Error downloading file: ' + error.message);
-  }
+  return new Promise((resolve, reject) => {
+    writer.on('finish', resolve);
+    writer.on('error', reject);
+  });
 };
+
+function execPromise(command, timeout = 60000) { // 60 seconds default
+  return new Promise((resolve, reject) => {
+    const process = exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Command error:', stderr);
+        reject(error);
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+
+    // Set timeout for the process
+    setTimeout(() => {
+      process.kill(); // Kill the process if it exceeds the timeout
+      reject(new Error('FFmpeg process timed out'));
+    }, timeout);
+  });
+}
 
 async function mergeVideos(inputPaths, outputPath) {
   try {
@@ -37,29 +51,18 @@ async function mergeVideos(inputPaths, outputPath) {
     const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
     fs.writeFileSync(listFilePath, fileListContent);
 
-    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath}`;
+    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
     console.log('Executing FFmpeg command:', command);
 
-    const result = await execPromise(command);
-    console.log('FFmpeg output:', result);
+    const { stdout, stderr } = await execPromise(command);
+
+    console.log('FFmpeg output:', stdout);
+    console.error('FFmpeg errors:', stderr);
 
     fs.unlinkSync(listFilePath); // Clean up the list file
   } catch (error) {
     throw new Error('Error merging videos: ' + error.message);
   }
-}
-
-function execPromise(command) {
-  return new Promise((resolve, reject) => {
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error:', stderr);
-        reject(error);
-      } else {
-        resolve(stdout);
-      }
-    });
-  });
 }
 
 app.post('/merge-videos', async (req, res) => {
@@ -73,23 +76,12 @@ app.post('/merge-videos', async (req, res) => {
     console.log('Request received:', req.body);
 
     // Clean and validate video URLs
-    const validVideos = videos.filter(url => typeof url === 'string' && url.trim() !== '').map(url => url.trim());
+    const validVideos = videos.filter(url => typeof url === 'string' && url.trim() !== '');
     if (validVideos.length === 0) {
       return res.status(400).json({ error: 'No valid video URLs provided.' });
     }
 
     console.log('Valid Video URLs:', validVideos);
-
-    // Check disk space before processing
-    const diskSpace = await checkDiskSpace(storageDir);
-    console.log(`Disk Space - Free: ${diskSpace.free / (1024 * 1024)}MB, Total: ${diskSpace.size / (1024 * 1024)}MB`);
-    if (diskSpace.free < 100 * 1024 * 1024) { // 100MB threshold
-      return res.status(500).json({ error: 'Insufficient disk space.' });
-    }
-
-    // Check memory usage before processing
-    const memoryUsage = process.memoryUsage();
-    console.log(`Memory Usage: ${memoryUsage.rss / (1024 * 1024)}MB / ${memoryUsage.heapTotal / (1024 * 1024)}MB`);
 
     const downloadPromises = validVideos.map((url, index) => {
       const filepath = path.join(storageDir, `video${index + 1}.mp4`);
