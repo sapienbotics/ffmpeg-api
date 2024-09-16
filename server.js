@@ -83,6 +83,7 @@ function execPromise(command, timeout) {
   });
 }
 
+// Merge videos endpoint
 app.post('/merge-videos', async (req, res) => {
   let validVideos = []; // Define validVideos here
 
@@ -135,6 +136,18 @@ app.post('/merge-videos', async (req, res) => {
     if (validVideos.length > 0) {
       validVideos.forEach(filePath => fs.existsSync(filePath) && fs.unlinkSync(filePath));
     }
+  }
+});
+
+// Download file endpoint
+app.get('/download/:filename', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(storageDir, filename);
+
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
   }
 });
 
