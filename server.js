@@ -78,25 +78,58 @@ const editVideo = async (inputPath, outputPath, edits) => {
 };
 
 // Function to add audio to video
-const addAudioToVideo = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume) => {
+const addAudioToVideo = async (videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume, backgroundVolume) => {
   try {
-    // Validate volume inputs
-    const contentVol = contentVolume ? contentVolume : 1.0; // Default volume for content audio
-    const backgroundVol = backgroundVolume ? backgroundVolume : 1.0; // Default volume for background audio
+    const videoPath = `/app/storage/processed/${uuidv4()}_video.mp4`;
+    const contentAudioPath = `/app/storage/processed/${uuidv4()}_content_audio.mp3`;
+    const backgroundAudioPath = `/app/storage/processed/${uuidv4()}_background_audio.mp3`;
+    const outputPath = `/app/storage/processed/${uuidv4()}_output.mp4`;
 
-    // FFmpeg command to add both content audio and background audio
-    const command = `
-      ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
-      "[1:a]volume=${contentVol}[a1];[2:a]volume=${backgroundVol}[a2];[a1][a2]amix=inputs=2:duration=longest" \
-      -c:v copy -shortest -y "${outputFilePath}"
+    // Download video and audios
+    await downloadFile(videoUrl, videoPath);
+    await downloadFile(contentAudioUrl, contentAudioPath);
+    await downloadFile(backgroundAudioUrl, backgroundAudioPath);
+
+    // Get durations for both video and content audio
+    const getDuration = async (filePath) => {
+      const { stdout } = await execPromise(`ffprobe -i ${filePath} -show_entries format=duration -v quiet -of csv="p=0"`);
+      return parseFloat(stdout.trim());
+    };
+
+    const videoDuration = await getDuration(videoPath);
+    const contentAudioDuration = await getDuration(contentAudioPath);
+
+    // Determine if video or audio is longer
+    const longestDuration = Math.max(videoDuration, contentAudioDuration);
+
+    // Extend video or audio if necessary
+    let filterComplex = `
+      [1:a]volume=${contentVolume}[contentAudio];
+      [2:a]volume=${backgroundVolume}[backgroundAudio];
+      [contentAudio][backgroundAudio]amix=inputs=2:duration=longest[audio];
     `;
 
-    // Execute FFmpeg command
-    await execPromise(command);
-    console.log('Audio added successfully');
+    if (contentAudioDuration > videoDuration) {
+      // Extend video to match the audio duration by freezing the last frame
+      filterComplex += `[0:v]tpad=stop_mode=clone:stop_duration=${contentAudioDuration - videoDuration}[extendedVideo]`;
+    } else if (videoDuration > contentAudioDuration) {
+      // Extend the audio by adding silence
+      filterComplex += `[0:a]apad=pad_dur=${videoDuration - contentAudioDuration}[paddedAudio]`;
+    }
+
+    // Merge audio and video, adjusting volumes
+    const command = `
+      ffmpeg -i ${videoPath} -i ${contentAudioPath} -i ${backgroundAudioPath} -filter_complex "
+      ${filterComplex}" 
+      -map "[extendedVideo]" -map "[audio]" -c:v copy -shortest ${outputPath}
+    `;
+
+    await execPromise(command.trim());
+
+    return outputPath;
   } catch (error) {
-    console.error('Error adding audio to video:', error);
-    throw error;
+    console.error('Error in adding audio to video:', error);
+    throw new Error('Audio-Video merge failed');
   }
 };
 
