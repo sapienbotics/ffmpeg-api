@@ -3,8 +3,6 @@ const fs = require('fs');
 const axios = require('axios');
 const path = require('path');
 const { exec } = require('child_process');
-const os = require('os');
-const checkDiskSpace = require('check-disk-space').default;
 
 const app = express();
 app.use(express.json());
@@ -40,6 +38,7 @@ async function mergeVideos(inputPaths, outputPath) {
 
     fs.unlinkSync(listFilePath); // Clean up the list file
   } catch (error) {
+    console.error('Error merging videos:', error.message);
     throw new Error('Error merging videos: ' + error.message);
   }
 }
@@ -55,19 +54,6 @@ function execPromise(command) {
       }
     });
   });
-}
-
-// Log system CPU and memory usage
-function logSystemStats() {
-  const memoryUsage = process.memoryUsage();
-  const totalMem = os.totalmem() / (1024 * 1024); // in MB
-  const freeMem = os.freemem() / (1024 * 1024); // in MB
-  const usedMem = totalMem - freeMem;
-
-  console.log(`Memory Usage: ${usedMem.toFixed(2)}MB / ${totalMem.toFixed(2)}MB`);
-  
-  const cpus = os.cpus();
-  console.log('CPU Cores:', cpus.length);
 }
 
 app.post('/merge-videos', async (req, res) => {
@@ -88,17 +74,6 @@ app.post('/merge-videos', async (req, res) => {
 
     console.log('Valid Video URLs:', validVideos);
 
-    // Check available disk space before processing
-    const diskSpace = await checkDiskSpace(storageDir);
-    console.log(`Disk Space - Free: ${(diskSpace.free / (1024 * 1024)).toFixed(2)}MB, Total: ${(diskSpace.size / (1024 * 1024)).toFixed(2)}MB`);
-
-    if (diskSpace.free < 500 * 1024 * 1024) { // 500MB threshold
-      return res.status(500).json({ error: 'Not enough disk space to process the request.' });
-    }
-
-    // Log system CPU and memory usage
-    logSystemStats();
-
     const downloadPromises = validVideos.map((url, index) => {
       const filepath = path.join(storageDir, `video${index + 1}.mp4`);
       console.log(`Downloading file from URL: ${url}`);
@@ -106,6 +81,8 @@ app.post('/merge-videos', async (req, res) => {
     });
 
     const downloadedFiles = await Promise.all(downloadPromises);
+
+    console.log('Downloaded files:', downloadedFiles);
 
     // Merge the videos using the mergeVideos function
     const outputFilePath = path.join(storageDir, 'merged_output.mp4');
