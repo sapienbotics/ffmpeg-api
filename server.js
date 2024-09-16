@@ -34,7 +34,8 @@ async function mergeVideos(inputPaths, outputPath) {
     const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
     fs.writeFileSync(listFilePath, fileListContent);
 
-    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
+    // Updated FFmpeg command with -y flag to force overwrite
+    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
     console.log('Executing FFmpeg command:', command);
 
     await execPromise(command, 600000); // 10 minutes timeout
