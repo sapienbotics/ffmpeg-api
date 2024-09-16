@@ -19,13 +19,23 @@ if (!fs.existsSync(storageDir)) {
 const execPromise = util.promisify(exec);
 
 // Download video file
-
 const downloadFile = async (url, filePath) => {
   try {
+    // Log the URL and file path
+    console.log('Downloading file from URL:', url);
+    console.log('Saving to path:', filePath);
+
     // Ensure the directory exists
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
+    }
+
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch (error) {
+      throw new Error(`Invalid URL format: ${url}`);
     }
 
     // Download the file
@@ -47,6 +57,7 @@ const downloadFile = async (url, filePath) => {
     throw new Error('File download failed');
   }
 };
+
 
 // Normalize video format
 const normalizeVideo = async (inputPath, outputPath) => {
