@@ -19,20 +19,33 @@ if (!fs.existsSync(storageDir)) {
 const execPromise = util.promisify(exec);
 
 // Download video file
-const downloadFile = async (url, filepath) => {
-  const writer = fs.createWriteStream(filepath);
-  const response = await axios({
-    url,
-    method: 'GET',
-    responseType: 'stream',
-  });
 
-  response.data.pipe(writer);
+const downloadFile = async (url, filePath) => {
+  try {
+    // Ensure the directory exists
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
 
-  return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
-  });
+    // Download the file
+    const response = await axios({
+      url,
+      method: 'GET',
+      responseType: 'stream',
+    });
+
+    return new Promise((resolve, reject) => {
+      const writer = fs.createWriteStream(filePath);
+      response.data.pipe(writer);
+
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+  } catch (error) {
+    console.error('Error downloading file:', error);
+    throw new Error('File download failed');
+  }
 };
 
 // Normalize video format
@@ -85,6 +98,9 @@ const addAudioToVideo = async (videoUrl, contentAudioUrl, backgroundAudioUrl, co
     const backgroundAudioPath = `/app/storage/processed/${uuidv4()}_background_audio.mp3`;
     const outputPath = `/app/storage/processed/${uuidv4()}_output.mp4`;
 
+    // Log the generated file paths
+    console.log('Paths:', { videoPath, contentAudioPath, backgroundAudioPath, outputPath });
+
     // Download video and audios
     await downloadFile(videoUrl, videoPath);
     await downloadFile(contentAudioUrl, contentAudioPath);
@@ -102,26 +118,23 @@ const addAudioToVideo = async (videoUrl, contentAudioUrl, backgroundAudioUrl, co
     // Determine if video or audio is longer
     const longestDuration = Math.max(videoDuration, contentAudioDuration);
 
-    // Extend video or audio if necessary
-    let filterComplex = `
-      [1:a]volume=${contentVolume}[contentAudio];
-      [2:a]volume=${backgroundVolume}[backgroundAudio];
-      [contentAudio][backgroundAudio]amix=inputs=2:duration=longest[audio];
-    `;
-
+    // Extend shorter one
+    let extendVideoCommand = '';
     if (contentAudioDuration > videoDuration) {
       // Extend video to match the audio duration by freezing the last frame
-      filterComplex += `[0:v]tpad=stop_mode=clone:stop_duration=${contentAudioDuration - videoDuration}[extendedVideo]`;
+      extendVideoCommand = `-vf "tpad=stop_mode=clone:stop_duration=${contentAudioDuration - videoDuration}"`;
     } else if (videoDuration > contentAudioDuration) {
       // Extend the audio by adding silence
-      filterComplex += `[0:a]apad=pad_dur=${videoDuration - contentAudioDuration}[paddedAudio]`;
+      extendVideoCommand = `-filter_complex "[0:a]apad=pad_dur=${videoDuration - contentAudioDuration}[aout]"`;
     }
 
     // Merge audio and video, adjusting volumes
     const command = `
       ffmpeg -i ${videoPath} -i ${contentAudioPath} -i ${backgroundAudioPath} -filter_complex "
-      ${filterComplex}" 
-      -map "[extendedVideo]" -map "[audio]" -c:v copy -shortest ${outputPath}
+      [1:a]volume=${contentVolume}[contentAudio];
+      [2:a]volume=${backgroundVolume}[backgroundAudio];
+      [contentAudio][backgroundAudio]amix=inputs=2:duration=longest[audio]" 
+      -map 0:v -map "[audio]" ${extendVideoCommand} -c:v copy -shortest ${outputPath}
     `;
 
     await execPromise(command.trim());
