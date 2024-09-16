@@ -1,26 +1,23 @@
 const express = require('express');
 const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
+const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
 
 const app = express();
 app.use(express.json());
 
-// Set storage directory for Railway environment
-const storageDir = '/app/storage/processed';
-
-// Promisify exec for easier use with async/await
-const execPromise = util.promisify(exec);
-
-// Ensure storage directory exists
+// Directory to store processed files
+const storageDir = path.join(__dirname, 'storage');
 if (!fs.existsSync(storageDir)) {
   fs.mkdirSync(storageDir);
 }
 
-// Function to download a file
+// Promisify exec for easier use with async/await
+const execPromise = util.promisify(exec);
+
+// Download video file
 const downloadFile = async (url, filepath) => {
   const writer = fs.createWriteStream(filepath);
   const response = await axios({
@@ -39,53 +36,10 @@ const downloadFile = async (url, filepath) => {
 
 // Normalize video format
 const normalizeVideo = async (inputPath, outputPath) => {
-  return new Promise((resolve, reject) => {
-    const command = `ffmpeg -i ${inputPath} -vf "scale=1280:720" -r 30 -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k ${outputPath} -y`;
-    console.log('Executing FFmpeg command for normalization:', command);
+  const command = `ffmpeg -i ${inputPath} -vf "scale=1280:720" -r 30 -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k ${outputPath} -y`;
+  console.log('Executing FFmpeg command for normalization:', command);
 
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Normalization error:', stderr);
-        reject(error);
-      } else {
-        resolve(stdout);
-      }
-    });
-  });
-};
-
-// Trim video
-const trimVideo = async (inputPath, outputPath, startTime, duration) => {
-  return new Promise((resolve, reject) => {
-    const command = `ffmpeg -i ${inputPath} -ss ${startTime} -t ${duration} -c copy ${outputPath} -y`;
-    console.log('Executing FFmpeg command for trimming:', command);
-
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Trimming error:', stderr);
-        reject(error);
-      } else {
-        resolve(stdout);
-      }
-    });
-  });
-};
-
-// Resize video
-const resizeVideo = async (inputPath, outputPath, width, height) => {
-  return new Promise((resolve, reject) => {
-    const command = `ffmpeg -i ${inputPath} -vf scale=${width}:${height} -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k ${outputPath} -y`;
-    console.log('Executing FFmpeg command for resizing:', command);
-
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Resizing error:', stderr);
-        reject(error);
-      } else {
-        resolve(stdout);
-      }
-    });
-  });
+  await execPromise(command);
 };
 
 // Merge videos
@@ -95,6 +49,7 @@ const mergeVideos = async (inputPaths, outputPath) => {
     const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
     fs.writeFileSync(listFilePath, fileListContent);
 
+    // Updated FFmpeg command with -y flag to force overwrite
     const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
     console.log('Executing FFmpeg command for merging:', command);
 
@@ -106,24 +61,30 @@ const mergeVideos = async (inputPaths, outputPath) => {
   }
 };
 
-// Execute shell command and handle timeout
-const execPromise = (command, timeout) => {
-  return new Promise((resolve, reject) => {
-    const child = exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error:', stderr);
-        reject(error);
-      } else {
-        resolve(stdout);
-      }
-    });
+// Trim video using FFmpeg
+const trimVideo = async (inputPath, outputPath, startTime, duration) => {
+  const command = `ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} -c:v libx264 -c:a aac "${outputPath}"`;
+  await execPromise(command);
+};
 
-    // Set a timeout for the command
-    setTimeout(() => {
-      child.kill('SIGTERM'); // Terminate the process if it exceeds the timeout
-      reject(new Error('FFmpeg process timed out'));
-    }, timeout);
-  });
+// Resize video using FFmpeg
+const resizeVideo = async (inputPath, outputPath, width, height) => {
+  const command = `ffmpeg -i "${inputPath}" -vf "scale=${width}:${height}" -c:v libx264 -c:a aac "${outputPath}"`;
+  await execPromise(command);
+};
+
+// Edit video using FFmpeg
+const editVideo = async (inputPath, outputPath, edits) => {
+  let filters = '';
+  if (edits.crop) {
+    filters += `crop=${edits.crop}`;
+  }
+  if (edits.scale) {
+    filters += `${filters ? ',' : ''}scale=${edits.scale}`;
+  }
+
+  const command = `ffmpeg -i "${inputPath}" -vf "${filters}" -c:v libx264 -c:a aac "${outputPath}"`;
+  await execPromise(command);
 };
 
 // Endpoint to trim video
@@ -131,9 +92,7 @@ app.post('/trim-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
 
-    const inputVideoUrl = req.body.inputVideoUrl;
-    const startTime = req.body.startTime;
-    const duration = req.body.duration;
+    const { inputVideoUrl, startTime, duration } = req.body;
     const uniqueFilename = `${uuidv4()}_trimmed_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
@@ -146,7 +105,7 @@ app.post('/trim-video', async (req, res) => {
     await downloadFile(inputVideoUrl, tempVideoPath);
 
     console.log('Trimming video...');
-    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
+    await trimVideo(tempVideoPath, outputFilePath);
 
     console.log('Cleaning up temporary files...');
     fs.unlinkSync(tempVideoPath);
@@ -163,9 +122,7 @@ app.post('/resize-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
 
-    const inputVideoUrl = req.body.inputVideoUrl;
-    const width = req.body.width;
-    const height = req.body.height;
+    const { inputVideoUrl, width, height } = req.body;
     const uniqueFilename = `${uuidv4()}_resized_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
@@ -192,7 +149,7 @@ app.post('/resize-video', async (req, res) => {
 
 // Endpoint to merge videos
 app.post('/merge-videos', async (req, res) => {
-  let validVideos = []; // Define validVideos here
+  let validVideos = [];
 
   try {
     const { videos } = req.body;
@@ -215,13 +172,13 @@ app.post('/merge-videos', async (req, res) => {
     const downloadPromises = validVideos.map(async (url, index) => {
       const originalFilePath = path.join(storageDir, `video${index + 1}.mp4`);
       const normalizedFilePath = path.join(storageDir, `video${index + 1}_normalized.mp4`);
-      
+
       console.log(`Downloading file from URL: ${url}`);
       await downloadFile(url, originalFilePath);
-      
+
       console.log(`Normalizing video: ${originalFilePath}`);
       await normalizeVideo(originalFilePath, normalizedFilePath);
-      
+
       fs.unlinkSync(originalFilePath); // Clean up the original file
       return normalizedFilePath;
     });
@@ -251,21 +208,20 @@ app.post('/edit-video', async (req, res) => {
   try {
     console.log('Request received:', req.body);
 
-    const { inputVideoUrl, startTime, duration, width, height } = req.body;
+    const { inputVideoUrl, edits } = req.body;
     const uniqueFilename = `${uuidv4()}_edited_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
-    if (!inputVideoUrl || !startTime || !duration || !width || !height) {
-      throw new Error('Missing required parameters in request body');
+    if (!inputVideoUrl || !edits) {
+      throw new Error('Missing input video URL or edits in request body');
     }
 
     console.log('Downloading video from:', inputVideoUrl);
     await downloadFile(inputVideoUrl, tempVideoPath);
 
-    console.log('Trimming and resizing video...');
-    await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
-    await resizeVideo(outputFilePath, outputFilePath, width, height);
+    console.log('Editing video...');
+    await editVideo(tempVideoPath, outputFilePath, edits);
 
     console.log('Cleaning up temporary files...');
     fs.unlinkSync(tempVideoPath);
@@ -277,8 +233,5 @@ app.post('/edit-video', async (req, res) => {
   }
 });
 
-// Start the server
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Endpoint to download a file
+app.get('/download/:filename', (req
