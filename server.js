@@ -27,6 +27,23 @@ const downloadFile = async (url, filepath) => {
   });
 };
 
+// Normalize video format
+const normalizeVideo = async (inputPath, outputPath) => {
+  return new Promise((resolve, reject) => {
+    const command = `ffmpeg -i ${inputPath} -vf "scale=1280:720" -r 30 -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k ${outputPath} -y`;
+    console.log('Executing FFmpeg command for normalization:', command);
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Normalization error:', stderr);
+        reject(error);
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+};
+
 // Merge videos
 async function mergeVideos(inputPaths, outputPath) {
   try {
@@ -36,7 +53,7 @@ async function mergeVideos(inputPaths, outputPath) {
 
     // Updated FFmpeg command with -y flag to force overwrite
     const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
-    console.log('Executing FFmpeg command:', command);
+    console.log('Executing FFmpeg command for merging:', command);
 
     await execPromise(command, 600000); // 10 minutes timeout
 
@@ -86,17 +103,26 @@ app.post('/merge-videos', async (req, res) => {
 
     console.log('Valid Video URLs:', validVideos);
 
-    const downloadPromises = validVideos.map((url, index) => {
-      const filepath = path.join(storageDir, `video${index + 1}.mp4`);
+    // Download and normalize the videos
+    const downloadPromises = validVideos.map(async (url, index) => {
+      const originalFilePath = path.join(storageDir, `video${index + 1}.mp4`);
+      const normalizedFilePath = path.join(storageDir, `video${index + 1}_normalized.mp4`);
+      
       console.log(`Downloading file from URL: ${url}`);
-      return downloadFile(url, filepath).then(() => filepath);
+      await downloadFile(url, originalFilePath);
+      
+      console.log(`Normalizing video: ${originalFilePath}`);
+      await normalizeVideo(originalFilePath, normalizedFilePath);
+      
+      fs.unlinkSync(originalFilePath); // Clean up the original file
+      return normalizedFilePath;
     });
 
-    const downloadedFiles = await Promise.all(downloadPromises);
+    const normalizedFiles = await Promise.all(downloadPromises);
 
-    // Merge the videos using the mergeVideos function
+    // Merge the normalized videos
     const outputFilePath = path.join(storageDir, 'merged_output.mp4');
-    await mergeVideos(downloadedFiles, outputFilePath);
+    await mergeVideos(normalizedFiles, outputFilePath);
 
     console.log('Video merge completed:', outputFilePath);
     res.json({ message: 'Videos merged successfully!', mergedVideo: outputFilePath });
