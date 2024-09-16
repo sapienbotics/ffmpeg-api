@@ -59,6 +59,7 @@ const downloadFile = async (url, filePath) => {
 };
 
 
+
 // Normalize video format
 const normalizeVideo = async (inputPath, outputPath) => {
   const command = `ffmpeg -i ${inputPath} -vf "scale=1280:720" -r 30 -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k ${outputPath} -y`;
@@ -102,55 +103,52 @@ const editVideo = async (inputPath, outputPath, edits) => {
 };
 
 // Function to add audio to video
-const addAudioToVideo = async (videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume, backgroundVolume) => {
+const addAudioToVideo = async (videoUrl, contentAudioUrl, backgroundAudioUrl, outputPath) => {
   try {
-    const videoPath = `/app/storage/processed/${uuidv4()}_video.mp4`;
-    const contentAudioPath = `/app/storage/processed/${uuidv4()}_content_audio.mp3`;
-    const backgroundAudioPath = `/app/storage/processed/${uuidv4()}_background_audio.mp3`;
-    const outputPath = `/app/storage/processed/${uuidv4()}_output.mp4`;
+    // Define paths for temporary files
+    const videoPath = path.resolve(`/app/storage/processed/${uuidv4()}_video.mp4`);
+    const contentAudioPath = path.resolve(`/app/storage/processed/${uuidv4()}_content_audio.mp3`);
+    const backgroundAudioPath = path.resolve(`/app/storage/processed/${uuidv4()}_background_audio.mp3`);
 
-    // Log the generated file paths
-    console.log('Paths:', { videoPath, contentAudioPath, backgroundAudioPath, outputPath });
+    // Log paths
+    console.log('Paths:', {
+      videoPath,
+      contentAudioPath,
+      backgroundAudioPath,
+      outputPath
+    });
 
-    // Download video and audios
-    await downloadFile(videoUrl, videoPath);
-    await downloadFile(contentAudioUrl, contentAudioPath);
-    await downloadFile(backgroundAudioUrl, backgroundAudioPath);
-
-    // Get durations for both video and content audio
-    const getDuration = async (filePath) => {
-      const { stdout } = await execPromise(`ffprobe -i ${filePath} -show_entries format=duration -v quiet -of csv="p=0"`);
-      return parseFloat(stdout.trim());
-    };
-
-    const videoDuration = await getDuration(videoPath);
-    const contentAudioDuration = await getDuration(contentAudioPath);
-
-    // Determine if video or audio is longer
-    const longestDuration = Math.max(videoDuration, contentAudioDuration);
-
-    // Extend shorter one
-    let extendVideoCommand = '';
-    if (contentAudioDuration > videoDuration) {
-      // Extend video to match the audio duration by freezing the last frame
-      extendVideoCommand = `-vf "tpad=stop_mode=clone:stop_duration=${contentAudioDuration - videoDuration}"`;
-    } else if (videoDuration > contentAudioDuration) {
-      // Extend the audio by adding silence
-      extendVideoCommand = `-filter_complex "[0:a]apad=pad_dur=${videoDuration - contentAudioDuration}[aout]"`;
+    // Download video and audio files if URLs are provided
+    if (videoUrl.startsWith('http')) {
+      await downloadFile(videoUrl, videoPath);
+    } else {
+      // If local file path, just use it
+      fs.copyFileSync(videoUrl, videoPath);
     }
 
-    // Merge audio and video, adjusting volumes
-    const command = `
-      ffmpeg -i ${videoPath} -i ${contentAudioPath} -i ${backgroundAudioPath} -filter_complex "
-      [1:a]volume=${contentVolume}[contentAudio];
-      [2:a]volume=${backgroundVolume}[backgroundAudio];
-      [contentAudio][backgroundAudio]amix=inputs=2:duration=longest[audio]" 
-      -map 0:v -map "[audio]" ${extendVideoCommand} -c:v copy -shortest ${outputPath}
-    `;
+    if (contentAudioUrl.startsWith('http')) {
+      await downloadFile(contentAudioUrl, contentAudioPath);
+    } else {
+      // If local file path, just use it
+      fs.copyFileSync(contentAudioUrl, contentAudioPath);
+    }
 
-    await execPromise(command.trim());
+    if (backgroundAudioUrl.startsWith('http')) {
+      await downloadFile(backgroundAudioUrl, backgroundAudioPath);
+    } else {
+      // If local file path, just use it
+      fs.copyFileSync(backgroundAudioUrl, backgroundAudioPath);
+    }
 
-    return outputPath;
+    // Command to add audio to video using FFmpeg
+    const command = `ffmpeg -i ${videoPath} -i ${contentAudioPath} -i ${backgroundAudioPath} -filter_complex "[0:a]volume=1[a]; [1:a]volume=1[b]; [2:a]volume=0.5[c]; [a][b][c]amerge=inputs=3[aout]" -map "[aout]" ${outputPath}`;
+
+    console.log('Running command:', command);
+
+    // Execute the FFmpeg command
+    await execPromise(command);
+
+    console.log('Audio added to video successfully:', outputPath);
   } catch (error) {
     console.error('Error in adding audio to video:', error);
     throw new Error('Audio-Video merge failed');
