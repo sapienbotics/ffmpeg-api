@@ -19,46 +19,21 @@ if (!fs.existsSync(storageDir)) {
 const execPromise = util.promisify(exec);
 
 // Download video file
-const downloadFile = async (url, filePath) => {
-  try {
-    // Log the URL and file path
-    console.log('Downloading file from URL:', url);
-    console.log('Saving to path:', filePath);
+const downloadFile = async (url, filepath) => {
+  const writer = fs.createWriteStream(filepath);
+  const response = await axios({
+    url,
+    method: 'GET',
+    responseType: 'stream',
+  });
 
-    // Ensure the directory exists
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+  response.data.pipe(writer);
 
-    // Validate URL format
-    try {
-      new URL(url);
-    } catch (error) {
-      throw new Error(`Invalid URL format: ${url}`);
-    }
-
-    // Download the file
-    const response = await axios({
-      url,
-      method: 'GET',
-      responseType: 'stream',
-    });
-
-    return new Promise((resolve, reject) => {
-      const writer = fs.createWriteStream(filePath);
-      response.data.pipe(writer);
-
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-  } catch (error) {
-    console.error('Error downloading file:', error);
-    throw new Error('File download failed');
-  }
+  return new Promise((resolve, reject) => {
+    writer.on('finish', resolve);
+    writer.on('error', reject);
+  });
 };
-
-
 
 // Normalize video format
 const normalizeVideo = async (inputPath, outputPath) => {
@@ -103,55 +78,25 @@ const editVideo = async (inputPath, outputPath, edits) => {
 };
 
 // Function to add audio to video
-const addAudioToVideo = async (videoUrl, contentAudioUrl, backgroundAudioUrl, outputPath) => {
+const addAudioToVideo = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume) => {
   try {
-    // Define paths for temporary files
-    const videoPath = path.resolve(`/app/storage/processed/${uuidv4()}_video.mp4`);
-    const contentAudioPath = path.resolve(`/app/storage/processed/${uuidv4()}_content_audio.mp3`);
-    const backgroundAudioPath = path.resolve(`/app/storage/processed/${uuidv4()}_background_audio.mp3`);
+    // Validate volume inputs
+    const contentVol = contentVolume ? contentVolume : 1.0; // Default volume for content audio
+    const backgroundVol = backgroundVolume ? backgroundVolume : 1.0; // Default volume for background audio
 
-    // Log paths
-    console.log('Paths:', {
-      videoPath,
-      contentAudioPath,
-      backgroundAudioPath,
-      outputPath
-    });
+    // FFmpeg command to add both content audio and background audio
+    const command = `
+      ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
+      "[1:a]volume=${contentVol}[a1];[2:a]volume=${backgroundVol}[a2];[a1][a2]amix=inputs=2:duration=longest" \
+      -c:v copy -shortest -y "${outputFilePath}"
+    `;
 
-    // Download video and audio files if URLs are provided
-    if (videoUrl.startsWith('http')) {
-      await downloadFile(videoUrl, videoPath);
-    } else {
-      // If local file path, just use it
-      fs.copyFileSync(videoUrl, videoPath);
-    }
-
-    if (contentAudioUrl.startsWith('http')) {
-      await downloadFile(contentAudioUrl, contentAudioPath);
-    } else {
-      // If local file path, just use it
-      fs.copyFileSync(contentAudioUrl, contentAudioPath);
-    }
-
-    if (backgroundAudioUrl.startsWith('http')) {
-      await downloadFile(backgroundAudioUrl, backgroundAudioPath);
-    } else {
-      // If local file path, just use it
-      fs.copyFileSync(backgroundAudioUrl, backgroundAudioPath);
-    }
-
-    // Command to add audio to video using FFmpeg
-    const command = `ffmpeg -i ${videoPath} -i ${contentAudioPath} -i ${backgroundAudioPath} -filter_complex "[0:a]volume=1[a]; [1:a]volume=1[b]; [2:a]volume=0.5[c]; [a][b][c]amerge=inputs=3[aout]" -map "[aout]" ${outputPath}`;
-
-    console.log('Running command:', command);
-
-    // Execute the FFmpeg command
+    // Execute FFmpeg command
     await execPromise(command);
-
-    console.log('Audio added to video successfully:', outputPath);
+    console.log('Audio added successfully');
   } catch (error) {
-    console.error('Error in adding audio to video:', error);
-    throw new Error('Audio-Video merge failed');
+    console.error('Error adding audio to video:', error);
+    throw error;
   }
 };
 
