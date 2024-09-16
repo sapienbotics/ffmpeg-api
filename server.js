@@ -57,7 +57,6 @@ const mergeVideos = async (inputPaths, outputPath) => {
   fs.unlinkSync(listFilePath); // Clean up the list file
 };
 
-
 // Function to resize video using FFmpeg
 const resizeVideo = async (inputPath, outputPath, width, height) => {
   const command = `ffmpeg -i "${inputPath}" -vf "scale=${width}:${height}" -c:v libx264 -c:a aac "${outputPath}"`;
@@ -70,15 +69,13 @@ const editVideo = async (inputPath, outputPath, edits) => {
   if (edits.crop) {
     filters += `crop=${edits.crop}`;
   }
-  if (edits.scale) {
+  if (Edits.scale) {
     filters += `${filters ? ',' : ''}scale=${edits.scale}`;
   }
 
   const command = `ffmpeg -i "${inputPath}" -vf "${filters}" -c:v libx264 -c:a aac "${outputPath}"`;
   await execPromise(command);
 };
-
-const downloadFile = require('./downloadFile'); // Assuming this function exists to download the video
 
 // Trim video function
 async function trimVideo(inputPath, outputPath, startTime, duration) {
@@ -148,7 +145,7 @@ app.post('/resize-video', async (req, res) => {
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
 
     await downloadFile(inputVideoUrl, tempVideoPath);
-    await resizeVideo(tempVideoPath, outputFilePath);
+    await resizeVideo(tempVideoPath, outputFilePath, width, height);
 
     fs.unlinkSync(tempVideoPath);
     res.status(200).json({ message: 'Video resized successfully', outputUrl: outputFilePath });
@@ -232,9 +229,10 @@ app.get('/download/:filename', (req, res) => {
 
 // Endpoint to get status
 app.get('/status', (req, res) => {
-  res.status(200).json({ status: 'Server is running' });
+  res.json({ status: 'API is running', timestamp: new Date().toISOString() });
 });
 
+// Start server
 app.listen(8080, () => {
   console.log('Server is running on port 8080');
 });
