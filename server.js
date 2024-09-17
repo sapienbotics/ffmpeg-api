@@ -274,7 +274,6 @@ app.post('/add-audio-to-video', async (req, res) => {
 app.post('/images-to-video', async (req, res) => {
     const { imageUrls, duration } = req.body;
 
-    // Log the incoming image URLs for debugging
     console.log('Received image URLs:', imageUrls);
 
     if (!imageUrls || imageUrls.length === 0) {
@@ -289,7 +288,6 @@ app.post('/images-to-video', async (req, res) => {
         return supportedFormats.includes(extension);
     });
 
-    // Log valid URLs
     console.log('Valid image URLs:', validUrls);
 
     if (validUrls.length === 0) {
@@ -298,20 +296,31 @@ app.post('/images-to-video', async (req, res) => {
     }
 
     try {
-        // Construct FFmpeg command
-        const imagesInput = validUrls.map(({ url }) => `-i ${url}`).join(' ');
-        const outputFilePath = `/app/storage/processed/${uuidv4()}.mp4`;
-
-        const ffmpegCommand = `ffmpeg ${imagesInput} -filter_complex "[0:v]setpts=${duration}/TB" -r 25 -pix_fmt yuv420p ${outputFilePath}`;
+        const imagesPath = validUrls.map((_, index) => path.join(imagesDir, `image${index + 1}.jpg`));
         
-        // Log the FFmpeg command for debugging
+        // Download all images to local storage
+        await Promise.all(validUrls.map(({ url }, index) => downloadImage(url, imagesPath[index])));
+
+        // Construct FFmpeg command for creating a video
+        const fileList = imagesPath.map(imagePath => `file '${imagePath}'`).join('\n');
+        const listFilePath = path.join(storageDir, 'image_list.txt');
+        fs.writeFileSync(listFilePath, fileList); // Write file list for FFmpeg
+        
+        const outputFilePath = path.join(storageDir, `${uuidv4()}.mp4`);
+
+        // Set frame rate (e.g., 1 frame per second) and process images
+        const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${listFilePath} -vf "fps=1/${duration},format=yuv420p" -pix_fmt yuv420p ${outputFilePath}`;
+
         console.log('Executing FFmpeg command:', ffmpegCommand);
 
         await execPromise(ffmpegCommand);
 
+        // Clean up downloaded images
+        imagesPath.forEach(imagePath => fs.unlinkSync(imagePath));
+        fs.unlinkSync(listFilePath);
+
         res.json({ message: 'Video created successfully', videoUrl: outputFilePath });
     } catch (error) {
-        // Log any errors encountered
         console.error('Error during video creation:', error);
         res.status(500).json({ error: 'Error creating video' });
     }
