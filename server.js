@@ -295,57 +295,57 @@ app.post('/add-audio', async (req, res) => {
   }
 });
 
-// Endpoint to handle image-to-video conversion
+// Endpoint to merge images into a video
 app.post('/images-to-video', async (req, res) => {
   try {
     const { images, duration } = req.body;
 
-    if (!Array.isArray(images) || images.length === 0 || !duration) {
-      return res.status(400).json({ error: 'Invalid input data' });
+    // Ensure images is an array and duration is a number
+    if (!Array.isArray(images) || typeof duration !== 'number') {
+      return res.status(400).send({ error: 'Invalid input data' });
     }
 
-    const tempDir = path.join(__dirname, 'temp');
-    const outputVideo = path.join(__dirname, `output_${uuidv4()}.mp4`);
-
-    // Create temp directory if it doesn't exist
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir);
-    }
-
-    // Download images
     const imagePaths = [];
-    for (let i = 0; i < images.length; i++) {
-      const image = images[i];
-      const tempImagePath = path.join(tempDir, `image${i + 1}.${image.format.split('/')[1]}`);
-      await downloadImage(image.url, tempImagePath);
-      imagePaths.push(tempImagePath);
+    for (const [index, image] of images.entries()) {
+      const imageUrl = image.url;
+
+      if (!imageUrl) {
+        return res.status(400).send({ error: `Missing URL for image at index ${index}` });
+      }
+
+      const imageExtension = path.extname(new URL(imageUrl).pathname).slice(1);
+      const localImagePath = path.join(__dirname, 'images', `image_${index + 1}.${imageExtension}`);
+
+      await downloadImage(imageUrl, localImagePath);
+      imagePaths.push(localImagePath);
     }
 
-    // Generate video from images
-    const ffmpegCommand = ffmpeg();
-    imagePaths.forEach((imagePath, index) => {
-      ffmpegCommand.input(imagePath).inputOptions([`-t ${duration}`]);
+    const outputVideoPath = path.join(__dirname, 'videos', `output_${uuidv4()}.mp4`);
+
+    // Generate video using FFmpeg
+    const ffmpegCommand = `ffmpeg -y -framerate 1 -i ${path.join(__dirname, 'images', 'image_%d.*')} -vf "fps=25,format=yuv420p" ${outputVideoPath}`;
+
+    exec(ffmpegCommand, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`FFmpeg error: ${error.message}`);
+        return res.status(500).send({ error: 'Error creating video' });
+      }
+
+      console.log(`FFmpeg stdout: ${stdout}`);
+      console.error(`FFmpeg stderr: ${stderr}`);
+
+      // Send the video file to the client
+      res.sendFile(outputVideoPath, (err) => {
+        if (err) {
+          console.error(`Error sending video file: ${err}`);
+          res.status(500).send({ error: 'Error sending video file' });
+        }
+      });
     });
-    ffmpegCommand
-      .on('end', async () => {
-        // Clean up temporary files
-        imagePaths.forEach((imagePath) => fs.unlinkSync(imagePath));
-        fs.rmdirSync(tempDir);
-        res.download(outputVideo, (err) => {
-          if (err) {
-            console.error('Error sending file:', err);
-          }
-          fs.unlinkSync(outputVideo);
-        });
-      })
-      .on('error', (err) => {
-        console.error('Error creating video:', err);
-        res.status(500).json({ error: 'Error creating video' });
-      })
-      .mergeToFile(outputVideo);
+
   } catch (error) {
-    console.error('Error processing request:', error);
-    res.status(500).json({ error: 'Error processing request' });
+    console.error(`Error processing request: ${error.message}`);
+    res.status(500).send({ error: 'Internal server error' });
   }
 });
 
