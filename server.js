@@ -272,44 +272,49 @@ app.post('/add-audio-to-video', async (req, res) => {
 
 // Endpoint to convert images to video
 app.post('/images-to-video', async (req, res) => {
-  try {
-    const { imageUrls } = req.body;
-    if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
-      return res.status(400).json({ error: 'Invalid or empty image URLs array.' });
+    const { imageUrls, duration } = req.body;
+
+    // Log the incoming image URLs for debugging
+    console.log('Received image URLs:', imageUrls);
+
+    if (!imageUrls || imageUrls.length === 0) {
+        console.error('No valid image URLs provided');
+        return res.status(400).json({ error: 'No valid image URLs provided.' });
     }
 
-    const validImageUrls = imageUrls.filter(url => typeof url === 'string' && url.trim() !== '');
-    if (validImageUrls.length === 0) {
-      return res.status(400).json({ error: 'No valid image URLs provided.' });
-    }
-
-    // Download images
-    const downloadPromises = validImageUrls.map(async (url, index) => {
-      const imagePath = path.join(imagesDir, `image${index + 1}.jpg`);
-      await downloadImage(url, imagePath);
-      return imagePath;
+    // Filter out unsupported image formats
+    const supportedFormats = ['jpg', 'jpeg', 'png'];
+    const validUrls = imageUrls.filter(({ url }) => {
+        const extension = url.split('.').pop().toLowerCase();
+        return supportedFormats.includes(extension);
     });
-    const downloadedImages = await Promise.all(downloadPromises);
 
-    // Create a video from images
-    const videoFilePath = path.join(storageDir, `${uuidv4()}_images_video.mp4`);
-    const imagesListFilePath = path.join(imagesDir, 'images_list.txt');
-    const imagesListContent = downloadedImages.map(img => `file '${img}'`).join('\n');
-    fs.writeFileSync(imagesListFilePath, imagesListContent);
+    // Log valid URLs
+    console.log('Valid image URLs:', validUrls);
 
-    const command = `ffmpeg -f concat -safe 0 -i ${imagesListFilePath} -vf "fps=1,format=yuv420p" ${videoFilePath}`;
-    console.log('Executing FFmpeg command for images-to-video:', command);
+    if (validUrls.length === 0) {
+        console.error('No valid image URLs after filtering');
+        return res.status(400).json({ error: 'No valid image URLs after filtering.' });
+    }
 
-    await execPromise(command);
+    try {
+        // Construct FFmpeg command
+        const imagesInput = validUrls.map(({ url }) => `-i ${url}`).join(' ');
+        const outputFilePath = `/app/storage/processed/${uuidv4()}.mp4`;
 
-    fs.unlinkSync(imagesListFilePath); // Clean up the list file
-    downloadedImages.forEach(image => fs.unlinkSync(image)); // Clean up downloaded images
+        const ffmpegCommand = `ffmpeg ${imagesInput} -filter_complex "[0:v]setpts=${duration}/TB" -r 25 -pix_fmt yuv420p ${outputFilePath}`;
+        
+        // Log the FFmpeg command for debugging
+        console.log('Executing FFmpeg command:', ffmpegCommand);
 
-    res.status(200).json({ message: 'Images converted to video successfully', outputUrl: videoFilePath });
-  } catch (error) {
-    console.error('Error converting images to video:', error.message);
-    res.status(500).json({ error: error.message });
-  }
+        await execPromise(ffmpegCommand);
+
+        res.json({ message: 'Video created successfully', videoUrl: outputFilePath });
+    } catch (error) {
+        // Log any errors encountered
+        console.error('Error during video creation:', error);
+        res.status(500).json({ error: 'Error creating video' });
+    }
 });
 
 const PORT = process.env.PORT || 8080;
