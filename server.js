@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const { exec } = require('child_process');
 const util = require('util');
+const ffmpeg = require('fluent-ffmpeg');
 
 const app = express();
 app.use(express.json());
@@ -33,6 +34,22 @@ const downloadFile = async (url, filepath) => {
     writer.on('finish', resolve);
     writer.on('error', reject);
   });
+};
+
+// Helper function to download images
+async function downloadImage(url, outputPath) {
+    const writer = fs.createWriteStream(outputPath);
+    const response = await axios({
+        url,
+        method: 'GET',
+        responseType: 'stream'
+    });
+    response.data.pipe(writer);
+
+    return new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+    });
 };
 
 // Normalize video format
@@ -276,6 +293,67 @@ app.post('/add-audio', async (req, res) => {
     console.error('Error processing add-audio request:', error.message);
     res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
   }
+});
+
+
+// Endpoint to create video from images
+app.post('/images-to-video', async (req, res) => {
+    try {
+        const { images } = req.body;
+
+        if (!images || images.length === 0) {
+            return res.status(400).send('No images provided.');
+        }
+
+        const imagePaths = [];
+
+        // Download and save all images locally
+        for (const image of images) {
+            const imageUrl = image.url;
+            const imageFileName = `${uuidv4()}.${path.extname(imageUrl).split('.').pop()}`;
+            const imagePath = `/app/storage/processed/${imageFileName}`;
+
+            const response = await axios({
+                url: imageUrl,
+                method: 'GET',
+                responseType: 'stream'
+            });
+
+            const writer = fs.createWriteStream(imagePath);
+            response.data.pipe(writer);
+
+            await new Promise((resolve, reject) => {
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+            });
+
+            imagePaths.push(imagePath);
+        }
+
+        // Define output video file path
+        const outputVideoPath = `/app/storage/processed/${uuidv4()}_output_video.mp4`;
+
+        // Use ffmpeg to create video from images
+        const command = ffmpeg();
+
+        imagePaths.forEach((imagePath) => {
+            command.input(imagePath).inputOptions(['-r 1/2']); // Show each image for 2 seconds
+        });
+
+        command
+            .on('end', () => {
+                res.status(200).json({ message: 'Video created successfully', outputPath: outputVideoPath });
+            })
+            .on('error', (err) => {
+                console.error('Error creating video:', err);
+                res.status(500).json({ message: 'Failed to create video' });
+            })
+            .outputOptions('-c:v libx264', '-pix_fmt yuv420p') // Specify video codec and pixel format
+            .save(outputVideoPath);
+    } catch (error) {
+        console.error('Error processing request:', error);
+        res.status(500).send('Error processing images-to-video request');
+    }
 });
 
 
