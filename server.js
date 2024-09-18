@@ -289,12 +289,14 @@ const validUrls = imageUrls.filter(({ url }) => {
         return false;
     }
 
-    // Remove query parameters and fragments from the URL
-    const cleanUrl = url.split('?')[0].split('#')[0];
+    // Use regex to extract the file extension
+    const matches = url.match(/\.([a-zA-Z0-9]+)(\?|#|$)/);
+    if (!matches || matches.length < 2) {
+        return false;
+    }
 
-    // Extract the file extension
-    const extension = cleanUrl.split('.').pop().toLowerCase();
-    
+    const extension = matches[1].toLowerCase();
+
     // Check if the extension is in the supported formats
     return supportedFormats.includes(extension);
 });
