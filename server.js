@@ -256,6 +256,39 @@ app.post('/merge-videos', async (req, res) => {
   }
 });
 
+// Endpoint to create a video from multiple images
+app.post('/images-to-video', async (req, res) => {
+  try {
+    const { imageUrls, durationPerImage } = req.body;
+    if (!imageUrls || !Array.isArray(imageUrls)) {
+      return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
+    }
+
+    // Set default duration per image (in seconds) if not provided
+    const duration = durationPerImage || 2;
+
+    const downloadedFiles = await Promise.all(
+      imageUrls.map(async (imageUrl) => {
+        const filePath = await downloadImage(imageUrl, imagesDir);
+        return filePath;
+      })
+    );
+
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
+    const command = `ffmpeg -framerate 1/${duration} -pattern_type glob -i '${imagesDir}/*.jpg' -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+    
+    console.log('Executing FFmpeg command for images-to-video:', command);
+
+    await execPromise(command);
+
+    res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
+  } catch (error) {
+    console.error('Error creating video from images:', error);
+    res.status(500).json({ error: 'Failed to create video from images.' });
+  }
+});
+
+
 // Endpoint to download files
 app.get('/download/:filename', (req, res) => {
   const { filename } = req.params;
