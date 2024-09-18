@@ -89,27 +89,31 @@ const processMedia = async (mediaList) => {
   return { imagePaths, videoPaths };
 };
 
+// Function to sanitize filenames
+function sanitizeFilename(filename) {
+  return filename.replace(/[<>:"/\\|?*]+/g, '_'); // Replace invalid characters with underscore
+}
 
-// Modified downloadImage function
+// Function to download image
 async function downloadImage(imageUrl, downloadDir) {
   try {
     // Generate a short unique identifier for the file
     const uniqueId = crypto.randomBytes(8).toString('hex');
-    // Ensure file extension is appropriate
     let extension = path.extname(imageUrl).split('?')[0];
     if (!extension) {
       extension = '.jpg'; // Default to .jpg if no extension is found
     }
-    // Generate filename
-    const filename = `${uniqueId}${extension}`;
-    const filePath = path.join(downloadDir, filename);
+    
+    // Sanitize file name
+    const sanitizedFilename = sanitizeFilename(`${uniqueId}${extension}`);
+    const filePath = path.join(downloadDir, sanitizedFilename);
 
     // Ensure download directory exists
     if (!fs.existsSync(downloadDir)) {
       fs.mkdirSync(downloadDir, { recursive: true });
     }
 
-    // Download the image
+    // Fetch image from URL
     const response = await axios({
       url: imageUrl,
       method: 'GET',
@@ -123,7 +127,7 @@ async function downloadImage(imageUrl, downloadDir) {
       },
     });
 
-    // Create write stream and pipe the response data
+    // Create a writable stream and save the image
     const writer = fs.createWriteStream(filePath);
     response.data.pipe(writer);
 
@@ -136,7 +140,6 @@ async function downloadImage(imageUrl, downloadDir) {
     return null; // Return null to indicate a failure
   }
 }
-
 
 
 module.exports = { downloadImage };
