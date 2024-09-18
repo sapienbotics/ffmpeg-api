@@ -47,27 +47,48 @@ const downloadFile = async (url, filepath) => {
 };
 
 // Modified downloadImage function
-async function downloadImage(url, outputPath) {
-    // Ensure the directory exists
-    const dir = path.dirname(outputPath);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true }); // Create directory if it doesn't exist
+const fs = require('fs');
+const axios = require('axios');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+
+async function downloadImage(imageUrl, downloadDir) {
+  try {
+    const extension = path.extname(imageUrl).split('?')[0]; // Handles URLs with query parameters
+    const filename = `${uuidv4()}${extension}`;
+    const filePath = path.join(downloadDir, filename);
+
+    if (!fs.existsSync(downloadDir)) {
+      fs.mkdirSync(downloadDir, { recursive: true });
     }
 
-    const writer = fs.createWriteStream(outputPath);
     const response = await axios({
-        url,
-        method: 'GET',
-        responseType: 'stream',
+      url: imageUrl,
+      method: 'GET',
+      responseType: 'stream',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Referer': 'https://example.com' // Adjust the referer if needed
+      },
+      validateStatus: function (status) {
+        return status >= 200 && status < 400; // Resolve only if status code is 2xx to 3xx
+      },
     });
 
+    const writer = fs.createWriteStream(filePath);
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
+      writer.on('finish', () => resolve(filePath));
+      writer.on('error', reject);
     });
+  } catch (error) {
+    console.error(`Error downloading image: ${error.message}`);
+    throw error;
+  }
 }
+
+module.exports = { downloadImage };
 
 
 // Normalize video format
