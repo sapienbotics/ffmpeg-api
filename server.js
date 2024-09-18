@@ -47,6 +47,13 @@ const downloadFile = async (url, filepath) => {
 };
 
 async function downloadImage(url, outputPath) {
+  // Validate URL
+  try {
+    new URL(url); // Throws an error if the URL is invalid
+  } catch (error) {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+
   const writer = fs.createWriteStream(outputPath);
   const response = await axios({
     url,
@@ -58,7 +65,8 @@ async function downloadImage(url, outputPath) {
     writer.on('finish', resolve);
     writer.on('error', reject);
   });
-};  // <- Optional semicolon here
+}
+
 
 // Normalize video format
 const normalizeVideo = async (inputPath, outputPath) => {
@@ -307,6 +315,7 @@ if (validUrls.length === 0) {
     console.error('No valid image URLs after filtering');
     return res.status(400).json({ error: 'No valid image URLs after filtering.' });
 }
+
 
 
 
