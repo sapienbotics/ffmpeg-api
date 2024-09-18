@@ -6,14 +6,12 @@ const axios = require('axios');
 const { exec } = require('child_process');
 const util = require('util');
 const ffmpeg = require('fluent-ffmpeg');
-
-// Promisify exec for easier use with async/await
-const execPromise = util.promisify(exec);
+const { promisify } = require('util');
 
 const app = express();
 app.use(express.json());
 
-// Set storage directories
+// Set storage directory
 const storageDir = '/app/storage/processed';
 const imagesDir = path.join(__dirname, 'images');
 const videosDir = path.join(__dirname, 'videos');
@@ -27,6 +25,9 @@ if (!fs.existsSync(imagesDir)) {
 if (!fs.existsSync(videosDir)) {
   fs.mkdirSync(videosDir, { recursive: true });
 }
+
+// Promisify exec for easier use with async/await
+const execPromise = util.promisify(exec);
 
 // Download video file
 const downloadFile = async (url, filepath) => {
@@ -45,19 +46,11 @@ const downloadFile = async (url, filepath) => {
   });
 };
 
-// Sanitizing function for URLs
-function sanitizeFilename(url) {
-  const urlObj = new URL(url);
-  const pathname = urlObj.pathname.split('/').pop();
-  const ext = pathname.includes('.') ? pathname.split('.').pop() : 'jpg';
-  const sanitized = uuidv4();
-  return `${sanitized}.${ext}`;
-}
-
-// Download image file
+// Modified downloadImage function
 async function downloadImage(imageUrl, downloadDir) {
   try {
-    const filename = sanitizeFilename(imageUrl);
+    const extension = path.extname(imageUrl).split('?')[0]; // Handles URLs with query parameters
+    const filename = `${uuidv4()}${extension}`;
     const filePath = path.join(downloadDir, filename);
 
     if (!fs.existsSync(downloadDir)) {
@@ -69,11 +62,11 @@ async function downloadImage(imageUrl, downloadDir) {
       method: 'GET',
       responseType: 'stream',
       headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Referer': 'https://example.com'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Referer': 'https://example.com' // Adjust the referer if needed
       },
       validateStatus: function (status) {
-        return status >= 200 && status < 400;
+        return status >= 200 && status < 400; // Resolve only if status code is 2xx to 3xx
       },
     });
 
@@ -85,15 +78,18 @@ async function downloadImage(imageUrl, downloadDir) {
       writer.on('error', reject);
     });
   } catch (error) {
-    console.error('Error downloading image:', error);
+    console.error(`Error downloading image: ${error.message}`);
     throw error;
   }
 }
+
+module.exports = { downloadImage };
 
 // Normalize video format
 const normalizeVideo = async (inputPath, outputPath) => {
   const command = `ffmpeg -i ${inputPath} -vf "scale=1280:720" -r 30 -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k ${outputPath} -y`;
   console.log('Executing FFmpeg command for normalization:', command);
+
   await execPromise(command);
 };
 
@@ -105,36 +101,47 @@ const mergeVideos = async (inputPaths, outputPath) => {
 
   const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
   console.log('Executing FFmpeg command for merging:', command);
-  await execPromise(command);
 
-  fs.unlinkSync(listFilePath);
+  await execPromise(command, 600000); // 10 minutes timeout
+
+  fs.unlinkSync(listFilePath); // Clean up the list file
 };
 
-// Resize video
+// Function to resize video using FFmpeg
 const resizeVideo = async (inputPath, outputPath, width, height) => {
   const command = `ffmpeg -i "${inputPath}" -vf "scale=${width}:${height}" -c:v libx264 -c:a aac "${outputPath}"`;
   await execPromise(command);
 };
 
-// Edit video (crop/scale)
+// Function to apply edits to video (e.g., cropping) using FFmpeg
 const editVideo = async (inputPath, outputPath, edits) => {
   let filters = '';
-  if (edits.crop) filters += `crop=${edits.crop}`;
-  if (edits.scale) filters += `${filters ? ',' : ''}scale=${edits.scale}`;
+  if (edits.crop) {
+    filters += `crop=${edits.crop}`;
+  }
+  if (edits.scale) {
+    filters += `${filters ? ',' : ''}scale=${edits.scale}`;
+  }
+
   const command = `ffmpeg -i "${inputPath}" -vf "${filters}" -c:v libx264 -c:a aac "${outputPath}"`;
   await execPromise(command);
 };
 
-// Add audio to video
+// Function to add audio to video
 const addAudioToVideo = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume) => {
   try {
-    const contentVol = contentVolume || 1.0;
-    const backgroundVol = backgroundVolume || 1.0;
+    // Validate volume inputs
+    const contentVol = contentVolume ? contentVolume : 1.0; // Default volume for content audio
+    const backgroundVol = backgroundVolume ? backgroundVolume : 1.0; // Default volume for background audio
+
+    // FFmpeg command to add both content audio and background audio
     const command = `
       ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
       "[1:a]volume=${contentVol}[a1];[2:a]volume=${backgroundVol}[a2];[a1][a2]amix=inputs=2:duration=longest" \
       -c:v copy -shortest -y "${outputFilePath}"
     `;
+
+    // Execute FFmpeg command
     await execPromise(command);
     console.log('Audio added successfully');
   } catch (error) {
@@ -143,12 +150,21 @@ const addAudioToVideo = async (videoPath, contentAudioPath, backgroundAudioPath,
   }
 };
 
-// Trim video
+// Trim video function
 async function trimVideo(inputPath, outputPath, startTime, duration) {
   try {
-    if (!startTime || !duration) throw new Error('Invalid startTime or duration');
+    // Ensure startTime and duration are valid
+    if (!startTime || !duration) {
+      throw new Error('Invalid startTime or duration');
+    }
+
+    // Construct ffmpeg command for trimming
     const command = `ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} -c:v libx264 -c:a aac "${outputPath}"`;
+
+    // Log the command for debugging purposes
     console.log(`Executing command: ${command}`);
+
+    // Execute the ffmpeg command
     await execPromise(command);
   } catch (error) {
     console.error('Error trimming video:', error);
@@ -156,35 +172,54 @@ async function trimVideo(inputPath, outputPath, startTime, duration) {
   }
 }
 
-// Endpoints
+// Endpoint to trim the video
 app.post('/trim-video', async (req, res) => {
   try {
+    // Extract input parameters from request body
     const { inputVideoUrl, startTime, duration } = req.body;
+
+    // Validate request parameters
     if (!inputVideoUrl || startTime === undefined || duration === undefined) {
       return res.status(400).json({ error: 'Missing or invalid inputVideoUrl, startTime, or duration' });
     }
+
+    // Log the received values for debugging
+    console.log(`Received inputVideoUrl: ${inputVideoUrl}, startTime: ${startTime}, duration: ${duration}`);
+
+    // Define paths for temp and output video files
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
     const outputFilePath = path.join(storageDir, `${uuidv4()}_trimmed_video.mp4`);
+
+    // Download the input video to the temp path (assuming downloadFile is defined)
     await downloadFile(inputVideoUrl, tempVideoPath);
+
+    // Call trimVideo to perform the trimming operation
     await trimVideo(tempVideoPath, outputFilePath, startTime, duration);
+
+    // Respond with the path to the trimmed video
     res.json({ trimmedVideoUrl: outputFilePath });
+
   } catch (error) {
     console.error('Error processing trim-video request:', error);
     res.status(500).json({ error: 'An error occurred while trimming the video.' });
   }
 });
 
+// Endpoint to resize video
 app.post('/resize-video', async (req, res) => {
   try {
     const { inputVideoUrl, width, height } = req.body;
     if (!inputVideoUrl || !width || !height) {
       throw new Error('Missing input video URL, width, or height in request body');
     }
+
     const uniqueFilename = `${uuidv4()}_resized_video.mp4`;
     const outputFilePath = path.join(storageDir, uniqueFilename);
     const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+
     await downloadFile(inputVideoUrl, tempVideoPath);
-    await resizeVideo(tempVideoPath, outputFilePath, width, height);
+    await resizeVideo(tempVideoPath, outputFilePath);
+
     fs.unlinkSync(tempVideoPath);
     res.status(200).json({ message: 'Video resized successfully', outputUrl: outputFilePath });
   } catch (error) {
@@ -193,12 +228,14 @@ app.post('/resize-video', async (req, res) => {
   }
 });
 
+// Endpoint to merge videos
 app.post('/merge-videos', async (req, res) => {
   try {
     const { videoUrls } = req.body;
     if (!videoUrls || !Array.isArray(videoUrls)) {
       throw new Error('Invalid videoUrls input. It must be an array of video URLs.');
     }
+
     const downloadedFiles = await Promise.all(
       videoUrls.map(async (videoUrl) => {
         const uniqueFilename = `${uuidv4()}_video.mp4`;
@@ -207,9 +244,11 @@ app.post('/merge-videos', async (req, res) => {
         return outputPath;
       })
     );
+
     const mergedFileName = `${uuidv4()}_merged.mp4`;
     const outputPath = path.join(storageDir, mergedFileName);
     await mergeVideos(downloadedFiles, outputPath);
+
     res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputPath });
   } catch (error) {
     console.error('Error merging videos:', error);
@@ -217,80 +256,103 @@ app.post('/merge-videos', async (req, res) => {
   }
 });
 
+// Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
     const { imageUrls, durationPerImage } = req.body;
-    if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
-      return res.status(400).json({ error: 'Invalid input: imageUrls must be a non-empty array.' });
+    if (!imageUrls || !Array.isArray(imageUrls)) {
+      return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
-    const downloadedImages = await Promise.all(imageUrls.map((url) => downloadImage(url, imagesDir)));
-    const uniqueFilename = `${uuidv4()}_slideshow.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-    const command = `ffmpeg -framerate 1/${durationPerImage} -i ${imagesDir}/%d.jpg -c:v libx264 -pix_fmt yuv420p ${outputFilePath}`;
-    console.log(`Executing command: ${command}`);
+
+    // Clear the images directory before downloading new images
+    fs.readdir(imagesDir, (err, files) => {
+      if (err) throw err;
+      for (const file of files) {
+        fs.unlink(path.join(imagesDir, file), (err) => {
+          if (err) throw err;
+        });
+      }
+    });
+
+    // Set default duration per image (in seconds) if not provided
+    const duration = durationPerImage || 2;
+
+    const downloadedFiles = await Promise.all(
+      imageUrls.map(async (imageUrl) => {
+        const filePath = await downloadImage(imageUrl, imagesDir);
+        return filePath;
+      })
+    );
+
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
+    const command = `ffmpeg -framerate 1/${duration} -pattern_type glob -i '${imagesDir}/*.jpg' -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+    
+    console.log('Executing FFmpeg command for images-to-video:', command);
+
     await execPromise(command);
-    res.status(200).json({ message: 'Slideshow video created successfully', videoUrl: outputFilePath });
+
+    res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
   } catch (error) {
-    console.error('Error creating slideshow video:', error);
-    res.status(500).json({ error: 'Failed to create slideshow video' });
+    console.error('Error creating video from images:', error);
+    res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
 
-app.post('/add-audio-to-video', async (req, res) => {
+// Endpoint to add audio to video
+app.post('/add-audio', async (req, res) => {
   try {
     const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume, backgroundVolume } = req.body;
-    const videoPath = path.join(storageDir, `${uuidv4()}_video.mp4`);
+
+    // Validate inputs
+    if (!videoUrl || !contentAudioUrl || !backgroundAudioUrl) {
+      return res.status(400).json({ error: 'Missing video URL, content audio URL, or background audio URL.' });
+    }
+
+    // Define paths for video, content audio, background audio, and output
+    const videoPath = path.join(storageDir, `${uuidv4()}_input_video.mp4`);
     const contentAudioPath = path.join(storageDir, `${uuidv4()}_content_audio.mp3`);
     const backgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
-    const outputFilePath = path.join(storageDir, `${uuidv4()}_output.mp4`);
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_final_output.mp4`);
 
-    await Promise.all([
-      downloadFile(videoUrl, videoPath),
-      downloadFile(contentAudioUrl, contentAudioPath),
-      downloadFile(backgroundAudioUrl, backgroundAudioPath),
-    ]);
+    // Download the video and both audio files
+    await downloadFile(videoUrl, videoPath);
+    await downloadFile(contentAudioUrl, contentAudioPath);
+    await downloadFile(backgroundAudioUrl, backgroundAudioPath);
 
+    // Call function to add audio to video
     await addAudioToVideo(videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume);
 
-    res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputFilePath });
+    // Clean up the temp files if necessary (optional)
+    fs.unlinkSync(videoPath);
+    fs.unlinkSync(contentAudioPath);
+    fs.unlinkSync(backgroundAudioPath);
+
+    // Return the path to the final video
+    res.status(200).json({ message: 'Audio added successfully', outputUrl: outputFilePath });
   } catch (error) {
-    console.error('Error adding audio to video:', error);
-    res.status(500).json({ error: 'Failed to add audio to video.' });
+    console.error('Error processing add-audio request:', error.message);
+    res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
   }
 });
 
-// Download endpoint
-app.get('/download', (req, res) => {
-  const { fileName } = req.query;
-  const filePath = path.join(storageDir, fileName);
+
+// Endpoint to download files
+app.get('/download/:filename', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(storageDir, filename);
+
+  // Check if file exists
   if (fs.existsSync(filePath)) {
-    res.download(filePath);
+    // Set appropriate headers for file download
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.sendFile(filePath);
   } else {
     res.status(404).json({ error: 'File not found' });
   }
 });
 
-// Cleanup files at the start of the server
-const cleanupOldFiles = (dir, olderThanMinutes) => {
-  const files = fs.readdirSync(dir);
-  const currentTime = Date.now();
-  files.forEach(file => {
-    const filePath = path.join(dir, file);
-    const stats = fs.statSync(filePath);
-    const fileAgeInMinutes = (currentTime - stats.mtimeMs) / (1000 * 60);
-    if (fileAgeInMinutes > olderThanMinutes) {
-      fs.unlinkSync(filePath);
-    }
-  });
-};
 
-// Cleanup old files before server starts to save space
-const olderThanMinutes = 1440; // 1 day old files
-cleanupOldFiles(storageDir, olderThanMinutes);
-cleanupOldFiles(imagesDir, olderThanMinutes);
-cleanupOldFiles(videosDir, olderThanMinutes);
-
-// Start server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
