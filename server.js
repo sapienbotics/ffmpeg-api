@@ -293,13 +293,15 @@ app.post('/images-to-video', async (req, res) => {
 // Filter out unsupported image formats
 const supportedFormats = ['jpg', 'jpeg', 'png'];
 const validUrls = imageUrls.filter(url => {
-    if (typeof url !== 'string') {
+    if (typeof url !== 'string' || !url) {
+        console.error(`Invalid URL encountered: ${url}`);
         return false;
     }
 
     // Extract the file extension using a regex
     const matches = url.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/);
     if (!matches || matches.length < 2) {
+        console.error(`No valid extension found for URL: ${url}`);
         return false;
     }
 
@@ -315,6 +317,15 @@ if (validUrls.length === 0) {
     console.error('No valid image URLs after filtering');
     return res.status(400).json({ error: 'No valid image URLs after filtering.' });
 }
+
+// Proceed with downloading images
+try {
+    await Promise.all(validUrls.map(url => downloadImage(url, 'path/to/output')));
+} catch (err) {
+    console.error('Error during image download:', err);
+    return res.status(500).json({ error: 'Error during image download.' });
+}
+
 
 
 
