@@ -46,15 +46,15 @@ const downloadFile = async (url, filepath) => {
   });
 };
 
+
+// Sanitizing function for URLs with long paths or query strings
 function sanitizeFilename(url) {
-  const uuid = require('uuid'); // Ensure uuid is imported
   const urlObj = new URL(url);  // Convert to URL object
   const pathname = urlObj.pathname.split('/').pop(); // Get the last part of the path
   const ext = pathname.includes('.') ? pathname.split('.').pop() : 'jpg'; // Extract file extension
-  const sanitized = uuid.v4(); // Generate a unique identifier for the file
+  const sanitized = uuidv4(); // Generate a unique identifier for the file
   return `${sanitized}.${ext}`;
 }
-
 
 // Modified downloadImage function
 async function downloadImage(imageUrl, downloadDir) {
@@ -78,6 +78,20 @@ async function downloadImage(imageUrl, downloadDir) {
         return status >= 200 && status < 400; // Resolve only if status code is 2xx to 3xx
       },
     });
+
+    // Writing the file to the filesystem
+    return new Promise((resolve, reject) => {
+      const writer = fs.createWriteStream(filePath);
+      response.data.pipe(writer);
+      writer.on('finish', () => resolve(filePath)); // Resolve with the file path
+      writer.on('error', reject);
+    });
+
+  } catch (error) {
+    console.error(`Error downloading the image from ${imageUrl}:`, error.message);
+    throw error;
+  }
+}
 
     // Writing the file to the filesystem
     return new Promise((resolve, reject) => {
