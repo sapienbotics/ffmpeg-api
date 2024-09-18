@@ -281,19 +281,26 @@ app.post('/images-to-video', async (req, res) => {
         return res.status(400).json({ error: 'No valid image URLs provided.' });
     }
 
-    // Filter out unsupported image formats
-    const supportedFormats = ['jpg', 'jpeg', 'png'];
-    const validUrls = imageUrls.filter(({ url }) => {
-        const extension = url.split('.').pop().toLowerCase();
-        return supportedFormats.includes(extension);
-    });
 
-    console.log('Valid image URLs:', validUrls);
-
-    if (validUrls.length === 0) {
-        console.error('No valid image URLs after filtering');
-        return res.status(400).json({ error: 'No valid image URLs after filtering.' });
+// Filter out unsupported image formats
+const supportedFormats = ['jpg', 'jpeg', 'png'];
+const validUrls = imageUrls.filter(({ url }) => {
+    // Ensure url is defined and is a string
+    if (typeof url !== 'string') {
+        return false;
     }
+
+    const extension = url.split('.').pop().toLowerCase();
+    return supportedFormats.includes(extension);
+});
+
+console.log('Valid image URLs:', validUrls);
+
+if (validUrls.length === 0) {
+    console.error('No valid image URLs after filtering');
+    return res.status(400).json({ error: 'No valid image URLs after filtering.' });
+}
+
 
     try {
         const imagesPath = validUrls.map((_, index) => path.join(imagesDir, `image${index + 1}.jpg`));
