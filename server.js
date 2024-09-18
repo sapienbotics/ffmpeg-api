@@ -46,25 +46,27 @@ const downloadFile = async (url, filepath) => {
   });
 };
 
+// Modified downloadImage function
 async function downloadImage(url, outputPath) {
-  // Validate URL
-  try {
-    new URL(url); // Throws an error if the URL is invalid
-  } catch (error) {
-    throw new Error(`Invalid URL: ${url}`);
-  }
+    // Ensure the directory exists
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true }); // Create directory if it doesn't exist
+    }
 
-  const writer = fs.createWriteStream(outputPath);
-  const response = await axios({
-    url,
-    method: 'GET',
-    responseType: 'stream',
-  });
-  response.data.pipe(writer);
-  return new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
-    writer.on('error', reject);
-  });
+    const writer = fs.createWriteStream(outputPath);
+    const response = await axios({
+        url,
+        method: 'GET',
+        responseType: 'stream',
+    });
+
+    response.data.pipe(writer);
+
+    return new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+    });
 }
 
 
