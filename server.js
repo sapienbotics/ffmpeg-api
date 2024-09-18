@@ -46,11 +46,20 @@ const downloadFile = async (url, filepath) => {
   });
 };
 
+function sanitizeFilename(url) {
+  const uuid = require('uuid'); // Ensure uuid is imported
+  const urlObj = new URL(url);  // Convert to URL object
+  const pathname = urlObj.pathname.split('/').pop(); // Get the last part of the path
+  const ext = pathname.includes('.') ? pathname.split('.').pop() : 'jpg'; // Extract file extension
+  const sanitized = uuid.v4(); // Generate a unique identifier for the file
+  return `${sanitized}.${ext}`;
+}
+
+
 // Modified downloadImage function
 async function downloadImage(imageUrl, downloadDir) {
   try {
-    const extension = path.extname(imageUrl).split('?')[0]; // Handles URLs with query parameters
-    const filename = `${uuidv4()}${extension}`;
+    const filename = sanitizeFilename(imageUrl); // Sanitize the filename
     const filePath = path.join(downloadDir, filename);
 
     if (!fs.existsSync(downloadDir)) {
@@ -69,6 +78,19 @@ async function downloadImage(imageUrl, downloadDir) {
         return status >= 200 && status < 400; // Resolve only if status code is 2xx to 3xx
       },
     });
+
+    // Writing the file to the filesystem
+    return new Promise((resolve, reject) => {
+      const writer = fs.createWriteStream(filePath);
+      response.data.pipe(writer);
+      writer.on('finish', () => resolve(filePath)); // Resolve with the file path
+      writer.on('error', reject);
+    });
+  } catch (error) {
+    console.error(`Error downloading the image from ${imageUrl}:`, error.message);
+    throw error;
+  }
+}
 
     const writer = fs.createWriteStream(filePath);
     response.data.pipe(writer);
