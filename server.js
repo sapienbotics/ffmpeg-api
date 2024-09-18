@@ -29,6 +29,24 @@ if (!fs.existsSync(videosDir)) {
 // Promisify exec for easier use with async/await
 const execPromise = util.promisify(exec);
 
+
+// Utility function to delete all files in a directory
+const clearDirectory = (dirPath) => {
+  fs.readdir(dirPath, (err, files) => {
+    if (err) throw err;
+    for (const file of files) {
+      fs.unlink(path.join(dirPath, file), (err) => {
+        if (err) throw err;
+      });
+    }
+  });
+};
+
+// Clear directories at the start of processing
+clearDirectory(imagesDir);
+clearDirectory(videosDir);
+
+
 // Download video file
 const downloadFile = async (url, filepath) => {
   const writer = fs.createWriteStream(filepath);
@@ -46,7 +64,32 @@ const downloadFile = async (url, filepath) => {
   });
 };
 
+
+// Process input JSON and handle images and videos
+const processMedia = async (mediaList) => {
+  const imagePaths = [];
+  const videoPaths = [];
+
+  for (const media of mediaList) {
+    const ext = path.extname(media).toLowerCase();
+    const filename = `${uuidv4()}${ext}`;
+    const filePath = ext === '.mp4' ? path.join(videosDir, filename) : path.join(imagesDir, filename);
+
+    await downloadFile(media, filePath);
+    if (ext === '.mp4') {
+      videoPaths.push(filePath);
+    } else {
+      imagePaths.push(filePath);
+    }
+  }
+
+  return { imagePaths, videoPaths };
+};
+
+
+
 // Modified downloadImage function
+
 async function downloadImage(imageUrl, downloadDir) {
   try {
     const extension = path.extname(imageUrl).split('?')[0]; // Handles URLs with query parameters
@@ -79,9 +122,11 @@ async function downloadImage(imageUrl, downloadDir) {
     });
   } catch (error) {
     console.error(`Error downloading image: ${error.message}`);
-    throw error;
+    return null; // Return null to indicate a failure
   }
 }
+
+
 
 module.exports = { downloadImage };
 
@@ -280,9 +325,16 @@ app.post('/images-to-video', async (req, res) => {
     const downloadedFiles = await Promise.all(
       imageUrls.map(async (imageUrl) => {
         const filePath = await downloadImage(imageUrl, imagesDir);
-        return filePath;
+        return filePath; // Include only successfully downloaded files
       })
     );
+
+    // Filter out null values (failed downloads)
+    const validFiles = downloadedFiles.filter(file => file !== null);
+
+    if (validFiles.length === 0) {
+      return res.status(400).json({ error: 'No valid images were downloaded.' });
+    }
 
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
     const command = `ffmpeg -framerate 1/${duration} -pattern_type glob -i '${imagesDir}/*.jpg' -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
@@ -297,6 +349,7 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
+
 
 // Endpoint to add audio to video
 app.post('/add-audio', async (req, res) => {
