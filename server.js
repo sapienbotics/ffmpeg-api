@@ -284,13 +284,13 @@ app.post('/images-to-video', async (req, res) => {
 
 // Filter out unsupported image formats
 const supportedFormats = ['jpg', 'jpeg', 'png'];
-const validUrls = imageUrls.filter(({ url }) => {
+const validUrls = imageUrls.filter(url => {
     if (typeof url !== 'string') {
         return false;
     }
 
-    // Use regex to extract the file extension
-    const matches = url.match(/\.([a-zA-Z0-9]+)(\?|#|$)/);
+    // Extract the file extension using a regex
+    const matches = url.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/);
     if (!matches || matches.length < 2) {
         return false;
     }
@@ -307,6 +307,7 @@ if (validUrls.length === 0) {
     console.error('No valid image URLs after filtering');
     return res.status(400).json({ error: 'No valid image URLs after filtering.' });
 }
+
 
 
 
