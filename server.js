@@ -47,11 +47,6 @@ const downloadFile = async (url, filepath) => {
 };
 
 // Modified downloadImage function
-const fs = require('fs');
-const axios = require('axios');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-
 async function downloadImage(imageUrl, downloadDir) {
   try {
     const extension = path.extname(imageUrl).split('?')[0]; // Handles URLs with query parameters
