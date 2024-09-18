@@ -335,6 +335,65 @@ app.post('/add-audio', async (req, res) => {
   }
 });
 
+// Endpoint to merge images and videos in sequence
+app.post('/merge-images-videos', async (req, res) => {
+  try {
+    const { links } = req.body;
+    if (!links || !Array.isArray(links) || links.length === 0) {
+      return res.status(400).json({ error: 'Invalid input. Links should be a non-empty array of URLs.' });
+    }
+
+    // Define directories for images and videos
+    const imagesDir = path.join(storageDir, 'images');
+    const videosDir = path.join(storageDir, 'videos');
+
+    // Ensure directories exist
+    if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+    if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+
+    const imagePaths = [];
+    const videoPaths = [];
+
+    // Download and categorize links
+    for (const link of links) {
+      const ext = path.extname(link).toLowerCase();
+      const uniqueFilename = `${uuidv4()}${ext}`;
+      const downloadPath = path.join(ext === '.mp4' ? videosDir : imagesDir, uniqueFilename);
+
+      await downloadFile(link, downloadPath);
+
+      if (ext === '.mp4') {
+        videoPaths.push(downloadPath);
+      } else if (['.jpg', '.jpeg', '.png'].includes(ext)) {
+        imagePaths.push(downloadPath);
+      }
+    }
+
+    // Combine all media files into a single video
+    const finalOutputPath = path.join(storageDir, `${uuidv4()}_final_output.mp4`);
+
+    // Create a text file for FFmpeg to concatenate videos and images
+    const listFilePath = path.join(storageDir, 'file_list.txt');
+    const fileListContent = [...imagePaths, ...videoPaths].map(p => `file '${p}'`).join('\n');
+    fs.writeFileSync(listFilePath, fileListContent);
+
+    // Execute FFmpeg command to merge all images and videos
+    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${finalOutputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
+    console.log('Executing FFmpeg command for merging:', command);
+
+    await execPromise(command, 600000); // 10 minutes timeout
+
+    fs.unlinkSync(listFilePath); // Clean up the list file
+
+    res.status(200).json({ message: 'Media merged successfully', outputUrl: finalOutputPath });
+  } catch (error) {
+    console.error('Error merging media:', error);
+    res.status(500).json({ error: 'Failed to merge media.' });
+  }
+});
+
+
+
 
 // Endpoint to download files
 app.get('/download/:filename', (req, res) => {
