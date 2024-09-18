@@ -324,6 +324,23 @@ app.post('/images-to-video', async (req, res) => {
   }
 });
 
+// Endpoint to download files
+app.get('/download/:filename', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join(storageDir, filename);
+
+  // Check if file exists
+  if (fs.existsSync(filePath)) {
+    // Set appropriate headers for file download
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.sendFile(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
+  }
+});
+
+
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
