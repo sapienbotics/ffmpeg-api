@@ -7,6 +7,9 @@ const { exec } = require('child_process');
 const util = require('util');
 const ffmpeg = require('fluent-ffmpeg');
 const { promisify } = require('util');
+const crypto = require('crypto');
+
+
 
 const app = express();
 app.use(express.json());
@@ -92,8 +95,10 @@ const processMedia = async (mediaList) => {
 
 async function downloadImage(imageUrl, downloadDir) {
   try {
+    // Generate a short unique identifier for the file
+    const uniqueId = crypto.randomBytes(8).toString('hex');
     const extension = path.extname(imageUrl).split('?')[0]; // Handles URLs with query parameters
-    const filename = `${uuidv4()}${extension}`;
+    const filename = `${uniqueId}${extension}`;
     const filePath = path.join(downloadDir, filename);
 
     if (!fs.existsSync(downloadDir)) {
