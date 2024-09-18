@@ -79,19 +79,21 @@ async function downloadImage(imageUrl, downloadDir) {
       },
     });
 
-    // Writing the file to the filesystem
+    // Pipe the response data to the file
+    const writer = fs.createWriteStream(filePath);
+    response.data.pipe(writer);
+
     return new Promise((resolve, reject) => {
-      const writer = fs.createWriteStream(filePath);
-      response.data.pipe(writer);
-      writer.on('finish', () => resolve(filePath)); // Resolve with the file path
+      writer.on('finish', () => resolve(filePath));
       writer.on('error', reject);
     });
 
   } catch (error) {
-    console.error(`Error downloading the image from ${imageUrl}:`, error.message);
-    throw error;
+    console.error('Error downloading image:', error);
+    throw error;  // Ensure the error is properly thrown
   }
 }
+
 
     // Writing the file to the filesystem
     return new Promise((resolve, reject) => {
