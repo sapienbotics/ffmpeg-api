@@ -85,7 +85,6 @@ async function downloadImage(imageUrl, downloadDir) {
 
 module.exports = { downloadImage };
 
-
 // Normalize video format
 const normalizeVideo = async (inputPath, outputPath) => {
   const command = `ffmpeg -i ${inputPath} -vf "scale=1280:720" -r 30 -c:v libx264 -crf 23 -preset fast -c:a aac -b:a 128k ${outputPath} -y`;
@@ -232,33 +231,23 @@ app.post('/resize-video', async (req, res) => {
 // Endpoint to merge videos
 app.post('/merge-videos', async (req, res) => {
   try {
-    const { videos } = req.body;
-    if (!videos || !Array.isArray(videos) || videos.length === 0) {
-      return res.status(400).json({ error: 'Invalid or empty video URLs array.' });
+    const { videoUrls } = req.body;
+    if (!Array.isArray(videoUrls) || videoUrls.length === 0) {
+      return res.status(400).json({ error: 'Invalid videoUrls' });
     }
 
-    const validVideos = videos.filter(url => typeof url === 'string' && url.trim() !== '');
-    if (validVideos.length === 0) {
-      return res.status(400).json({ error: 'No valid video URLs provided.' });
+    const videoPaths = [];
+    for (const videoUrl of videoUrls) {
+      const tempVideoPath = path.join(storageDir, `${uuidv4()}_video.mp4`);
+      await downloadFile(videoUrl, tempVideoPath);
+      videoPaths.push(tempVideoPath);
     }
 
-    const downloadPromises = validVideos.map(async (url, index) => {
-      const originalFilePath = path.join(storageDir, `video${index + 1}.mp4`);
-      const normalizedFilePath = path.join(storageDir, `video${index + 1}_normalized.mp4`);
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
+    await mergeVideos(videoPaths, outputFilePath);
 
-      await downloadFile(url, originalFilePath);
-      await normalizeVideo(originalFilePath, normalizedFilePath);
-      fs.unlinkSync(originalFilePath); // Clean up the original file
-
-      return normalizedFilePath;
-    });
-
-    const downloadedVideos = await Promise.all(downloadPromises);
-    const mergedVideoPath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
-
-    await mergeVideos(downloadedVideos, mergedVideoPath);
-
-    res.status(200).json({ message: 'Videos merged successfully', outputUrl: mergedVideoPath });
+    videoPaths.forEach(fs.unlinkSync);
+    res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
   } catch (error) {
     console.error('Error merging videos:', error.message);
     res.status(500).json({ error: error.message });
@@ -266,28 +255,29 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 // Endpoint to add audio to video
-app.post('/add-audio-to-video', async (req, res) => {
+app.post('/add-audio', async (req, res) => {
   try {
     const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume, backgroundVolume } = req.body;
-
     if (!videoUrl || !contentAudioUrl || !backgroundAudioUrl) {
-      return res.status(400).json({ error: 'Missing video URL or audio URLs.' });
+      throw new Error('Missing videoUrl, contentAudioUrl, or backgroundAudioUrl in request body');
     }
 
-    const videoFilePath = path.join(storageDir, 'input_video.mp4');
-    const contentAudioFilePath = path.join(storageDir, 'content_audio.mp3');
-    const backgroundAudioFilePath = path.join(storageDir, 'background_audio.mp3');
-    const outputFilePath = path.join(storageDir, 'output_video.mp4');
+    const uniqueFilename = `${uuidv4()}_audio_added_video.mp4`;
+    const outputFilePath = path.join(storageDir, uniqueFilename);
 
-    await downloadFile(videoUrl, videoFilePath);
-    await downloadFile(contentAudioUrl, contentAudioFilePath);
-    await downloadFile(backgroundAudioUrl, backgroundAudioFilePath);
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+    const tempContentAudioPath = path.join(storageDir, `${uuidv4()}_content_audio.mp3`);
+    const tempBackgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
 
-    await addAudioToVideo(videoFilePath, contentAudioFilePath, backgroundAudioFilePath, outputFilePath, contentVolume, backgroundVolume);
+    await downloadFile(videoUrl, tempVideoPath);
+    await downloadFile(contentAudioUrl, tempContentAudioPath);
+    await downloadFile(backgroundAudioUrl, tempBackgroundAudioPath);
 
-    fs.unlinkSync(videoFilePath);
-    fs.unlinkSync(contentAudioFilePath);
-    fs.unlinkSync(backgroundAudioFilePath);
+    await addAudioToVideo(tempVideoPath, tempContentAudioPath, tempBackgroundAudioPath, outputFilePath, contentVolume, backgroundVolume);
+
+    fs.unlinkSync(tempVideoPath);
+    fs.unlinkSync(tempContentAudioPath);
+    fs.unlinkSync(tempBackgroundAudioPath);
 
     res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputFilePath });
   } catch (error) {
@@ -298,101 +288,43 @@ app.post('/add-audio-to-video', async (req, res) => {
 
 // Endpoint to convert images to video
 app.post('/images-to-video', async (req, res) => {
-    const { imageUrls, duration } = req.body;
-
-    console.log('Received image URLs:', imageUrls);
-
-    if (!imageUrls || imageUrls.length === 0) {
-        console.error('No valid image URLs provided');
-        return res.status(400).json({ error: 'No valid image URLs provided.' });
+  try {
+    const { imageUrls, outputFormat = 'mp4' } = req.body;
+    if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
+      return res.status(400).json({ error: 'Invalid imageUrls' });
     }
 
-
-// Filter out unsupported image formats
-const supportedFormats = ['jpg', 'jpeg', 'png'];
-const validUrls = imageUrls.filter(url => {
-    if (typeof url !== 'string' || !url) {
-        console.error(`Invalid URL encountered: ${url}`);
-        return false;
+    const imagePaths = [];
+    for (const imageUrl of imageUrls) {
+      if (/\.(jpg|jpeg|png)$/i.test(imageUrl)) {
+        const imagePath = await downloadImage(imageUrl, imagesDir);
+        imagePaths.push(imagePath);
+      }
     }
 
-    // Extract the file extension using a regex
-    const matches = url.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/);
-    if (!matches || matches.length < 2) {
-        console.error(`No valid extension found for URL: ${url}`);
-        return false;
+    if (imagePaths.length === 0) {
+      return res.status(400).json({ error: 'No valid images found' });
     }
 
-    const extension = matches[1].toLowerCase();
+    const outputFilePath = path.join(storageDir, `${uuidv4()}.${outputFormat}`);
+    const imageFileList = imagePaths.map(imagePath => `file '${imagePath}'`).join('\n');
+    const listFilePath = path.join(storageDir, 'images_list.txt');
+    fs.writeFileSync(listFilePath, imageFileList);
 
-    // Check if the extension is in the supported formats
-    return supportedFormats.includes(extension);
-});
+    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -vf "fps=1,scale=1280:720,format=yuv420p" ${outputFilePath}`;
+    await execPromise(command);
 
-console.log('Valid image URLs:', validUrls);
+    fs.unlinkSync(listFilePath);
+    imagePaths.forEach(fs.unlinkSync);
 
-if (validUrls.length === 0) {
-    console.error('No valid image URLs after filtering');
-    return res.status(400).json({ error: 'No valid image URLs after filtering.' });
-}
-
-// Proceed with downloading images
-try {
-    await Promise.all(validUrls.map(url => downloadImage(url, 'path/to/output')));
-} catch (err) {
-    console.error('Error during image download:', err);
-    return res.status(500).json({ error: 'Error during image download.' });
-}
-
-
-
-
-
-
-    try {
-        const imagesPath = validUrls.map((_, index) => path.join(imagesDir, `image${index + 1}.jpg`));
-        
-        // Download all images to local storage
-        await Promise.all(validUrls.map(({ url }, index) => downloadImage(url, imagesPath[index])));
-
-        // Construct FFmpeg command for creating a video
-        const fileList = imagesPath.map(imagePath => `file '${imagePath}'`).join('\n');
-        const listFilePath = path.join(storageDir, 'image_list.txt');
-        fs.writeFileSync(listFilePath, fileList); // Write file list for FFmpeg
-        
-        const outputFilePath = path.join(storageDir, `${uuidv4()}.mp4`);
-
-        // Set frame rate (e.g., 1 frame per second) and process images
-        const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${listFilePath} -vf "fps=1/${duration},format=yuv420p" -pix_fmt yuv420p ${outputFilePath}`;
-
-        console.log('Executing FFmpeg command:', ffmpegCommand);
-
-        await execPromise(ffmpegCommand);
-
-        // Clean up downloaded images
-        imagesPath.forEach(imagePath => fs.unlinkSync(imagePath));
-        fs.unlinkSync(listFilePath);
-
-        res.json({ message: 'Video created successfully', videoUrl: outputFilePath });
-    } catch (error) {
-        console.error('Error during video creation:', error);
-        res.status(500).json({ error: 'Error creating video' });
-    }
-});
-
-// Endpoint to download file
-app.get('/download/:filename', (req, res) => {
-  const { filename } = req.params;
-  const filePath = path.join(storageDir, filename);
-
-  if (fs.existsSync(filePath)) {
-    res.sendFile(filePath);
-  } else {
-    res.status(404).json({ error: 'File not found' });
+    res.status(200).json({ message: 'Images converted to video successfully', outputUrl: outputFilePath });
+  } catch (error) {
+    console.error('Error converting images to video:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
