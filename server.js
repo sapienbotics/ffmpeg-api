@@ -264,6 +264,16 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
 
+    // Clear the images directory before downloading new images
+    fs.readdir(imagesDir, (err, files) => {
+      if (err) throw err;
+      for (const file of files) {
+        fs.unlink(path.join(imagesDir, file), (err) => {
+          if (err) throw err;
+        });
+      }
+    });
+
     // Set default duration per image (in seconds) if not provided
     const duration = durationPerImage || 2;
 
@@ -287,6 +297,7 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
+
 
 
 // Endpoint to download files
