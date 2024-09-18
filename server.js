@@ -90,21 +90,26 @@ const processMedia = async (mediaList) => {
 };
 
 
-
 // Modified downloadImage function
-
 async function downloadImage(imageUrl, downloadDir) {
   try {
     // Generate a short unique identifier for the file
     const uniqueId = crypto.randomBytes(8).toString('hex');
-    const extension = path.extname(imageUrl).split('?')[0]; // Handles URLs with query parameters
+    // Ensure file extension is appropriate
+    let extension = path.extname(imageUrl).split('?')[0];
+    if (!extension) {
+      extension = '.jpg'; // Default to .jpg if no extension is found
+    }
+    // Generate filename
     const filename = `${uniqueId}${extension}`;
     const filePath = path.join(downloadDir, filename);
 
+    // Ensure download directory exists
     if (!fs.existsSync(downloadDir)) {
       fs.mkdirSync(downloadDir, { recursive: true });
     }
 
+    // Download the image
     const response = await axios({
       url: imageUrl,
       method: 'GET',
@@ -118,6 +123,7 @@ async function downloadImage(imageUrl, downloadDir) {
       },
     });
 
+    // Create write stream and pipe the response data
     const writer = fs.createWriteStream(filePath);
     response.data.pipe(writer);
 
