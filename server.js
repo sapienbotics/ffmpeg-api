@@ -232,99 +232,29 @@ app.post('/resize-video', async (req, res) => {
 app.post('/merge-videos', async (req, res) => {
   try {
     const { videoUrls } = req.body;
-    if (!Array.isArray(videoUrls) || videoUrls.length === 0) {
-      return res.status(400).json({ error: 'Invalid videoUrls' });
+    if (!videoUrls || !Array.isArray(videoUrls)) {
+      throw new Error('Invalid videoUrls input. It must be an array of video URLs.');
     }
 
-    const videoPaths = [];
-    for (const videoUrl of videoUrls) {
-      const tempVideoPath = path.join(storageDir, `${uuidv4()}_video.mp4`);
-      await downloadFile(videoUrl, tempVideoPath);
-      videoPaths.push(tempVideoPath);
-    }
+    const downloadedFiles = await Promise.all(
+      videoUrls.map(async (videoUrl) => {
+        const uniqueFilename = `${uuidv4()}_video.mp4`;
+        const outputPath = path.join(videosDir, uniqueFilename);
+        await downloadFile(videoUrl, outputPath);
+        return outputPath;
+      })
+    );
 
-    const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
-    await mergeVideos(videoPaths, outputFilePath);
+    const mergedFileName = `${uuidv4()}_merged.mp4`;
+    const outputPath = path.join(storageDir, mergedFileName);
+    await mergeVideos(downloadedFiles, outputPath);
 
-    videoPaths.forEach(fs.unlinkSync);
-    res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputFilePath });
+    res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputPath });
   } catch (error) {
-    console.error('Error merging videos:', error.message);
-    res.status(500).json({ error: error.message });
+    console.error('Error merging videos:', error);
+    res.status(500).json({ error: 'Failed to merge videos.' });
   }
 });
-
-// Endpoint to add audio to video
-app.post('/add-audio', async (req, res) => {
-  try {
-    const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume, backgroundVolume } = req.body;
-    if (!videoUrl || !contentAudioUrl || !backgroundAudioUrl) {
-      throw new Error('Missing videoUrl, contentAudioUrl, or backgroundAudioUrl in request body');
-    }
-
-    const uniqueFilename = `${uuidv4()}_audio_added_video.mp4`;
-    const outputFilePath = path.join(storageDir, uniqueFilename);
-
-    const tempVideoPath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
-    const tempContentAudioPath = path.join(storageDir, `${uuidv4()}_content_audio.mp3`);
-    const tempBackgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
-
-    await downloadFile(videoUrl, tempVideoPath);
-    await downloadFile(contentAudioUrl, tempContentAudioPath);
-    await downloadFile(backgroundAudioUrl, tempBackgroundAudioPath);
-
-    await addAudioToVideo(tempVideoPath, tempContentAudioPath, tempBackgroundAudioPath, outputFilePath, contentVolume, backgroundVolume);
-
-    fs.unlinkSync(tempVideoPath);
-    fs.unlinkSync(tempContentAudioPath);
-    fs.unlinkSync(tempBackgroundAudioPath);
-
-    res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputFilePath });
-  } catch (error) {
-    console.error('Error adding audio to video:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Endpoint to convert images to video
-app.post('/images-to-video', async (req, res) => {
-  try {
-    const { imageUrls, outputFormat = 'mp4', imageDuration = 2 } = req.body;
-    if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
-      return res.status(400).json({ error: 'Invalid imageUrls' });
-    }
-
-    const imagePaths = [];
-    for (const imageUrl of imageUrls) {
-      if (/\.(jpg|jpeg|png)$/i.test(imageUrl)) {
-        const imagePath = await downloadImage(imageUrl, imagesDir);
-        imagePaths.push(imagePath);
-      }
-    }
-
-    if (imagePaths.length === 0) {
-      return res.status(400).json({ error: 'No valid images found' });
-    }
-
-    const outputFilePath = path.join(storageDir, `${uuidv4()}.${outputFormat}`);
-    const imageFileList = imagePaths.map(imagePath => `file '${imagePath}'`).join('\n');
-    const listFilePath = path.join(storageDir, 'images_list.txt');
-    fs.writeFileSync(listFilePath, imageFileList);
-
-    // Updated FFmpeg command to set framerate (e.g., 0.5 frames per second means 2 seconds per image)
-    const command = `ffmpeg -framerate ${1 / imageDuration} -i ${listFilePath} -vf "scale=1280:720,format=yuv420p" -r 30 ${outputFilePath}`;
-    await execPromise(command);
-
-    fs.unlinkSync(listFilePath);
-    imagePaths.forEach(fs.unlinkSync);
-
-    res.status(200).json({ message: 'Images converted to video successfully', outputUrl: outputFilePath });
-  } catch (error) {
-    console.error('Error converting images to video:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 
 // Endpoint to download files
 app.get('/download/:filename', (req, res) => {
@@ -343,7 +273,7 @@ app.get('/download/:filename', (req, res) => {
 });
 
 
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
