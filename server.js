@@ -89,9 +89,12 @@ const processMedia = async (mediaList) => {
   return { imagePaths, videoPaths };
 };
 
-// Function to sanitize filenames
-function sanitizeFilename(filename) {
-  return filename.replace(/[<>:"/\\|?*]+/g, '_'); // Replace invalid characters with underscore
+// Function to sanitize and truncate filenames
+function sanitizeAndTruncateFilename(filename, maxLength = 100) {
+  const sanitized = filename
+    .replace(/[<>:"/\\|?*]+/g, '_') // Replace invalid characters with underscore
+    .slice(0, maxLength); // Truncate filename to max length
+  return sanitized;
 }
 
 // Function to download image
@@ -103,9 +106,9 @@ async function downloadImage(imageUrl, downloadDir) {
     if (!extension) {
       extension = '.jpg'; // Default to .jpg if no extension is found
     }
-    
-    // Sanitize file name
-    const sanitizedFilename = sanitizeFilename(`${uniqueId}${extension}`);
+
+    // Create a sanitized and truncated filename
+    const sanitizedFilename = sanitizeAndTruncateFilename(`${uniqueId}${extension}`);
     const filePath = path.join(downloadDir, sanitizedFilename);
 
     // Ensure download directory exists
