@@ -289,7 +289,7 @@ app.post('/add-audio', async (req, res) => {
 // Endpoint to convert images to video
 app.post('/images-to-video', async (req, res) => {
   try {
-    const { imageUrls, outputFormat = 'mp4' } = req.body;
+    const { imageUrls, outputFormat = 'mp4', imageDuration = 2 } = req.body;
     if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
       return res.status(400).json({ error: 'Invalid imageUrls' });
     }
@@ -311,7 +311,8 @@ app.post('/images-to-video', async (req, res) => {
     const listFilePath = path.join(storageDir, 'images_list.txt');
     fs.writeFileSync(listFilePath, imageFileList);
 
-    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -vf "fps=1,scale=1280:720,format=yuv420p" ${outputFilePath}`;
+    // Updated FFmpeg command to set framerate (e.g., 0.5 frames per second means 2 seconds per image)
+    const command = `ffmpeg -framerate ${1 / imageDuration} -i ${listFilePath} -vf "scale=1280:720,format=yuv420p" -r 30 ${outputFilePath}`;
     await execPromise(command);
 
     fs.unlinkSync(listFilePath);
@@ -323,6 +324,7 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // Endpoint to download files
 app.get('/download/:filename', (req, res) => {
