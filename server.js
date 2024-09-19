@@ -419,6 +419,45 @@ app.post('/add-audio', async (req, res) => {
   }
 });
 
+// Endpoint to get video duration
+app.post('/get-video-duration', async (req, res) => {
+  try {
+    const { videoUrl } = req.body;
+
+    // Validate videoUrl
+    if (!videoUrl) {
+      return res.status(400).json({ error: 'Missing video URL.' });
+    }
+
+    // Temporary path to store the video file
+    const tempVideoPath = path.join(storageDir, `${uuidv4()}_video.mp4`);
+
+    // Download the video to a temp path
+    await downloadFile(videoUrl, tempVideoPath);
+
+    // Get video metadata using ffmpeg
+    ffmpeg.ffprobe(tempVideoPath, (err, metadata) => {
+      if (err) {
+        console.error('Error fetching video metadata:', err);
+        return res.status(500).json({ error: 'Error fetching video metadata.' });
+      }
+
+      // Extract duration from metadata
+      const duration = metadata.format.duration;
+
+      // Clean up the temporary video file
+      fs.unlinkSync(tempVideoPath);
+
+      // Respond with the video duration
+      res.json({ duration });
+    });
+  } catch (error) {
+    console.error('Error processing get-video-duration request:', error.message);
+    res.status(500).json({ error: 'Failed to retrieve video duration.' });
+  }
+});
+
+
 
 // Endpoint to download files
 app.get('/download/:filename', (req, res) => {
