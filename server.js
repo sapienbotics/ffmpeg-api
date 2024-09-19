@@ -318,12 +318,16 @@ app.post('/merge-videos', async (req, res) => {
   }
 });
 
+
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
-    const { imageUrls, durationPerImage, format } = req.body; // Accept format as user input
+    const { imageUrls, totalDuration, format } = req.body; // Accept totalDuration instead of durationPerImage
     if (!imageUrls || !Array.isArray(imageUrls)) {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
+    }
+    if (!totalDuration || typeof totalDuration !== 'number' || totalDuration <= 0) {
+      return res.status(400).json({ error: 'Invalid totalDuration input. It must be a positive number.' });
     }
 
     // Clear the images directory before downloading new images
@@ -335,9 +339,6 @@ app.post('/images-to-video', async (req, res) => {
         });
       }
     });
-
-    // Set default duration per image (in seconds) if not provided
-    const duration = durationPerImage || 2;
 
     const downloadedFiles = await Promise.all(
       imageUrls.map(async (imageUrl) => {
@@ -353,6 +354,9 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'No valid images were downloaded.' });
     }
 
+    // Calculate duration per image based on totalDuration and the number of valid files
+    const durationPerImage = totalDuration / validFiles.length;
+
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
 
     // Select FFmpeg scaling and padding filter based on user-selected format
@@ -367,8 +371,8 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
     }
 
-    // FFmpeg command for merging images to video with user-selected format
-    const command = `ffmpeg -framerate 1/${duration} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+    // FFmpeg command for merging images to video with calculated duration per image
+    const command = `ffmpeg -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
     // Execute the FFmpeg command
     await execPromise(command);
@@ -379,7 +383,6 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
-
 
 
 // Endpoint to add audio to video
