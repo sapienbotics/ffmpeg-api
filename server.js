@@ -321,7 +321,7 @@ app.post('/merge-videos', async (req, res) => {
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
-    const { imageUrls, durationPerImage } = req.body;
+    const { imageUrls, durationPerImage, format } = req.body; // Accept format as user input
     if (!imageUrls || !Array.isArray(imageUrls)) {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
@@ -354,9 +354,23 @@ app.post('/images-to-video', async (req, res) => {
     }
 
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
-    
-const command = `ffmpeg -framerate 1/${duration} -pattern_type glob -i '${imagesDir}/*.jpg' -vf format=yuv420p -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
+    // Select FFmpeg scaling and padding filter based on user-selected format
+    let filter;
+    if (format === 'landscape') {
+      filter = "scale=w=1920:h=-2,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"; // Landscape 16:9
+    } else if (format === 'portrait') {
+      filter = "scale=w=-2:h=1080,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"; // Portrait 9:16
+    } else if (format === 'square') {
+      filter = "scale=w=if(gt(iw,ih),1080,-2):h=if(gt(ih,iw),1080,-2),pad=1080:1080:(ow-iw)/2:(oh-ih)/2"; // Square 1:1
+    } else {
+      return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
+    }
+
+    // FFmpeg command for merging images to video with user-selected format
+    const command = `ffmpeg -framerate 1/${duration} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+
+    // Execute the FFmpeg command
     await execPromise(command);
 
     res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
