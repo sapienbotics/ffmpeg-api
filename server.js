@@ -356,7 +356,7 @@ app.post('/images-to-video', async (req, res) => {
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
     const command = `ffmpeg -framerate 1/${duration} -pattern_type glob -i '${imagesDir}/*.jpg' -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
     
-    console.log('Executing FFmpeg command for images-to-video:', command);
+const command = `ffmpeg -framerate 1/${duration} -pattern_type glob -i '${imagesDir}/*.jpg' -vf format=yuv420p -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
     await execPromise(command);
 
