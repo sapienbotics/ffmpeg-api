@@ -358,11 +358,11 @@ app.post('/images-to-video', async (req, res) => {
     // Select FFmpeg scaling and padding filter based on user-selected format
     let filter;
     if (format === 'landscape') {
-      filter = "scale=w=1920:h=-2,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"; // Landscape 16:9
+      filter = "scale=w=1920:h=1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"; // Landscape 16:9
     } else if (format === 'portrait') {
-      filter = "scale=w=-2:h=1080,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"; // Portrait 9:16
+      filter = "scale=w=1080:h=1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"; // Portrait 9:16
     } else if (format === 'square') {
-      filter = "scale=w=if(gt(iw,ih),1080,-2):h=if(gt(ih,iw),1080,-2),pad=1080:1080:(ow-iw)/2:(oh-ih)/2"; // Square 1:1
+      filter = "scale=w=1080:h=1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2"; // Square 1:1
     } else {
       return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
     }
@@ -379,6 +379,7 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
+
 
 
 // Endpoint to add audio to video
