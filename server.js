@@ -322,13 +322,16 @@ app.post('/merge-videos', async (req, res) => {
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
-    const { imageUrls, totalDuration, format } = req.body; // Accept totalDuration instead of durationPerImage
+    const { imageUrls, duration, additionalDuration, format } = req.body; // Accept additionalDuration and duration
     if (!imageUrls || !Array.isArray(imageUrls)) {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
-    if (!totalDuration || typeof totalDuration !== 'number' || totalDuration <= 0) {
-      return res.status(400).json({ error: 'Invalid totalDuration input. It must be a positive number.' });
+    if (typeof duration !== 'number' || duration <= 0 || typeof additionalDuration !== 'number' || additionalDuration < 0) {
+      return res.status(400).json({ error: 'Invalid duration or additionalDuration input. Duration must be a positive number and additionalDuration a non-negative number.' });
     }
+
+    // Calculate totalDuration
+    const totalDuration = duration + additionalDuration;
 
     // Clear the images directory before downloading new images
     fs.readdir(imagesDir, (err, files) => {
@@ -385,42 +388,8 @@ app.post('/images-to-video', async (req, res) => {
 });
 
 
-// Endpoint to add audio to video
-app.post('/add-audio', async (req, res) => {
-  try {
-    const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume, backgroundVolume } = req.body;
 
-    // Validate inputs
-    if (!videoUrl || !contentAudioUrl || !backgroundAudioUrl) {
-      return res.status(400).json({ error: 'Missing video URL, content audio URL, or background audio URL.' });
-    }
 
-    // Define paths for video, content audio, background audio, and output
-    const videoPath = path.join(storageDir, `${uuidv4()}_input_video.mp4`);
-    const contentAudioPath = path.join(storageDir, `${uuidv4()}_content_audio.mp3`);
-    const backgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
-    const outputFilePath = path.join(storageDir, `${uuidv4()}_final_output.mp4`);
-
-    // Download the video and both audio files
-    await downloadFile(videoUrl, videoPath);
-    await downloadFile(contentAudioUrl, contentAudioPath);
-    await downloadFile(backgroundAudioUrl, backgroundAudioPath);
-
-    // Call function to add audio to video
-    await addAudioToVideo(videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume);
-
-    // Clean up the temp files if necessary (optional)
-    fs.unlinkSync(videoPath);
-    fs.unlinkSync(contentAudioPath);
-    fs.unlinkSync(backgroundAudioPath);
-
-    // Return the path to the final video
-    res.status(200).json({ message: 'Audio added successfully', outputUrl: outputFilePath });
-  } catch (error) {
-    console.error('Error processing add-audio request:', error.message);
-    res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
-  }
-});
 
 // Endpoint to get audio duration
 app.post('/get-audio-duration', async (req, res) => {
