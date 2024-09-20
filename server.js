@@ -365,7 +365,6 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 
-const { spawn } = require('child_process');
 
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
