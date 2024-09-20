@@ -207,7 +207,7 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
       }
     }
 
-    // Prepare base FFmpeg command to merge video with content audio
+    // Base command to merge video with content audio
     let command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
 
     if (backgroundAudioExists) {
@@ -229,6 +229,7 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
     }
 
     // Execute FFmpeg command to merge audio and video
+    console.log('Executing FFmpeg command to add audio to video:', command);
     await execPromise(command);
     console.log('Audio added to video successfully');
   } catch (error) {
@@ -237,7 +238,20 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
   }
 };
 
-
+// Function to get audio duration using ffmpeg
+const getAudioDuration = async (audioPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(audioPath, (err, metadata) => {
+      if (err) {
+        console.error('Error fetching audio metadata:', err);
+        reject(err);
+      } else {
+        const duration = metadata.format.duration;
+        resolve(duration);
+      }
+    });
+  });
+};
 
 
 // Function to get audio duration using ffmpeg
