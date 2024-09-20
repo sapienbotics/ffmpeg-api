@@ -369,7 +369,9 @@ app.post('/merge-videos', async (req, res) => {
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
-    const { imageUrls, duration, additionalDuration, format } = req.body; // Accept additionalDuration and duration
+    const { imageUrls, duration, additionalDuration, format } = req.body;
+    
+    // Input validation
     if (!imageUrls || !Array.isArray(imageUrls)) {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
@@ -379,9 +381,8 @@ app.post('/images-to-video', async (req, res) => {
 
     // Calculate totalDuration
     const totalDuration = duration + additionalDuration;
-    console.log(`Total duration calculated: ${totalDuration}`);
 
-    // Clear the images directory before downloading new images
+    // Clear the images directory
     fs.readdir(imagesDir, (err, files) => {
       if (err) throw err;
       for (const file of files) {
@@ -391,11 +392,11 @@ app.post('/images-to-video', async (req, res) => {
       }
     });
 
+    // Download images
     const downloadedFiles = await Promise.all(
       imageUrls.map(async (imageUrl) => {
         const filePath = await downloadImage(imageUrl, imagesDir);
-        console.log(`Downloaded ${imageUrl}: ${filePath ? 'Success' : 'Failed'}`);
-        return filePath; // Include only successfully downloaded files
+        return filePath; 
       })
     );
 
@@ -407,73 +408,32 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'No valid images were downloaded.' });
     }
 
-    // Validate images before proceeding
-    const validateImages = async (files) => {
-      // Implement validation logic (check format, etc.)
-      const validatedFiles = files.filter(file => /* validation logic here */ true); // Placeholder for validation logic
-      console.log(`Validated files: ${validatedFiles.length}`);
-      return validatedFiles;
-    };
-
-    const validatedFiles = await validateImages(validFiles);
-    if (validatedFiles.length === 0) {
-      return res.status(400).json({ error: 'No valid images available after validation.' });
-    }
-
-    // Calculate initial duration per image
-    let durationPerImage = totalDuration / validatedFiles.length;
+    // Calculate duration per image
+    const durationPerImage = totalDuration / validFiles.length;
     console.log(`Initial duration per image: ${durationPerImage}`);
-    
+
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
 
-    // Select FFmpeg scaling and padding filter based on user-selected format
+    // Select FFmpeg filter based on format
     let filter;
     if (format === 'landscape') {
-      filter = "scale=w=1920:h=1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"; // Landscape 16:9
+      filter = "scale=w=1920:h=1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2";
     } else if (format === 'portrait') {
-      filter = "scale=w=1080:h=1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"; // Portrait 9:16
+      filter = "scale=w=1080:h=1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2";
     } else if (format === 'square') {
-      filter = "scale=w=1080:h=1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2"; // Square 1:1
+      filter = "scale=w=1080:h=1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2";
     } else {
       return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
     }
 
     // FFmpeg command for merging images to video
-    const command = `ffmpeg -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+    const command = `ffmpeg -report -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuvj420p" -c:v libx264 -r 30 -pix_fmt yuvj420p ${outputFilePath}`;
 
-    try {
-      // Execute the FFmpeg command and log output
-      console.log(`Executing FFmpeg command: ${command}`);
-      const ffmpegOutput = await execPromise(command);
-      console.log('FFmpeg execution completed successfully:', ffmpegOutput);
-    } catch (ffmpegError) {
-      console.error('Error during FFmpeg execution:', ffmpegError);
+    // Log the command being executed
+    console.log(`Executing FFmpeg command: ${command}`);
 
-      // Log FFmpeg stderr if available
-      if (ffmpegError.stderr) {
-        console.error('FFmpeg error output:', ffmpegError.stderr);
-      }
-
-      // Implement logic to determine which images caused the error
-      const problematicImages = []; // Placeholder for images causing the error
-
-      // Filter out problematic images from validatedFiles
-      const filteredValidFiles = validatedFiles.filter(file => !problematicImages.includes(file));
-
-      // If there are no valid images left
-      if (filteredValidFiles.length === 0) {
-        return res.status(400).json({ error: 'No valid images left after error handling.' });
-      }
-
-      // Recalculate duration per image based on remaining valid files
-      durationPerImage = totalDuration / filteredValidFiles.length;
-      console.log(`Recalculated duration per image: ${durationPerImage}`);
-
-      // Optionally, rerun FFmpeg with filtered valid images
-      const rerunCommand = `ffmpeg -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
-      console.log(`Re-running FFmpeg command: ${rerunCommand}`);
-      await execPromise(rerunCommand);
-    }
+    // Execute the FFmpeg command
+    await execPromise(command);
 
     res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
   } catch (error) {
