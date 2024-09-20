@@ -369,7 +369,7 @@ app.post('/merge-videos', async (req, res) => {
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
-    const { imageUrls, duration, additionalDuration, format } = req.body; // Accept additionalDuration and duration
+    const { imageUrls, duration, additionalDuration, format } = req.body;
     if (!imageUrls || !Array.isArray(imageUrls)) {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
@@ -397,7 +397,7 @@ app.post('/images-to-video', async (req, res) => {
       })
     );
 
-    // Filter out null values (failed downloads) and check for file validity
+    // Filter out invalid/corrupted files
     const fileIsValid = (file) => {
       try {
         const stats = fs.statSync(file);
@@ -406,7 +406,6 @@ app.post('/images-to-video', async (req, res) => {
         return false;
       }
     };
-    
     const validFiles = downloadedFiles.filter(file => file !== null && fileIsValid(file));
 
     if (validFiles.length === 0) {
@@ -430,26 +429,23 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
     }
 
-    // FFmpeg command for merging images to video, ensuring each image is shown for durationPerImage
+    // FFmpeg command for merging images to video
     let ffmpegInputs = '';
     validFiles.forEach((file, index) => {
       ffmpegInputs += `-loop 1 -t ${durationPerImage} -i ${file} `;
     });
 
-    // Create the filter complex string to apply the scaling and padding
     const filterComplex = validFiles.map((_, index) => `[${index}:v]${filter}[v${index}]`).join('; ');
     const filterConcat = validFiles.map((_, index) => `[v${index}]`).join('');
 
-    // Correct filter graph string for FFmpeg
     const filterGraph = `"${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p"`;
 
-    // Add probesize and analyzeduration to improve analysis of image inputs
-    const ffmpegArgs = `${ffmpegInputs} -probesize 5000000 -analyzeduration 10000000 -filter_complex ${filterGraph} -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+    // Build FFmpeg args with probesize and analyzeduration
+    const ffmpegArgs = `${ffmpegInputs} -probesize 10000000 -analyzeduration 20000000 -filter_complex ${filterGraph} -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
-    // Spawn the FFmpeg process
     const ffmpeg = spawn('ffmpeg', ffmpegArgs.split(' '), { stdio: 'inherit' });
 
-    // Listen for the process to complete
+    // Handle the FFmpeg process result
     ffmpeg.on('close', (code) => {
       if (code === 0) {
         res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
@@ -468,7 +464,6 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
-
 
 
 
