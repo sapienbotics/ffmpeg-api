@@ -189,27 +189,75 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
-// Function to add audio to video
-const addAudioToVideo = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume) => {
+// Function to add audio to video with fail-safe for background audio issues
+const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
   try {
-    // Validate volume inputs
-    const contentVol = contentVolume ? contentVolume : 1.0; // Default volume for content audio
-    const backgroundVol = backgroundVolume ? backgroundVolume : 1.0; // Default volume for background audio
+    let backgroundAudioExists = true;
 
-    // FFmpeg command to add both content audio and background audio
-    const command = `
-      ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
-      "[1:a]volume=${contentVol}[a1];[2:a]volume=${backgroundVol}[a2];[a1][a2]amix=inputs=2:duration=longest" \
-      -c:v copy -shortest -y "${outputFilePath}"
+    // Check if background audio is missing or has issues
+    if (!fs.existsSync(backgroundAudioPath)) {
+      console.log('Background audio file is missing or not downloaded');
+      backgroundAudioExists = false;
+    } else {
+      // Validate background audio format (e.g., .mp3, .wav)
+      const backgroundAudioExtension = path.extname(backgroundAudioPath).toLowerCase();
+      const validFormats = ['.mp3', '.wav'];
+      if (!validFormats.includes(backgroundAudioExtension)) {
+        console.log('Background audio format is not valid:', backgroundAudioExtension);
+        backgroundAudioExists = false;
+      }
+    }
+
+    // Prepare base FFmpeg command to merge video with content audio
+    let command = `
+      ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[a1]" -map 0:v -map "[a1]" -c:v copy -shortest -y "${outputFilePath}"
     `;
 
-    // Execute FFmpeg command
+    if (backgroundAudioExists) {
+      // Get durations of content audio and background audio
+      const contentAudioDuration = await getAudioDuration(contentAudioPath);
+      const backgroundAudioDuration = await getAudioDuration(backgroundAudioPath);
+
+      if (backgroundAudioDuration < contentAudioDuration) {
+        // Loop background audio if it is shorter than content audio
+        command = `
+          ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
+          "[1:a]volume=${contentVolume}[a1]; [2:a]volume=${backgroundVolume}[a2]; [a1][a2]amix=inputs=2:duration=longest" \
+          -map 0:v -map "[a1]" -c:v copy -shortest -y "${outputFilePath}"
+        `;
+      } else {
+        // No looping needed, merge normally
+        command = `
+          ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
+          "[1:a]volume=${contentVolume}[a1]; [2:a]volume=${backgroundVolume}[a2]; [a1][a2]amix=inputs=2:duration=longest" \
+          -map 0:v -map "[a1]" -c:v copy -shortest -y "${outputFilePath}"
+        `;
+      }
+    }
+
+    // Execute FFmpeg command to merge audio and video
     await execPromise(command);
-    console.log('Audio added successfully');
+    console.log('Audio added to video successfully');
+
   } catch (error) {
     console.error('Error adding audio to video:', error);
     throw error;
   }
+};
+
+// Function to get audio duration using ffmpeg
+const getAudioDuration = async (audioPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(audioPath, (err, metadata) => {
+      if (err) {
+        console.error('Error fetching audio metadata:', err);
+        reject(err);
+      } else {
+        const duration = metadata.format.duration;
+        resolve(duration);
+      }
+    });
+  });
 };
 
 // Trim video function
@@ -389,14 +437,14 @@ app.post('/images-to-video', async (req, res) => {
 
 
 
-// Endpoint to add audio to video
+// Modified endpoint to add audio to video
 app.post('/add-audio', async (req, res) => {
   try {
     const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume, backgroundVolume } = req.body;
 
     // Validate inputs
-    if (!videoUrl || !contentAudioUrl || !backgroundAudioUrl) {
-      return res.status(400).json({ error: 'Missing video URL, content audio URL, or background audio URL.' });
+    if (!videoUrl || !contentAudioUrl) {
+      return res.status(400).json({ error: 'Missing video URL or content audio URL.' });
     }
 
     // Define paths for video, content audio, background audio, and output
@@ -405,21 +453,25 @@ app.post('/add-audio', async (req, res) => {
     const backgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
     const outputFilePath = path.join(storageDir, `${uuidv4()}_final_output.mp4`);
 
-    // Download the video and both audio files
+    // Download the video and audio files
     await downloadFile(videoUrl, videoPath);
     await downloadFile(contentAudioUrl, contentAudioPath);
-    await downloadFile(backgroundAudioUrl, backgroundAudioPath);
+    if (backgroundAudioUrl) {
+      await downloadFile(backgroundAudioUrl, backgroundAudioPath);
+    }
 
-    // Call function to add audio to video
-    await addAudioToVideo(videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume);
+    // Call function to add audio to video with fallback for background audio issues
+    await addAudioToVideoWithFallback(videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume);
 
-    // Clean up the temp files if necessary (optional)
+    // Clean up temporary files (optional)
     fs.unlinkSync(videoPath);
     fs.unlinkSync(contentAudioPath);
-    fs.unlinkSync(backgroundAudioPath);
+    if (fs.existsSync(backgroundAudioPath)) {
+      fs.unlinkSync(backgroundAudioPath);
+    }
 
     // Return the path to the final video
-    res.status(200).json({ message: 'Audio added successfully', outputUrl: outputFilePath });
+    res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputFilePath });
   } catch (error) {
     console.error('Error processing add-audio request:', error.message);
     res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
