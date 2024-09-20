@@ -370,6 +370,8 @@ app.post('/merge-videos', async (req, res) => {
 app.post('/images-to-video', async (req, res) => {
   try {
     const { imageUrls, duration, additionalDuration, format } = req.body;
+    
+    // Validate input
     if (!imageUrls || !Array.isArray(imageUrls)) {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
@@ -440,7 +442,7 @@ app.post('/images-to-video', async (req, res) => {
 
     const filterGraph = `"${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p"`;
 
-    // Build FFmpeg args with probesize and analyzeduration
+    // Build FFmpeg args with probesize and analyzeduration to avoid input issues
     const ffmpegArgs = `${ffmpegInputs} -probesize 10000000 -analyzeduration 20000000 -filter_complex ${filterGraph} -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs.split(' '), { stdio: 'inherit' });
@@ -464,7 +466,6 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
-
 
 
 
