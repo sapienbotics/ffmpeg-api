@@ -468,11 +468,6 @@ app.post('/images-to-video', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
 
 
 // Modified endpoint to add audio to video
