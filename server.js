@@ -189,7 +189,6 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
-// Function to add audio to video with fail-safe for background audio issues
 const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
   try {
     let backgroundAudioExists = true;
@@ -209,9 +208,7 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
     }
 
     // Prepare base FFmpeg command to merge video with content audio
-    let command = `
-      ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[a1]" -map 0:v -map "[a1]" -c:v copy -shortest -y "${outputFilePath}"
-    `;
+    let command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
 
     if (backgroundAudioExists) {
       // Get durations of content audio and background audio
@@ -220,30 +217,28 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
 
       if (backgroundAudioDuration < contentAudioDuration) {
         // Loop background audio if it is shorter than content audio
-        command = `
-          ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
-          "[1:a]volume=${contentVolume}[a1]; [2:a]volume=${backgroundVolume}[a2]; [a1][a2]amix=inputs=2:duration=longest" \
-          -map 0:v -map "[a1]" -c:v copy -shortest -y "${outputFilePath}"
-        `;
+        command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
+          "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest" \
+          -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
       } else {
         // No looping needed, merge normally
-        command = `
-          ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
-          "[1:a]volume=${contentVolume}[a1]; [2:a]volume=${backgroundVolume}[a2]; [a1][a2]amix=inputs=2:duration=longest" \
-          -map 0:v -map "[a1]" -c:v copy -shortest -y "${outputFilePath}"
-        `;
+        command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
+          "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest" \
+          -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
       }
     }
 
     // Execute FFmpeg command to merge audio and video
     await execPromise(command);
     console.log('Audio added to video successfully');
-
   } catch (error) {
     console.error('Error adding audio to video:', error);
     throw error;
   }
 };
+
+
+
 
 // Function to get audio duration using ffmpeg
 const getAudioDuration = async (audioPath) => {
