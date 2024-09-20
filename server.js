@@ -4,6 +4,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const util = require('util');
 const ffmpeg = require('fluent-ffmpeg');
 const { promisify } = require('util');
@@ -364,6 +365,7 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 
+const { spawn } = require('child_process');
 
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
@@ -430,12 +432,25 @@ app.post('/images-to-video', async (req, res) => {
     const filterComplex = validFiles.map((_, index) => `[${index}:v]${filter}[v${index}]`).join(';');
     const filterConcat = validFiles.map((_, index) => `[v${index}]`).join('');
 
-    const command = `ffmpeg ${ffmpegInputs} -filter_complex "${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+    const ffmpegArgs = `${ffmpegInputs} -filter_complex "${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
-    // Execute the FFmpeg command
-    await execPromise(command);
+    // Spawn the FFmpeg process
+    const ffmpeg = spawn('ffmpeg', ffmpegArgs.split(' '), { stdio: 'inherit' });
 
-    res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
+    // Listen for the process to complete
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
+      } else {
+        res.status(500).json({ error: 'FFmpeg process failed.' });
+      }
+    });
+
+    ffmpeg.on('error', (error) => {
+      console.error('Error during FFmpeg execution:', error);
+      res.status(500).json({ error: 'Failed to create video from images.' });
+    });
+
   } catch (error) {
     console.error('Error creating video from images:', error);
     res.status(500).json({ error: 'Failed to create video from images.' });
