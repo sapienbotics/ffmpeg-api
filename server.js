@@ -371,7 +371,7 @@ app.post('/images-to-video', async (req, res) => {
   try {
     const { imageUrls, duration, additionalDuration, format } = req.body;
     
-    // Validate input
+    // Validate inputs
     if (!imageUrls || !Array.isArray(imageUrls)) {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
@@ -379,17 +379,17 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'Invalid duration or additionalDuration input. Duration must be a positive number and additionalDuration a non-negative number.' });
     }
 
-    // Calculate totalDuration
+    // Calculate total duration
     const totalDuration = duration + additionalDuration;
 
     // Clear the images directory before downloading new images
     fs.readdir(imagesDir, (err, files) => {
       if (err) throw err;
-      for (const file of files) {
+      files.forEach(file => {
         fs.unlink(path.join(imagesDir, file), (err) => {
           if (err) throw err;
         });
-      }
+      });
     });
 
     const downloadedFiles = await Promise.all(
@@ -408,13 +408,14 @@ app.post('/images-to-video', async (req, res) => {
         return false;
       }
     };
+    
     const validFiles = downloadedFiles.filter(file => file !== null && fileIsValid(file));
 
     if (validFiles.length === 0) {
       return res.status(400).json({ error: 'No valid images were downloaded.' });
     }
 
-    // Calculate duration per image based on totalDuration and the number of valid files
+    // Calculate duration per image based on total duration and the number of valid files
     const durationPerImage = totalDuration / validFiles.length;
 
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
@@ -433,16 +434,16 @@ app.post('/images-to-video', async (req, res) => {
 
     // FFmpeg command for merging images to video
     let ffmpegInputs = '';
-    validFiles.forEach((file, index) => {
+    validFiles.forEach((file) => {
       ffmpegInputs += `-loop 1 -t ${durationPerImage} -i ${file} `;
     });
 
     const filterComplex = validFiles.map((_, index) => `[${index}:v]${filter}[v${index}]`).join('; ');
     const filterConcat = validFiles.map((_, index) => `[v${index}]`).join('');
 
-    const filterGraph = `"${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p"`;
+    const filterGraph = `${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p`;
 
-    // Build FFmpeg args with probesize and analyzeduration to avoid input issues
+    // Build FFmpeg args with probesize and analyzeduration
     const ffmpegArgs = `${ffmpegInputs} -probesize 10000000 -analyzeduration 20000000 -filter_complex ${filterGraph} -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs.split(' '), { stdio: 'inherit' });
@@ -467,6 +468,10 @@ app.post('/images-to-video', async (req, res) => {
   }
 });
 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
 
 
 
