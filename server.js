@@ -254,20 +254,6 @@ const getAudioDuration = async (audioPath) => {
 };
 
 
-// Function to get audio duration using ffmpeg
-const getAudioDuration = async (audioPath) => {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(audioPath, (err, metadata) => {
-      if (err) {
-        console.error('Error fetching audio metadata:', err);
-        reject(err);
-      } else {
-        const duration = metadata.format.duration;
-        resolve(duration);
-      }
-    });
-  });
-};
 
 // Trim video function
 async function trimVideo(inputPath, outputPath, startTime, duration) {
