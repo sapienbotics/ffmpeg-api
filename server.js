@@ -401,8 +401,9 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'No valid images were downloaded.' });
     }
 
-    // Calculate duration per image based on totalDuration and the number of valid files
-    const durationPerImage = totalDuration / validFiles.length;
+    // Ensure each image is displayed for a minimum duration
+    const minDurationPerImage = 3; // Minimum duration per image
+    const durationPerImage = Math.max(totalDuration / validFiles.length, minDurationPerImage);
 
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
 
@@ -424,12 +425,18 @@ app.post('/images-to-video', async (req, res) => {
     // Execute the FFmpeg command
     await execPromise(command);
 
+    // Optionally, check the duration of the resulting video
+    const durationCheckCommand = `ffmpeg -i ${outputFilePath} 2>&1 | grep "Duration"`;
+    const durationResult = await execPromise(durationCheckCommand);
+    console.log('Output Video Duration:', durationResult);
+
     res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
   } catch (error) {
     console.error('Error creating video from images:', error);
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
+
 
 
 
