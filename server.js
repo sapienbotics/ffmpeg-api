@@ -401,8 +401,8 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'No valid images were downloaded.' });
     }
 
-    // Ensure each image is displayed for a minimum duration
-    const durationPerImage = Math.max(totalDuration / validFiles.length, 3); // Ensure a minimum of 3 seconds
+    // Calculate duration per image based on totalDuration and the number of valid files
+    const durationPerImage = totalDuration / validFiles.length;
 
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
 
@@ -418,12 +418,8 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
     }
 
-    // Create a temporary input file list for FFmpeg
-    const inputFileListPath = path.join(imagesDir, 'input.txt');
-    fs.writeFileSync(inputFileListPath, validFiles.map(file => `file '${file}'`).join('\n'));
-
-    // FFmpeg command for merging images to video with explicitly set total duration
-    const command = `ffmpeg -f concat -safe 0 -i ${inputFileListPath} -vf "${filter},format=yuv420p" -c:v libx264 -t ${totalDuration} -pix_fmt yuv420p ${outputFilePath}`;
+    // FFmpeg command for merging images to video with calculated duration per image
+    const command = `ffmpeg -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
     // Execute the FFmpeg command
     await execPromise(command);
