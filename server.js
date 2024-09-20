@@ -397,8 +397,17 @@ app.post('/images-to-video', async (req, res) => {
       })
     );
 
-    // Filter out null values (failed downloads)
-    const validFiles = downloadedFiles.filter(file => file !== null);
+    // Filter out null values (failed downloads) and check for file validity
+    const fileIsValid = (file) => {
+      try {
+        const stats = fs.statSync(file);
+        return stats.size > 0;
+      } catch (err) {
+        return false;
+      }
+    };
+    
+    const validFiles = downloadedFiles.filter(file => file !== null && fileIsValid(file));
 
     if (validFiles.length === 0) {
       return res.status(400).json({ error: 'No valid images were downloaded.' });
@@ -428,10 +437,14 @@ app.post('/images-to-video', async (req, res) => {
     });
 
     // Create the filter complex string to apply the scaling and padding
-    const filterComplex = validFiles.map((_, index) => `[${index}:v]${filter}[v${index}]`).join(';');
+    const filterComplex = validFiles.map((_, index) => `[${index}:v]${filter}[v${index}]`).join('; ');
     const filterConcat = validFiles.map((_, index) => `[v${index}]`).join('');
 
-    const ffmpegArgs = `${ffmpegInputs} -filter_complex "${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+    // Correct filter graph string for FFmpeg
+    const filterGraph = `"${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p"`;
+
+    // Add probesize and analyzeduration to improve analysis of image inputs
+    const ffmpegArgs = `${ffmpegInputs} -probesize 5000000 -analyzeduration 10000000 -filter_complex ${filterGraph} -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
     // Spawn the FFmpeg process
     const ffmpeg = spawn('ffmpeg', ffmpegArgs.split(' '), { stdio: 'inherit' });
@@ -455,7 +468,6 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
-
 
 
 
