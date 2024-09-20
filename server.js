@@ -444,10 +444,15 @@ app.post('/images-to-video', async (req, res) => {
     try {
       // Execute the FFmpeg command and log output
       console.log(`Executing FFmpeg command: ${command}`);
-      await execPromise(command);
-      console.log('FFmpeg execution completed successfully.');
+      const ffmpegOutput = await execPromise(command);
+      console.log('FFmpeg execution completed successfully:', ffmpegOutput);
     } catch (ffmpegError) {
       console.error('Error during FFmpeg execution:', ffmpegError);
+
+      // Log FFmpeg stderr if available
+      if (ffmpegError.stderr) {
+        console.error('FFmpeg error output:', ffmpegError.stderr);
+      }
 
       // Implement logic to determine which images caused the error
       const problematicImages = []; // Placeholder for images causing the error
