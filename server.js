@@ -363,6 +363,14 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+const util = require('util');
+const execPromise = util.promisify(exec);
+const maxBufferValue = 1024 * 1024 * 20; // Increase maxBuffer to 20MB
+
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
@@ -430,8 +438,8 @@ app.post('/images-to-video', async (req, res) => {
 
     const command = `ffmpeg ${ffmpegInputs} -filter_complex "${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
-    // Execute the FFmpeg command
-    await execPromise(command);
+    // Execute the FFmpeg command with increased buffer
+    await execPromise(command, { maxBuffer: maxBufferValue });
 
     res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
   } catch (error) {
@@ -439,6 +447,7 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
+
 
 
 
