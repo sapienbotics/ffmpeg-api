@@ -418,8 +418,17 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
     }
 
-    // FFmpeg command for merging images to video with calculated duration per image
-    const command = `ffmpeg -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+    // FFmpeg command for merging images to video with explicit duration per image
+    let ffmpegInputs = '';
+    validFiles.forEach((file, index) => {
+      ffmpegInputs += `-loop 1 -t ${durationPerImage} -i ${file} `;
+    });
+
+    // Create the filter complex string to apply the scaling and padding
+    const filterComplex = validFiles.map((_, index) => `[${index}:v]${filter}[v${index}]`).join(';');
+    const filterConcat = validFiles.map((_, index) => `[v${index}]`).join('');
+
+    const command = `ffmpeg ${ffmpegInputs} -filter_complex "${filterComplex}; ${filterConcat}concat=n=${validFiles.length}:v=1:a=0,format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
     // Execute the FFmpeg command
     await execPromise(command);
