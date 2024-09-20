@@ -8,6 +8,7 @@ const util = require('util');
 const ffmpeg = require('fluent-ffmpeg');
 const { promisify } = require('util');
 const crypto = require('crypto');
+const maxBufferValue = 1024 * 1024 * 20; // Increase maxBuffer to 20MB
 
 
 
@@ -363,13 +364,6 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 
-const { exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-const util = require('util');
-const execPromise = util.promisify(exec);
-const maxBufferValue = 1024 * 1024 * 20; // Increase maxBuffer to 20MB
 
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
