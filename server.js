@@ -189,6 +189,7 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
+// Function to apply audio to video with fallbacks
 const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
   try {
     let backgroundAudioExists = true;
@@ -218,13 +219,13 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
       if (backgroundAudioDuration < contentAudioDuration) {
         // Loop background audio if it is shorter than content audio
         command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
-          "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest" \
-          -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
+          "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
+          -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
       } else {
         // No looping needed, merge normally
         command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
-          "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest" \
-          -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
+          "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
+          -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
       }
     }
 
