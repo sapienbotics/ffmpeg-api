@@ -429,7 +429,7 @@ app.post('/images-to-video', async (req, res) => {
     const command = ffmpeg();
 
     // Add each image with its duration to the FFmpeg command
-    validFiles.forEach((filePath, index) => {
+    validFiles.forEach((filePath) => {
       command.input(filePath)
         .loop(1)
         .inputOption(`-t ${durationPerImage}`); // Set per-image duration
@@ -460,7 +460,6 @@ app.post('/images-to-video', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while creating the video.' });
   }
 });
-
 
 
 
