@@ -365,7 +365,6 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 
-
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
@@ -410,7 +409,7 @@ app.post('/images-to-video', async (req, res) => {
 
     // Calculate duration per image
     const durationPerImage = totalDuration / validFiles.length;
-    console.log(`Initial duration per image: ${durationPerImage}`);
+    console.log(`Initial duration per image: ${durationPerImage} seconds`);
 
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
 
@@ -423,24 +422,45 @@ app.post('/images-to-video', async (req, res) => {
     } else if (format === 'square') {
       filter = "scale=w=1080:h=1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2";
     } else {
-      return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
+      return res.status(400).json({ error: 'Invalid format. Choose from landscape, portrait, or square.' });
     }
 
-    // FFmpeg command for merging images to video
-    const command = `ffmpeg -report -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuvj420p" -c:v libx264 -r 30 -pix_fmt yuvj420p ${outputFilePath}`;
+    // Create FFmpeg command
+    const command = ffmpeg();
 
-    // Log the command being executed
-    console.log(`Executing FFmpeg command: ${command}`);
+    // Add each image with its duration to the FFmpeg command
+    validFiles.forEach((filePath) => {
+      command.input(filePath)
+        .loop(1)
+        .inputOption(`-t ${durationPerImage}`);
+    });
 
-    // Execute the FFmpeg command
-    await execPromise(command);
+    // Apply scaling filter and other necessary options
+    command
+      .videoFilter(filter)
+      .outputOptions([
+        '-r 30', // Set frame rate
+        '-pix_fmt yuv420p', // Ensure compatibility with most players
+      ])
+      .on('start', (cmd) => {
+        console.log('Executing FFmpeg command:', cmd);
+      })
+      .on('error', (err) => {
+        console.error('FFmpeg error:', err);
+        return res.status(500).json({ error: 'Error during FFmpeg processing' });
+      })
+      .on('end', () => {
+        console.log('FFmpeg process completed successfully');
+        res.status(200).json({ message: 'Video created successfully', outputUrl: outputFilePath });
+      })
+      .save(outputFilePath); // Save the final video
 
-    res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
   } catch (error) {
-    console.error('Error creating video from images:', error);
-    res.status(500).json({ error: 'Failed to create video from images.' });
+    console.error('Error processing /images-to-video request:', error);
+    res.status(500).json({ error: 'An error occurred while creating the video.' });
   }
 });
+
 
 
 
