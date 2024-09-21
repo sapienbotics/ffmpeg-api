@@ -369,7 +369,7 @@ app.post('/merge-videos', async (req, res) => {
 app.post('/images-to-video', async (req, res) => {
   try {
     const { imageUrls, duration, additionalDuration, format } = req.body;
-    
+
     // Input validation
     if (!imageUrls || !Array.isArray(imageUrls)) {
       return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
@@ -395,7 +395,7 @@ app.post('/images-to-video', async (req, res) => {
     const downloadedFiles = await Promise.all(
       imageUrls.map(async (imageUrl) => {
         const filePath = await downloadImage(imageUrl, imagesDir);
-        return filePath; 
+        return filePath;
       })
     );
 
@@ -429,10 +429,10 @@ app.post('/images-to-video', async (req, res) => {
     const command = ffmpeg();
 
     // Add each image with its duration to the FFmpeg command
-    validFiles.forEach((filePath) => {
+    validFiles.forEach((filePath, index) => {
       command.input(filePath)
         .loop(1)
-        .inputOption(`-t ${durationPerImage}`);
+        .inputOption(`-t ${durationPerImage}`); // Set per-image duration
     });
 
     // Apply scaling filter and other necessary options
