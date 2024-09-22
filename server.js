@@ -533,6 +533,78 @@ app.get('/download/:filename', (req, res) => {
   }
 });
 
+// Function to convert an image into a video of specified duration
+const createImageVideo = async (imagePath, duration, outputPath) => {
+  const command = `ffmpeg -loop 1 -i "${imagePath}" -c:v libx264 -t ${duration} -pix_fmt yuv420p -vf "scale=1280:720" -y "${outputPath}"`;
+  await execPromise(command);
+};
+
+// Function to merge images and videos in a given sequence
+const mergeMediaSequence = async (mediaSequence, outputPath) => {
+  const tempFiles = [];
+  try {
+    // Iterate through the sequence and process each item (image or video)
+    for (const [index, media] of mediaSequence.entries()) {
+      const ext = path.extname(media.url).toLowerCase();
+      const uniqueFilename = `${uuidv4()}_media_${index}.mp4`;
+      const tempFilePath = path.join(storageDir, uniqueFilename);
+
+      if (ext === '.mp4') {
+        // If it's a video, download it directly
+        await downloadFile(media.url, tempFilePath);
+      } else {
+        // If it's an image, convert it to a video of specified duration
+        const imageTempFilePath = await downloadImage(media.url, imagesDir);
+        if (imageTempFilePath) {
+          await createImageVideo(imageTempFilePath, media.duration, tempFilePath);
+        } else {
+          throw new Error(`Failed to download or process image: ${media.url}`);
+        }
+      }
+
+      tempFiles.push(tempFilePath);
+    }
+
+    // After preparing all media, merge them in the specified sequence
+    await mergeVideos(tempFiles, outputPath);
+  } catch (error) {
+    console.error('Error merging media sequence:', error);
+    throw error;
+  } finally {
+    // Clean up temporary files
+    tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
+  }
+};
+
+// Endpoint to merge images and videos in sequence
+app.post('/merge-media-sequence', async (req, res) => {
+  try {
+    const { mediaSequence } = req.body;
+    if (!mediaSequence || !Array.isArray(mediaSequence)) {
+      return res.status(400).json({ error: 'Invalid mediaSequence input. It must be an array of media objects.' });
+    }
+
+    // Validate media sequence (each item must have a url and duration for images)
+    for (const media of mediaSequence) {
+      if (!media.url || (media.url.toLowerCase().endsWith('.jpg') && !media.duration)) {
+        return res.status(400).json({ error: 'Each media must have a valid URL and duration for images.' });
+      }
+    }
+
+    // Define output file path
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_sequence.mp4`);
+
+    // Call function to merge media sequence
+    await mergeMediaSequence(mediaSequence, outputFilePath);
+
+    res.status(200).json({ message: 'Media merged successfully', outputUrl: outputFilePath });
+  } catch (error) {
+    console.error('Error merging media sequence:', error);
+    res.status(500).json({ error: 'Failed to merge media sequence.' });
+  }
+});
+
+
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
