@@ -9,8 +9,7 @@ const util = require('util');
 const ffmpeg = require('fluent-ffmpeg');
 const { promisify } = require('util');
 const crypto = require('crypto');
-const maxBufferValue = 1024 * 1024 * 20; // Increase maxBuffer to 20MB
-
+const { downloadImage, ensureDirectoryExists } = require('./utils');
 
 
 const app = express();
@@ -375,31 +374,34 @@ app.post('/images-to-video', async (req, res) => {
       return res.status(400).json({ error: 'Invalid imageUrls input. Must be an array of image URLs.' });
     }
     if (typeof duration !== 'number' || duration <= 0 || typeof additionalDuration !== 'number' || additionalDuration < 0) {
-      return res.status(400).json({ error: 'Invalid duration or additionalDuration. Must be a positive number.' });
+      return res.status(400).json({ error: 'Invalid duration or additionalDuration. Must be positive numbers.' });
     }
 
     // Total duration
     const totalDuration = duration + additionalDuration;
 
-    // Download images and clean images directory
-    const imagesDir = '/path/to/your/images'; // Change as per your setup
-    const storageDir = '/path/to/your/storage'; // Change as per your setup
+    // Directories
+    const imagesDir = path.join(__dirname, 'images');
+    const storageDir = path.join(__dirname, 'storage/processed');
+
+    // Ensure directories exist
+    await ensureDirectoryExists(imagesDir);
+    await ensureDirectoryExists(storageDir);
 
     // Clean previous images
-    fs.readdir(imagesDir, (err, files) => {
-      if (err) throw err;
-      for (const file of files) {
-        fs.unlink(path.join(imagesDir, file), (err) => {
-          if (err) throw err;
-        });
-      }
-    });
+    const imageFiles = await fs.promises.readdir(imagesDir);
+    await Promise.all(imageFiles.map(file => fs.promises.unlink(path.join(imagesDir, file))));
 
-    // Download images (assuming you have a working downloadImage function)
+    // Download images
     const downloadedFiles = await Promise.all(
       imageUrls.map(async (imageUrl) => {
-        const filePath = await downloadImage(imageUrl, imagesDir);
-        return filePath;
+        try {
+          const filePath = await downloadImage(imageUrl, imagesDir);
+          return filePath;
+        } catch (error) {
+          console.error(`Error downloading image: ${imageUrl}`, error);
+          return null;
+        }
       })
     );
 
@@ -413,6 +415,7 @@ app.post('/images-to-video', async (req, res) => {
     const durationPerImage = totalDuration / validFiles.length;
     console.log(`Duration per image: ${durationPerImage}`);
 
+    // Output file path
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
 
     // Select FFmpeg filter based on format
@@ -461,6 +464,26 @@ app.post('/images-to-video', async (req, res) => {
     console.error('Error processing request:', error);
     res.status(500).json({ error: 'An error occurred while creating the video.' });
   }
+});
+
+// Utility function to ensure directory exists
+async function ensureDirectoryExists(dir) {
+  if (!fs.existsSync(dir)) {
+    await fs.promises.mkdir(dir, { recursive: true });
+  }
+}
+
+// Utility function to download image (dummy placeholder)
+// You should replace this with your actual implementation
+async function downloadImage(url, dest) {
+  // Simulate successful image download
+  const filePath = path.join(dest, `${uuidv4()}.jpg`);
+  // Write logic to download image to filePath
+  return filePath;
+}
+
+app.listen(3000, () => {
+  console.log('Server is running on port 3000');
 });
 
 
