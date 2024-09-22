@@ -363,89 +363,75 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 
+// Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
-    const { imageUrls, duration, additionalDuration, format } = req.body;
-
-    const outputDir = 'output';
-    const outputVideoPath = path.join(outputDir, 'video.mp4'); // Adjust path as needed
-
-    // Ensure the output directory exists
-    if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir);
+  try {
+    const { imageUrls, duration, additionalDuration, format } = req.body; // Accept additionalDuration and duration
+    if (!imageUrls || !Array.isArray(imageUrls)) {
+      return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
+    }
+    if (typeof duration !== 'number' || duration <= 0 || typeof additionalDuration !== 'number' || additionalDuration < 0) {
+      return res.status(400).json({ error: 'Invalid duration or additionalDuration input. Duration must be a positive number and additionalDuration a non-negative number.' });
     }
 
-    let validImages = [];
-
-    // Validate images
-    for (const url of imageUrls) {
-        const isValid = await validateImage(url);
-        if (isValid) {
-            validImages.push(url);
-        }
-    }
-
-    if (validImages.length === 0) {
-        return res.status(400).send('No valid images provided.');
-    }
-
+    // Calculate totalDuration
     const totalDuration = duration + additionalDuration;
-    const durationPerImage = totalDuration / validImages.length;
 
-    // Create FFmpeg command
-    const command = ffmpeg();
-
-    validImages.forEach((url) => {
-        command.input(url).inputOptions([
-            `-t ${durationPerImage}`
-        ]);
+    // Clear the images directory before downloading new images
+    fs.readdir(imagesDir, (err, files) => {
+      if (err) throw err;
+      for (const file of files) {
+        fs.unlink(path.join(imagesDir, file), (err) => {
+          if (err) throw err;
+        });
+      }
     });
 
-    command
-        .on('end', () => {
-            // Check the output video duration
-            ffmpeg.ffprobe(outputVideoPath, (err, metadata) => {
-                if (err) {
-                    return res.status(500).send('Error analyzing video.');
-                }
+    const downloadedFiles = await Promise.all(
+      imageUrls.map(async (imageUrl) => {
+        const filePath = await downloadImage(imageUrl, imagesDir);
+        return filePath; // Include only successfully downloaded files
+      })
+    );
 
-                const videoDuration = metadata.format.duration;
+    // Filter out null values (failed downloads)
+    const validFiles = downloadedFiles.filter(file => file !== null);
 
-                // If video is shorter than totalDuration, repeat frames
-                if (videoDuration < totalDuration) {
-                    const repeatCount = Math.ceil(totalDuration / videoDuration);
-                    const repeatedVideoPath = path.join(outputDir, 'repeated_video.mp4'); // Adjust path as needed
+    if (validFiles.length === 0) {
+      return res.status(400).json({ error: 'No valid images were downloaded.' });
+    }
 
-                    // Create a new command to repeat the video
-                    ffmpeg()
-                        .input(outputVideoPath)
-                        .outputOptions([
-                            `-stream_loop ${repeatCount - 1}`, // Loop the video
-                            '-c copy',
-                            `-t ${totalDuration}` // Set the total duration
-                        ])
-                        .save(repeatedVideoPath)
-                        .on('end', () => res.download(repeatedVideoPath)) // Download the final video
-                        .on('error', (err) => res.status(500).send('Error creating repeated video.'));
-                } else {
-                    res.download(outputVideoPath); // Download the original video if no repetition is needed
-                }
-            });
-        })
-        .on('error', (err) => {
-            res.status(500).send('Error processing video: ' + err.message);
-        })
-        .save(outputVideoPath);
+    // Calculate duration per image based on totalDuration and the number of valid files
+    const durationPerImage = totalDuration / validFiles.length;
+
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
+
+    // Select FFmpeg scaling and padding filter based on user-selected format
+    let filter;
+    if (format === 'landscape') {
+      filter = "scale=w=1920:h=1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"; // Landscape 16:9
+    } else if (format === 'portrait') {
+      filter = "scale=w=1080:h=1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"; // Portrait 9:16
+    } else if (format === 'square') {
+      filter = "scale=w=1080:h=1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2"; // Square 1:1
+    } else {
+      return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
+    }
+
+    // FFmpeg command for merging images to video with calculated duration per image
+    const command = `ffmpeg -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+
+    // Execute the FFmpeg command
+    await execPromise(command);
+
+    res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
+  } catch (error) {
+    console.error('Error creating video from images:', error);
+    res.status(500).json({ error: 'Failed to create video from images.' });
+  }
 });
 
-// Function to validate images (e.g., check file format)
-async function validateImage(url) {
-    // Implement your validation logic here
-    // For example, check if the URL points to a valid image file
-    return new Promise((resolve) => {
-        // Dummy validation: Allow all URLs for demonstration purposes
-        resolve(true); // Replace with actual validation logic
-    });
-}
+
 
 // Modified endpoint to add audio to video
 app.post('/add-audio', async (req, res) => {
