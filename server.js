@@ -365,8 +365,17 @@ app.post('/merge-videos', async (req, res) => {
 
 app.post('/images-to-video', async (req, res) => {
     const { imageUrls, duration, additionalDuration, format } = req.body;
+
+    const outputDir = 'output';
+    const outputVideoPath = path.join(outputDir, 'video.mp4'); // Adjust path as needed
+
+    // Ensure the output directory exists
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir);
+    }
+
     let validImages = [];
-    
+
     // Validate images
     for (const url of imageUrls) {
         const isValid = await validateImage(url);
@@ -381,8 +390,6 @@ app.post('/images-to-video', async (req, res) => {
 
     const totalDuration = duration + additionalDuration;
     const durationPerImage = totalDuration / validImages.length;
-
-    const outputVideoPath = 'output/video.mp4'; // Adjust path as needed
 
     // Create FFmpeg command
     const command = ffmpeg();
@@ -406,7 +413,7 @@ app.post('/images-to-video', async (req, res) => {
                 // If video is shorter than totalDuration, repeat frames
                 if (videoDuration < totalDuration) {
                     const repeatCount = Math.ceil(totalDuration / videoDuration);
-                    const repeatedVideoPath = 'output/repeated_video.mp4'; // Adjust path as needed
+                    const repeatedVideoPath = path.join(outputDir, 'repeated_video.mp4'); // Adjust path as needed
 
                     // Create a new command to repeat the video
                     ffmpeg()
