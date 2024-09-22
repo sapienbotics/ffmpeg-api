@@ -9,7 +9,6 @@ const util = require('util');
 const ffmpeg = require('fluent-ffmpeg');
 const { promisify } = require('util');
 const crypto = require('crypto');
-const { downloadImage, ensureDirectoryExists } = require('./utils');
 
 
 const app = express();
