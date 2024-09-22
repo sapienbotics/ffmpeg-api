@@ -4,11 +4,11 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const { exec } = require('child_process');
-const { spawn } = require('child_process');
 const util = require('util');
 const ffmpeg = require('fluent-ffmpeg');
 const { promisify } = require('util');
 const crypto = require('crypto');
+
 
 
 const app = express();
@@ -366,114 +366,70 @@ app.post('/merge-videos', async (req, res) => {
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
-    const { imageUrls, duration, additionalDuration, format } = req.body;
-
-    // Validate input
+    const { imageUrls, duration, additionalDuration, format } = req.body; // Accept additionalDuration and duration
     if (!imageUrls || !Array.isArray(imageUrls)) {
-      return res.status(400).json({ error: 'Invalid imageUrls input. Must be an array of image URLs.' });
+      return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
     }
     if (typeof duration !== 'number' || duration <= 0 || typeof additionalDuration !== 'number' || additionalDuration < 0) {
-      return res.status(400).json({ error: 'Invalid duration or additionalDuration. Must be a positive number.' });
+      return res.status(400).json({ error: 'Invalid duration or additionalDuration input. Duration must be a positive number and additionalDuration a non-negative number.' });
     }
 
-    // Total duration
+    // Calculate totalDuration
     const totalDuration = duration + additionalDuration;
 
-    // Define directories
-    const imagesDir = '/path/to/your/images'; // Change as per your setup
-    const storageDir = '/path/to/your/storage'; // Change as per your setup
-
-    // Clean previous images before downloading new ones
+    // Clear the images directory before downloading new images
     fs.readdir(imagesDir, (err, files) => {
       if (err) throw err;
       for (const file of files) {
         fs.unlink(path.join(imagesDir, file), (err) => {
-          if (err) console.error(`Failed to delete file ${file}: ${err}`);
+          if (err) throw err;
         });
       }
     });
 
-    // Download images (assuming you have a working downloadImage function)
     const downloadedFiles = await Promise.all(
       imageUrls.map(async (imageUrl) => {
-        try {
-          const filePath = await downloadImage(imageUrl, imagesDir);
-          return filePath;
-        } catch (error) {
-          console.error(`Failed to download image from ${imageUrl}: ${error}`);
-          return null;
-        }
+        const filePath = await downloadImage(imageUrl, imagesDir);
+        return filePath; // Include only successfully downloaded files
       })
     );
 
-    // Filter out failed downloads
+    // Filter out null values (failed downloads)
     const validFiles = downloadedFiles.filter(file => file !== null);
+
     if (validFiles.length === 0) {
-      return res.status(400).json({ error: 'No valid images downloaded.' });
+      return res.status(400).json({ error: 'No valid images were downloaded.' });
     }
 
-    // Check if files actually exist
-    const missingFiles = validFiles.filter(file => !fs.existsSync(file));
-    if (missingFiles.length > 0) {
-      return res.status(400).json({ error: 'Some downloaded images are missing.' });
-    }
-
-    // Calculate duration per image
+    // Calculate duration per image based on totalDuration and the number of valid files
     const durationPerImage = totalDuration / validFiles.length;
-    console.log(`Duration per image: ${durationPerImage}`);
 
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
 
-    // Select FFmpeg filter based on format
+    // Select FFmpeg scaling and padding filter based on user-selected format
     let filter;
     if (format === 'landscape') {
-      filter = "scale=w=1920:h=1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2";
+      filter = "scale=w=1920:h=1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"; // Landscape 16:9
     } else if (format === 'portrait') {
-      filter = "scale=w=1080:h=1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2";
+      filter = "scale=w=1080:h=1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"; // Portrait 9:16
     } else if (format === 'square') {
-      filter = "scale=w=1080:h=1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2";
+      filter = "scale=w=1080:h=1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2"; // Square 1:1
     } else {
-      return res.status(400).json({ error: 'Invalid format. Choose landscape, portrait, or square.' });
+      return res.status(400).json({ error: 'Invalid format. Please choose landscape, portrait, or square.' });
     }
 
-    // Create FFmpeg command
-    const command = ffmpeg();
+    // FFmpeg command for merging images to video with calculated duration per image
+    const command = `ffmpeg -framerate 1/${durationPerImage} -pattern_type glob -i '${imagesDir}/*.jpg' -vf "${filter},format=yuv420p" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
 
-    // Add each valid image with correct duration to FFmpeg command
-    validFiles.forEach((filePath) => {
-      command.input(filePath)
-        .loop(1) // Loop for static image
-        .inputOption(`-t ${durationPerImage}`); // Correct duration per image
-    });
+    // Execute the FFmpeg command
+    await execPromise(command);
 
-    // Apply scaling filter and necessary output options
-    command
-      .videoFilter(filter)
-      .outputOptions([
-        '-r 30',              // Frame rate
-        '-pix_fmt yuv420p',    // Pixel format
-      ])
-      .on('start', (cmd) => {
-        console.log('Executing FFmpeg command:', cmd);
-      })
-      .on('error', (err) => {
-        console.error('FFmpeg error:', err);
-        return res.status(500).json({ error: 'Error during FFmpeg processing.' });
-      })
-      .on('end', () => {
-        console.log('FFmpeg process completed successfully.');
-        res.status(200).json({ message: 'Video created successfully', outputUrl: outputFilePath });
-      })
-      .save(outputFilePath); // Save the final video
-
+    res.status(200).json({ message: 'Video created from images successfully', outputUrl: outputFilePath });
   } catch (error) {
-    console.error('Error processing request:', error);
-    res.status(500).json({ error: 'An error occurred while creating the video.' });
+    console.error('Error creating video from images:', error);
+    res.status(500).json({ error: 'Failed to create video from images.' });
   }
 });
-
-
-
 
 
 
