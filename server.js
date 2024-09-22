@@ -365,23 +365,32 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 
+const ffmpeg = require('fluent-ffmpeg');
+const fs = require('fs');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
     const { imageUrls, duration, additionalDuration, format } = req.body;
 
-    // Input validation
+    // Validate input
     if (!imageUrls || !Array.isArray(imageUrls)) {
-      return res.status(400).json({ error: 'Invalid imageUrls input. It must be an array of image URLs.' });
+      return res.status(400).json({ error: 'Invalid imageUrls input. Must be an array of image URLs.' });
     }
     if (typeof duration !== 'number' || duration <= 0 || typeof additionalDuration !== 'number' || additionalDuration < 0) {
-      return res.status(400).json({ error: 'Invalid duration or additionalDuration input. Duration must be a positive number and additionalDuration a non-negative number.' });
+      return res.status(400).json({ error: 'Invalid duration or additionalDuration. Must be a positive number.' });
     }
 
-    // Calculate totalDuration
+    // Total duration
     const totalDuration = duration + additionalDuration;
 
-    // Clear the images directory
+    // Download images and clean images directory
+    const imagesDir = '/path/to/your/images'; // Change as per your setup
+    const storageDir = '/path/to/your/storage'; // Change as per your setup
+
+    // Clean previous images
     fs.readdir(imagesDir, (err, files) => {
       if (err) throw err;
       for (const file of files) {
@@ -391,7 +400,7 @@ app.post('/images-to-video', async (req, res) => {
       }
     });
 
-    // Download images
+    // Download images (assuming you have a working downloadImage function)
     const downloadedFiles = await Promise.all(
       imageUrls.map(async (imageUrl) => {
         const filePath = await downloadImage(imageUrl, imagesDir);
@@ -399,17 +408,15 @@ app.post('/images-to-video', async (req, res) => {
       })
     );
 
-    // Filter out null values (failed downloads)
+    // Filter out failed downloads
     const validFiles = downloadedFiles.filter(file => file !== null);
-    console.log(`Valid files after download: ${validFiles.length}`);
-
     if (validFiles.length === 0) {
-      return res.status(400).json({ error: 'No valid images were downloaded.' });
+      return res.status(400).json({ error: 'No valid images downloaded.' });
     }
 
     // Calculate duration per image
     const durationPerImage = totalDuration / validFiles.length;
-    console.log(`Initial duration per image: ${durationPerImage} seconds`);
+    console.log(`Duration per image: ${durationPerImage}`);
 
     const outputFilePath = path.join(storageDir, `${uuidv4()}_images_to_video.mp4`);
 
@@ -422,41 +429,41 @@ app.post('/images-to-video', async (req, res) => {
     } else if (format === 'square') {
       filter = "scale=w=1080:h=1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2";
     } else {
-      return res.status(400).json({ error: 'Invalid format. Choose from landscape, portrait, or square.' });
+      return res.status(400).json({ error: 'Invalid format. Choose landscape, portrait, or square.' });
     }
 
     // Create FFmpeg command
     const command = ffmpeg();
 
-    // Add each image with its duration to the FFmpeg command
+    // Add each image with correct duration to FFmpeg command
     validFiles.forEach((filePath) => {
       command.input(filePath)
-        .loop(1)
-        .inputOption(`-t ${durationPerImage}`); // Set per-image duration
+        .loop(1) // Loop for static image
+        .inputOption(`-t ${durationPerImage}`); // Correct duration per image
     });
 
-    // Apply scaling filter and other necessary options
+    // Apply scaling filter and necessary output options
     command
       .videoFilter(filter)
       .outputOptions([
-        '-r 30', // Set frame rate
-        '-pix_fmt yuv420p', // Ensure compatibility with most players
+        '-r 30',              // Frame rate
+        '-pix_fmt yuv420p',    // Pixel format
       ])
       .on('start', (cmd) => {
         console.log('Executing FFmpeg command:', cmd);
       })
       .on('error', (err) => {
         console.error('FFmpeg error:', err);
-        return res.status(500).json({ error: 'Error during FFmpeg processing' });
+        return res.status(500).json({ error: 'Error during FFmpeg processing.' });
       })
       .on('end', () => {
-        console.log('FFmpeg process completed successfully');
+        console.log('FFmpeg process completed successfully.');
         res.status(200).json({ message: 'Video created successfully', outputUrl: outputFilePath });
       })
       .save(outputFilePath); // Save the final video
 
   } catch (error) {
-    console.error('Error processing /images-to-video request:', error);
+    console.error('Error processing request:', error);
     res.status(500).json({ error: 'An error occurred while creating the video.' });
   }
 });
