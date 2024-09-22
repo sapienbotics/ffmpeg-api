@@ -365,11 +365,6 @@ app.post('/merge-videos', async (req, res) => {
 });
 
 
-const ffmpeg = require('fluent-ffmpeg');
-const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-
 // Endpoint to create a video from multiple images
 app.post('/images-to-video', async (req, res) => {
   try {
