@@ -600,42 +600,42 @@ async function convertImageToVideo(imageUrl, duration) {
 
 
 
+
 async function removeAudioFromVideo(videoUrl) {
-    const outputPath = path.join(storageDir, 'video_no_audio.mp4'); // Use the defined storage directory
+    const outputPath = path.join(storageDir, 'video_no_audio.mp4'); // Correct output path
 
     try {
-        // Check for audio streams using ffprobe
-        const { stdout } = await new Promise((resolve, reject) => {
-            exec(`${ffprobe.path} -v error -show_entries stream=codec_type -of default=noprint_wrappers=1 ${videoUrl}`, (err, stdout, stderr) => {
+        // Check if the video has an audio stream first
+        const audioCheck = await new Promise((resolve, reject) => {
+            ffmpeg.ffprobe(videoUrl, (err, metadata) => {
                 if (err) {
-                    console.error(`Error checking audio stream: ${stderr}`);
+                    console.error(`Error checking audio: ${err.message}`);
                     reject(err);
                 } else {
-                    resolve({ stdout });
+                    const hasAudio = metadata.streams.some(stream => stream.codec_type === 'audio');
+                    resolve(hasAudio);
                 }
             });
         });
 
-        const hasAudio = stdout.includes('audio');
-
-        if (hasAudio) {
-            await new Promise((resolve, reject) => {
-                ffmpeg(videoUrl)
-                    .noAudio() // Remove audio
-                    .save(outputPath)
-                    .on('end', () => {
-                        console.log(`Video without audio path: ${outputPath}`);
-                        resolve(outputPath);
-                    })
-                    .on('error', (err) => {
-                        console.error(`Error removing audio: ${err.message}`);
-                        reject(err);
-                    });
-            });
-        } else {
-            console.log(`No audio stream found in video: ${videoUrl}`);
-            return videoUrl; // Return the original video if no audio exists
+        if (!audioCheck) {
+            console.log(`Video already has no audio: ${videoUrl}`);
+            return videoUrl; // Return original video if no audio
         }
+
+        await new Promise((resolve, reject) => {
+            ffmpeg(videoUrl)
+                .noAudio() // Remove audio
+                .save(outputPath)
+                .on('end', () => {
+                    console.log(`Video without audio path: ${outputPath}`);
+                    resolve(outputPath);
+                })
+                .on('error', (err) => {
+                    console.error(`Error removing audio: ${err.message}`);
+                    reject(err);
+                });
+        });
 
         return outputPath;
     } catch (error) {
@@ -643,7 +643,6 @@ async function removeAudioFromVideo(videoUrl) {
         return null;
     }
 }
-
 
 
 // Function to check if the file exists
