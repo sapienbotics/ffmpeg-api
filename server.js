@@ -176,25 +176,27 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
-const downloadMedia = async (url) => {
+async function downloadMedia(url) {
+  try {
     const response = await axios({
-        method: 'get',
-        url,
-        responseType: 'stream',
+      url,
+      method: 'GET',
+      responseType: 'stream',
     });
-
     const fileName = path.basename(url);
-    const filePath = path.join(storageDir, fileName);
-
-    return new Promise((resolve, reject) => {
-        const writer = fs.createWriteStream(filePath);
-
-        response.data.pipe(writer);
-
-        writer.on('finish', () => resolve(filePath));
-        writer.on('error', (err) => reject(err));
+    const filePath = path.resolve('/app/storage/processed/', fileName);
+    const writer = fs.createWriteStream(filePath);
+    response.data.pipe(writer);
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
     });
-};
+    return filePath;
+  } catch (error) {
+    console.error(`Error downloading media from ${url}:`, error.message);
+    return null; // Return null if download fails
+  }
+}
 
 
 // Function to clean file name by removing query parameters
@@ -681,65 +683,62 @@ async function createFileList(mediaPaths) {
 
 
 
-// Function to merge media sequence
-async function mergeMediaSequence(mediaArray, outputPath) {
-    const trimmedMediaPaths = [];
+async function mergeMediaSequence(mediaSequence) {
+  try {
+    let totalDuration = 0;
+    let validMedia = [];
 
-    for (const media of mediaArray) {
-        const { url, duration } = media;
-
-        // Validate URL
-        if (!url || typeof url !== 'string') {
-            console.error(`Invalid URL for media: ${JSON.stringify(media)}`);
-            continue; // Skip invalid media
-        }
-
-        // Download media file
-        const downloadedPath = await downloadMedia(url);
-        if (!downloadedPath) {
-            console.error(`Failed to download media from ${url}. Skipping...`);
-            continue; // Skip if download failed
-        }
-        console.log(`Downloaded media to: ${downloadedPath}`);
-
-        // Probe the video duration
-        const mediaDuration = await probeVideoDuration(downloadedPath);
-        if (mediaDuration === 'N/A') {
-            console.error(`Failed to probe duration for ${downloadedPath}. Skipping...`);
-            continue; // Skip if probing fails
-        }
-
-        console.log(`Probed video duration for ${downloadedPath}: ${mediaDuration} seconds`);
-
-        // Check if the media duration is valid
-        if (mediaDuration <= 0) {
-            console.error(`Invalid media duration for ${downloadedPath}. Skipping...`);
-            continue; // Skip invalid media
-        }
-
-        // If the media is a video and its duration is greater than the specified duration, trim it
-        if (mediaDuration > duration) {
-            console.log(`Trimming video ${downloadedPath} to ${duration} seconds`);
-            const trimmedPath = path.join(storageDir, `${path.basename(downloadedPath, path.extname(downloadedPath))}_trimmed.mp4`);
-            await trimVideo(downloadedPath, trimmedPath, 0, duration);
-            trimmedMediaPaths.push(trimmedPath);
-        } else {
-            trimmedMediaPaths.push(downloadedPath); // No trimming needed
-        }
+    // Download and filter out faulty media
+    for (let media of mediaSequence) {
+      const filePath = await downloadMedia(media.url);
+      if (filePath) {
+        validMedia.push({ ...media, filePath });
+        totalDuration += media.duration;
+      } else {
+        console.log(`Media file ${media.url} is faulty and will be removed.`);
+      }
     }
 
-    // Create a file list for merging
-    const fileListPath = await createFileList(trimmedMediaPaths);
+    if (validMedia.length === 0) {
+      throw new Error('No valid media to merge.');
+    }
 
-    // Log file list contents
-    console.log(`File list contents:\n${fs.readFileSync(fileListPath, 'utf8')}`);
+    // Recalculate durations if any media was removed
+    const totalRemovedDuration = mediaSequence.reduce((acc, media) => acc + media.duration, 0) - totalDuration;
+    const durationToDistribute = totalRemovedDuration / validMedia.length;
 
-    // Merge the videos
-    const mergedOutputPath = outputPath || path.join(storageDir, 'merged_output.mp4');
-    await mergeVideos(fileListPath, mergedOutputPath);
-    console.log(`Merged media saved to: ${mergedOutputPath}`);
+    validMedia = validMedia.map(media => ({
+      ...media,
+      duration: media.duration + durationToDistribute,
+    }));
+
+    // Generate file list for ffmpeg
+    const fileListPath = '/app/storage/processed/file_list.txt';
+    const fileListContent = validMedia.map((media) => `file '${media.filePath}'`).join('\n');
+    await fs.writeFile(fileListPath, fileListContent);
+
+    return new Promise((resolve, reject) => {
+      const outputFilePath = `/app/storage/processed/merged_sequence.mp4`;
+
+      ffmpeg()
+        .input(fileListPath)
+        .inputOptions('-f concat', '-safe 0')
+        .outputOptions('-c copy')
+        .on('end', () => {
+          console.log('Merging completed successfully.');
+          resolve(outputFilePath);
+        })
+        .on('error', (error) => {
+          console.error(`Error merging media sequence:`, error.message);
+          reject(new Error(`Error merging media sequence: ${error.message}`));
+        })
+        .save(outputFilePath);
+    });
+  } catch (error) {
+    console.error('Error merging media sequence:', error);
+    throw error;
+  }
 }
-
 
 
 // Function to merge media sequence
