@@ -534,7 +534,7 @@ async function mergeVideos(fileListPath, outputPath) {
     return new Promise((resolve, reject) => {
         const ffmpegCommand = ffmpeg()
             .input(fileListPath)
-            .inputOptions(['-f concat', '-safe 0']) // Pass options as an array
+            .inputOptions(['-f concat', '-safe 0'])
             .outputOptions('-c copy')
             .output(outputPath)
             .on('end', () => {
@@ -546,7 +546,8 @@ async function mergeVideos(fileListPath, outputPath) {
                 reject(err);
             });
 
-        console.log(`Executing FFmpeg command for merging: ${ffmpegCommand._getCommand()}`); // Logging the command properly
+        // Log the command for debugging
+        console.log(`Executing FFmpeg command for merging:`, ffmpegCommand); 
         ffmpegCommand.run();
     });
 }
