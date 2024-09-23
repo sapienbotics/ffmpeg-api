@@ -579,10 +579,17 @@ async function mergeVideos(fileListPath, outputPath) {
     });
 }
 
-// Function to convert image to video
+// Modify your image-to-video conversion logic to check file existence
 async function convertImageToVideo(imagePath, outputVideoPath, duration = 5) {
+    const cleanImagePath = cleanFileName(imagePath);  // Clean the file name
+
+    if (!fileExists(cleanImagePath)) {
+        console.error(`Error: File ${cleanImagePath} does not exist.`);
+        throw new Error(`File not found: ${cleanImagePath}`);
+    }
+
     return new Promise((resolve, reject) => {
-        ffmpeg(imagePath)
+        ffmpeg(cleanImagePath)
             .outputOptions([
                 `-t ${duration}`, // Set duration for the video
                 '-pix_fmt yuv420p',
@@ -590,31 +597,42 @@ async function convertImageToVideo(imagePath, outputVideoPath, duration = 5) {
             ])
             .save(outputVideoPath)
             .on('end', () => {
-                console.log(`Converted ${imagePath} to ${outputVideoPath}`);
+                console.log(`Converted ${cleanImagePath} to ${outputVideoPath}`);
                 resolve();
             })
             .on('error', (err) => {
-                console.error(`Error converting ${imagePath}: ${err.message}`);
+                console.error(`Error converting ${cleanImagePath}: ${err.message}`);
                 reject(err);
             });
     });
 }
 
 
-// Modify your existing function to create a file list after converting images
+// Function to check if the file exists
+function fileExists(filePath) {
+    return fs.existsSync(filePath);
+}
+
+
+
+// Function to create fileList
 async function createFileList(mediaPaths) {
     const fileListPath = path.join(storageDir, 'file_list.txt');
     const videoPaths = [];
 
     for (const media of mediaPaths) {
-        // Clean up file names if they have query parameters
-        const cleanMedia = media.split('?')[0];
+        const cleanMedia = cleanFileName(media);
+
         if (cleanMedia.endsWith('.png') || cleanMedia.endsWith('.jpg')) {
             const outputVideoPath = cleanMedia.replace(/\.(png|jpg)$/, '.mp4');
             await convertImageToVideo(cleanMedia, outputVideoPath);
             videoPaths.push(outputVideoPath);
         } else {
-            videoPaths.push(cleanMedia);
+            if (fileExists(cleanMedia)) {
+                videoPaths.push(cleanMedia);
+            } else {
+                console.error(`File ${cleanMedia} does not exist.`);
+            }
         }
     }
 
@@ -622,8 +640,9 @@ async function createFileList(mediaPaths) {
     fs.writeFileSync(fileListPath, fileListContent);
     console.log(`File list created at: ${fileListPath}`);
     
-    return fileListPath; // Return the file list path
+    return fileListPath;
 }
+
 
 
 // Function to probe video duration
