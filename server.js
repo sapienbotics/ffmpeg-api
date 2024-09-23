@@ -176,6 +176,7 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
+// Function to download media from a given URL
 async function downloadMedia(url) {
   try {
     const response = await axios({
@@ -197,7 +198,6 @@ async function downloadMedia(url) {
     return null; // Return null if download fails
   }
 }
-
 
 // Function to clean file name by removing query parameters
 function cleanFileName(url) {
@@ -629,19 +629,18 @@ async function probeMediaDuration(filePath) {
     });
 }
 
-// Function to probe video duration
-async function probeVideoDuration(videoPath) {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(videoPath, (err, metadata) => {
-            if (err) {
-                console.error(`Error probing video ${videoPath}: ${err.message}`);
-                reject(err);
-            } else {
-                const duration = metadata.format.duration;
-                resolve(duration);
-            }
-        });
+// Function to probe video duration using ffprobe
+async function probeVideoDuration(filePath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) {
+        reject(`Error probing video duration: ${err.message}`);
+      } else {
+        const duration = metadata.format.duration;
+        resolve(duration);
+      }
     });
+  });
 }
 
 
@@ -682,18 +681,24 @@ async function createFileList(mediaPaths) {
 
 
 
-
+// Main function to merge media sequence
 async function mergeMediaSequence(mediaSequence) {
   try {
     let totalDuration = 0;
     let validMedia = [];
 
-    // Download and filter out faulty media
+    // Download media and filter out faulty ones
     for (let media of mediaSequence) {
       const filePath = await downloadMedia(media.url);
       if (filePath) {
-        validMedia.push({ ...media, filePath });
-        totalDuration += media.duration;
+        try {
+          // Probe the duration of the valid media
+          const duration = await probeVideoDuration(filePath);
+          validMedia.push({ ...media, filePath, duration });
+          totalDuration += media.duration;
+        } catch (error) {
+          console.log(`Skipping media ${media.url} due to ffprobe error: ${error}`);
+        }
       } else {
         console.log(`Media file ${media.url} is faulty and will be removed.`);
       }
@@ -703,7 +708,7 @@ async function mergeMediaSequence(mediaSequence) {
       throw new Error('No valid media to merge.');
     }
 
-    // Recalculate durations if any media was removed
+    // Redistribute duration if any media was removed
     const totalRemovedDuration = mediaSequence.reduce((acc, media) => acc + media.duration, 0) - totalDuration;
     const durationToDistribute = totalRemovedDuration / validMedia.length;
 
@@ -717,6 +722,7 @@ async function mergeMediaSequence(mediaSequence) {
     const fileListContent = validMedia.map((media) => `file '${media.filePath}'`).join('\n');
     await fs.writeFile(fileListPath, fileListContent);
 
+    // Merge the media using ffmpeg
     return new Promise((resolve, reject) => {
       const outputFilePath = `/app/storage/processed/merged_sequence.mp4`;
 
@@ -741,49 +747,7 @@ async function mergeMediaSequence(mediaSequence) {
 }
 
 
-// Function to merge media sequence
-async function mergeMediaSequence(mediaArray, outputPath) {
-    const trimmedMediaPaths = [];
 
-    for (const media of mediaArray) {
-        const { url, duration } = media;
-
-        // Download media file
-        const downloadedPath = await downloadMedia(url);
-        console.log(`Downloaded media to: ${downloadedPath}`);
-
-        // Probe the video duration
-        const mediaDuration = await probeVideoDuration(downloadedPath);
-        console.log(`Probed video duration for ${downloadedPath}: ${mediaDuration} seconds`);
-
-        // Check if the media duration is valid
-        if (mediaDuration <= 0) {
-            console.error(`Invalid media duration for ${downloadedPath}. Skipping...`);
-            continue; // Skip invalid media
-        }
-
-        // If the media is a video and its duration is greater than the specified duration, trim it
-        if (mediaDuration > duration) {
-            console.log(`Trimming video ${downloadedPath} to ${duration} seconds`);
-            const trimmedPath = path.join(storageDir, `${path.basename(downloadedPath, path.extname(downloadedPath))}_trimmed.mp4`);
-            await trimVideo(downloadedPath, trimmedPath, 0, duration);
-            trimmedMediaPaths.push(trimmedPath);
-        } else {
-            trimmedMediaPaths.push(downloadedPath); // No trimming needed
-        }
-    }
-
-    // Create a file list for merging
-    const fileListPath = await createFileList(trimmedMediaPaths);
-
-    // Log file list contents
-    console.log(`File list contents:\n${fs.readFileSync(fileListPath, 'utf8')}`);
-
-    // Merge the videos
-    const mergedOutputPath = outputPath || path.join(storageDir, 'merged_output.mp4');
-    await mergeVideos(fileListPath, mergedOutputPath);
-    console.log(`Merged media saved to: ${mergedOutputPath}`);
-}
 
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
