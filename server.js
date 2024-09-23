@@ -176,9 +176,13 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
-// Function to download media from a given URL
+// Helper function to download media
 async function downloadMedia(mediaUrl) {
   try {
+    if (!isValidUrl(mediaUrl)) {
+      throw new Error('Invalid URL');
+    }
+
     const response = await axios({
       url: mediaUrl,
       method: 'GET',
@@ -630,7 +634,7 @@ async function probeMediaDuration(filePath) {
     });
 }
 
-// Function to probe video duration using ffprobe
+// Helper function to probe video duration using FFMPEG
 function probeVideoDuration(filePath) {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(filePath, (err, metadata) => {
@@ -677,6 +681,17 @@ async function createFileList(mediaPaths) {
 }
 
 
+// Helper function to validate URL
+function isValidUrl(string) {
+  try {
+    new URL(string);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+
 
 // Function to merge media sequence
 async function mergeMediaSequence(mediaUrls) {
@@ -686,6 +701,11 @@ async function mergeMediaSequence(mediaUrls) {
 
     // Download all media files
     for (const mediaUrl of mediaUrls) {
+      if (typeof mediaUrl !== 'string') {
+        console.log(`Media file ${mediaUrl} is not a valid string and will be removed.`);
+        continue;
+      }
+
       const filePath = await downloadMedia(mediaUrl);
       if (filePath) {
         mediaFiles.push(filePath);
@@ -718,9 +738,9 @@ async function mergeMediaSequence(mediaUrls) {
     return new Promise((resolve, reject) => {
       ffmpeg()
         .input(fileListPath)
-        .inputFormat('concat')  // Correctly specifying the input format
-        .inputOptions('-safe 0')  // Ensures paths in the file list are safe
-        .outputOptions('-c copy')  // Copy the media without re-encoding
+        .inputFormat('concat')
+        .inputOptions('-safe 0')
+        .outputOptions('-c copy')
         .on('end', () => {
           console.log('Merging completed successfully.');
           resolve(outputFilePath);
@@ -752,7 +772,6 @@ async function mergeMediaSequence(mediaUrls) {
     console.error('Failed to merge media:', error.message);
   }
 })();
-
 
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
