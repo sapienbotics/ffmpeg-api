@@ -753,28 +753,36 @@ async function getMediaInfo(mediaPath) {
 
 
 async function mergeMediaSequence(mediaFiles) {
-    const mergedVideoPath = path.join(storageDir, 'merged_video.mp4'); // Change to your desired output path
+    const mergedVideoPath = path.join(storageDir, 'merged_video.mp4'); // Final output path
+    const inputFiles = mediaFiles.filter(file => file !== null).map(file => file.url || file); // Ensure valid file paths
 
-    const inputFiles = mediaFiles.filter(file => file !== null).map(file => file.url || file); // Ensure only valid URLs are passed
+    if (inputFiles.length === 0) {
+        console.error('No valid media files to process.');
+        return null;
+    }
 
     try {
         await new Promise((resolve, reject) => {
             const command = ffmpeg();
 
+            // Add input files
             inputFiles.forEach(file => {
                 command.input(file);
             });
 
+            // Apply concat filter with correct number of streams
+            const concatFilter = `concat=n=${inputFiles.length}:v=1:a=0`; // v=1 for video, a=0 since we have no audio
             command
+                .complexFilter([concatFilter])
                 .on('end', () => {
-                    console.log(`Merging finished successfully`);
+                    console.log('Merging finished successfully.');
                     resolve();
                 })
                 .on('error', (err) => {
                     console.error(`Error during merging: ${err.message}`);
                     reject(err);
                 })
-                .mergeToFile(mergedVideoPath);
+                .save(mergedVideoPath); // Save the final merged video
         });
 
         return mergedVideoPath;
