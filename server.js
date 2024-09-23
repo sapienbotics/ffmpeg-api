@@ -708,6 +708,18 @@ async function getMediaDuration(mediaPath) {
     });
 }
 
+async function getMediaInfo(mediaPath) {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(mediaPath, (err, metadata) => {
+            if (err) {
+                return reject(err);
+            }
+            const videoStreams = metadata.streams.filter(s => s.codec_type === 'video');
+            const audioStreams = metadata.streams.filter(s => s.codec_type === 'audio');
+            resolve({ videoStreams, audioStreams });
+        });
+    });
+}
 
 
 
@@ -726,9 +738,16 @@ async function mergeMediaSequence(mediaFiles) {
 
         try {
             const media = await downloadMedia(url);
+            const { videoStreams, audioStreams } = await getMediaInfo(media);
+
+            if (videoStreams.length === 0 || audioStreams.length === 0) {
+                console.error(`Media file ${url} does not have both video and audio streams and will be removed.`);
+                continue;
+            }
+
             validMedia.push(media);
-            const duration = await getMediaDuration(media);
-            totalDuration += duration;
+            const duration = videoStreams[0].duration || 0; // Assuming all streams have the same duration
+            totalDuration += parseFloat(duration);
         } catch (error) {
             console.error(`Error downloading media from ${url}: ${error.message}`);
             console.error(`Media file ${url} is faulty and will be removed.`);
