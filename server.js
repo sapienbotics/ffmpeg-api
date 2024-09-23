@@ -527,14 +527,6 @@ app.get('/download/:filename', (req, res) => {
 });
 
 
-// Function to convert an image into a video of specified duration
-const createImageVideo = async (imagePath, duration, outputPath) => {
-  const command = `ffmpeg -loop 1 -i "${imagePath}" -c:v libx264 -t ${duration} -pix_fmt yuv420p -vf "scale=1280:720" -y "${outputPath}"`;
-  await execPromise(command);
-};
-
-
-
 
 async function trimVideo(inputPath, outputPath, startTime, duration) {
     return new Promise((resolve, reject) => {
