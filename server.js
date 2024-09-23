@@ -176,33 +176,32 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
-// Download media function
+// Function to download media
 async function downloadMedia(mediaUrl) {
-    if (!isValidUrl(mediaUrl)) {
-        console.log(`Media file ${mediaUrl} is not a valid string and will be removed.`);
-        return null;
-    }
-
     try {
-        const response = await axios({
-            url: mediaUrl,
-            method: 'GET',
-            responseType: 'stream',
-        });
-
-        const path = `/app/storage/downloads/${new URL(mediaUrl).pathname.split('/').pop()}`;
-        const writer = fs.createWriteStream(path);
-
+        const response = await axios.get(mediaUrl, { responseType: 'stream' });
+        const filePath = `/app/storage/processed/${getFileNameFromUrl(mediaUrl)}`;
+        
+        const writer = fs.createWriteStream(filePath);
         response.data.pipe(writer);
 
         return new Promise((resolve, reject) => {
-            writer.on('finish', () => resolve(path));
-            writer.on('error', reject);
+            writer.on('finish', () => resolve(filePath));
+            writer.on('error', (err) => {
+                console.error(`Error downloading media from ${mediaUrl}: ${err.message}`);
+                reject(err);
+            });
         });
     } catch (error) {
-        console.log(`Error downloading media from ${mediaUrl}: ${error.message}`);
-        return null;
+        console.error(`Error downloading media from ${mediaUrl}: ${error.response ? error.response.statusText : error.message}`);
+        return null; // Return null if there's an error
     }
+}
+
+
+// Helper function to get filename from URL
+function getFileNameFromUrl(url) {
+    return url.split('/').pop();
 }
 
 
@@ -696,21 +695,35 @@ function isValidUrl(string) {
 
 
 
+// Helper function to get media duration
+async function getMediaDuration(mediaFile) {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(mediaFile, (err, metadata) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(metadata.format.duration);
+            }
+        });
+    });
+}
 
 
-// Media merging function
+
+
+
+// Function to merge media sequence
 async function mergeMediaSequence(mediaUrls) {
     const validMediaFiles = [];
+    let totalDuration = 0;
 
-    // Download all media files
-    for (let i = 0; i < mediaUrls.length; i++) {
-        const mediaUrl = mediaUrls[i];
-        const downloadedFilePath = await downloadMedia(mediaUrl);
-
-        if (downloadedFilePath) {
-            validMediaFiles.push(downloadedFilePath);
+    for (const url of mediaUrls) {
+        const mediaFile = await downloadMedia(url);
+        if (mediaFile) {
+            validMediaFiles.push(mediaFile);
+            totalDuration += await getMediaDuration(mediaFile);
         } else {
-            console.log(`Media file ${mediaUrl} is faulty and will be removed.`);
+            console.log(`Media file ${url} is faulty and will be removed.`);
         }
     }
 
@@ -718,33 +731,25 @@ async function mergeMediaSequence(mediaUrls) {
         throw new Error('No valid media to merge.');
     }
 
-    console.log(`Valid media files to merge: ${validMediaFiles.join(', ')}`);
+    // Distribute duration to valid files
+    const durationPerFile = totalDuration / validMediaFiles.length;
 
-    try {
-        // Create ffmpeg process to merge media files
-        const mergedFilePath = '/app/storage/processed/merged_sequence.mp4';
+    // Merge valid media files using ffmpeg
+    const ffmpegCommand = ffmpeg();
+    validMediaFiles.forEach(file => {
+        ffmpegCommand.input(file);
+    });
 
-        const ffmpegCommand = ffmpeg();
-        validMediaFiles.forEach(file => {
-            ffmpegCommand.input(file);
-        });
-
-        ffmpegCommand
-            .on('error', (err) => {
-                console.error(`Error merging media sequence: ${err.message}`);
-            })
-            .on('end', () => {
-                console.log(`Merging completed successfully.`);
-                console.log(`Merged media sequence saved to: ${mergedFilePath}`);
-            })
-            .mergeToFile(mergedFilePath, '/app/storage/temp/');
-
-        return mergedFilePath;
-    } catch (error) {
-        console.error(`Error merging media sequence: ${error.message}`);
-        throw error;
-    }
+    ffmpegCommand
+        .on('end', () => {
+            console.log('Merging completed successfully.');
+        })
+        .on('error', (err) => {
+            console.error(`Error merging media sequence: ${err.message}`);
+        })
+        .mergeToFile('/app/storage/processed/merged_sequence.mp4');
 }
+
 
 // Endpoint handler
 app.post('/merge-media-sequence', async (req, res) => {
