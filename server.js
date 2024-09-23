@@ -549,10 +549,10 @@ async function trimVideo(inputPath, outputPath, startTime, duration) {
     console.error('Invalid startTime or duration:', { startTime, duration });
     throw new Error('Invalid startTime or duration');
   }
-  
+
   const command = `ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} -c:v libx264 -c:a aac "${outputPath}"`;
   console.log(`Executing command: ${command}`);
-  
+
   await execPromise(command);
 }
 
@@ -571,20 +571,24 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
         console.log(`Media duration: ${duration}`);
 
         if (duration > media.duration && media.duration > 0) {
+          // Use a new temporary file for the trimmed output
+          const trimmedFilePath = path.join(storageDir, `${uuidv4()}_trimmed_media_${index}.mp4`);
           console.log(`Trimming video ${tempFilePath} to ${media.duration} seconds`);
-          await trimVideo(tempFilePath, tempFilePath, 0, media.duration);
+          await trimVideo(tempFilePath, trimmedFilePath, 0, media.duration);
+          tempFiles.push(trimmedFilePath); // Add the trimmed file to the list
         } else {
           console.log(`No trimming required for ${tempFilePath}`);
+          tempFiles.push(tempFilePath); // Use the original if no trimming
         }
       } else {
         const imageTempFilePath = await downloadImage(media.url, imagesDir);
         if (imageTempFilePath) {
           await createImageVideo(imageTempFilePath, media.duration, tempFilePath);
+          tempFiles.push(tempFilePath); // Add image video to the list
         } else {
           throw new Error(`Failed to download or process image: ${media.url}`);
         }
       }
-      tempFiles.push(tempFilePath);
     }
 
     await mergeVideos(tempFiles, outputPath);
@@ -595,25 +599,6 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
     tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
   }
 };
-
-// Endpoint to merge images and videos in sequence
-app.post('/merge-media-sequence', async (req, res) => {
-  try {
-    const { mediaSequence } = req.body;
-    if (!mediaSequence || !Array.isArray(mediaSequence)) {
-      return res.status(400).json({ error: 'Invalid mediaSequence input. It must be an array of media objects.' });
-    }
-
-    const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_sequence.mp4`);
-    await mergeMediaSequence(mediaSequence, outputFilePath);
-
-    res.status(200).json({ message: 'Media merged successfully', outputUrl: outputFilePath });
-  } catch (error) {
-    console.error('Error merging media sequence:', error);
-    res.status(500).json({ error: 'Failed to merge media sequence.' });
-  }
-});
-
 
 
 
