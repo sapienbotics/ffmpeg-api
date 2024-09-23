@@ -712,13 +712,12 @@ async function getMediaDuration(mediaFile) {
 
 
 
-// Function to merge media sequence
 async function mergeMediaSequence(mediaFiles) {
     const validMedia = [];
     let totalDuration = 0;
 
     for (const file of mediaFiles) {
-        const url = typeof file === 'string' ? file : file.url; // Adjust based on your data structure
+        const url = typeof file === 'string' ? file : file.url;
 
         if (!url || typeof url !== 'string') {
             console.error(`Media file ${url} is not a valid string and will be removed.`);
@@ -726,9 +725,9 @@ async function mergeMediaSequence(mediaFiles) {
         }
 
         try {
-            const media = await downloadMedia(url); // Assuming this function downloads the media
+            const media = await downloadMedia(url);
             validMedia.push(media);
-            const duration = await getMediaDuration(media); // Assuming this function gets the media duration
+            const duration = await getMediaDuration(media);
             totalDuration += duration;
         } catch (error) {
             console.error(`Error downloading media from ${url}: ${error.message}`);
@@ -743,27 +742,28 @@ async function mergeMediaSequence(mediaFiles) {
     // Redistribute the total duration among valid media
     const distributedDuration = totalDuration / validMedia.length;
 
-    // Proceed with merging the valid media
-    // Example using fluent-ffmpeg
+    // Create a FFmpeg command
     const ffmpeg = require('fluent-ffmpeg');
     
     return new Promise((resolve, reject) => {
         const command = ffmpeg();
 
         validMedia.forEach(media => {
-            command.input(media); // Assuming media is a valid file path or stream
+            command.input(media); // Add each valid media input
         });
 
+        // Set the output options to ensure compatibility
         command
+            .outputOptions('-filter_complex', 'concat=n=' + validMedia.length + ':v=1:a=1') // Ensure video and audio are concatenated properly
             .on('end', () => {
                 console.log('Merging completed successfully.');
-                resolve('/app/storage/processed/merged_sequence.mp4'); // Adjust the path as needed
+                resolve('/app/storage/processed/merged_sequence.mp4'); // Adjust the output path as needed
             })
             .on('error', (err) => {
                 console.error(`Error merging media sequence: ${err.message}`);
                 reject(err);
             })
-            .mergeToFile('/app/storage/processed/merged_sequence.mp4'); // Adjust the output path as needed
+            .save('/app/storage/processed/merged_sequence.mp4'); // Adjust the output path as needed
     });
 }
 
