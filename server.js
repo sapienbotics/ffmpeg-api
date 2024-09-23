@@ -600,6 +600,24 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
   }
 };
 
+// Endpoint to merge images and videos in sequence
+app.post('/merge-media-sequence', async (req, res) => {
+  try {
+    const { mediaSequence } = req.body;
+    if (!mediaSequence || !Array.isArray(mediaSequence)) {
+      return res.status(400).json({ error: 'Invalid mediaSequence input. It must be an array of media objects.' });
+    }
+
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_sequence.mp4`);
+    await mergeMediaSequence(mediaSequence, outputFilePath);
+
+    res.status(200).json({ message: 'Media merged successfully', outputUrl: outputFilePath });
+  } catch (error) {
+    console.error('Error merging media sequence:', error);
+    res.status(500).json({ error: 'Failed to merge media sequence.' });
+  }
+});
+
 
 
 
