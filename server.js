@@ -529,12 +529,36 @@ const createImageVideo = async (imagePath, duration, outputPath) => {
 };
 
 
+// Merging videos
+async function mergeVideos(fileListPath, outputPath) {
+    return new Promise((resolve, reject) => {
+        const ffmpegCommand = ffmpeg()
+            .input(fileListPath) // Ensure the correct path
+            .inputOptions('-f concat -safe 0')
+            .outputOptions('-c copy')
+            .output(outputPath)
+            .on('end', () => {
+                console.log(`Merged video saved to: ${outputPath}`);
+                resolve();
+            })
+            .on('error', (err) => {
+                console.error(`Error merging videos: ${err.message}`);
+                reject(err);
+            });
 
+        console.log(`Executing FFmpeg command for merging: ${ffmpegCommand}`);
+        ffmpegCommand.run();
+    });
+}
 
-// Function to create a list of files (not used directly but can be helpful)
-const createFileList = (inputPaths) => {
-  return inputPaths.map(p => `file '${p}'`).join('\n');
-};
+// Helper function to create a file list for FFmpeg
+async function createFileList(mediaPaths) {
+    const fileListPath = path.join(storageDir, 'file_list.txt');
+    const fileListContent = mediaPaths.map(media => `file '${media}'`).join('\n');
+    fs.writeFileSync(fileListPath, fileListContent);
+    console.log(`File list created at: ${fileListPath}`);
+    return fileListPath; // Return the file list path
+}
 
 
 // Function to probe video duration
@@ -586,6 +610,7 @@ async function mergeMediaSequence(mediaArray, outputPath) {
 
         // Download media file
         const downloadedPath = await downloadMedia(url);
+        console.log(`Downloaded media to: ${downloadedPath}`);
 
         // Probe the video duration
         const mediaDuration = await probeVideoDuration(downloadedPath);
@@ -603,10 +628,12 @@ async function mergeMediaSequence(mediaArray, outputPath) {
     }
 
     // Create a file list for merging
-    await createFileList(trimmedMediaPaths);
+    const fileListPath = await createFileList(trimmedMediaPaths);
 
     // Merge the videos
-    await mergeVideos(trimmedMediaPaths, outputPath);
+    const mergedOutputPath = outputPath || path.join(storageDir, 'merged_output.mp4');
+    await mergeVideos(fileListPath, mergedOutputPath);
+    console.log(`Merged media saved to: ${mergedOutputPath}`);
 }
 
 
