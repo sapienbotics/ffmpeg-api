@@ -527,31 +527,25 @@ app.get('/download/:filename', (req, res) => {
 });
 
 
-
-async function trimVideo(inputPath, outputPath, startTime, duration) {
+// Function to trim video
+async function trimVideo(inputPath, outputTrimmedPath) {
     return new Promise((resolve, reject) => {
-        // Ensure the output file has a different name
-        const trimmedOutputPath = outputPath.endsWith('.mp4')
-            ? outputPath.replace('.mp4', '_trimmed.mp4')
-            : outputPath + '_trimmed.mp4';
-
-        const ffmpegCommand = ffmpeg(inputPath)
-            .setStartTime(startTime)
-            .setDuration(duration)
-            .output(trimmedOutputPath)
+        ffmpeg(inputPath)
+            .setStartTime('0')
+            .setDuration('3') // Set duration to 3 seconds
+            .output(outputTrimmedPath)
             .on('end', () => {
-                console.log(`Trimmed video saved to: ${trimmedOutputPath}`);
-                resolve(trimmedOutputPath);
+                console.log(`Trimmed video saved to: ${outputTrimmedPath}`);
+                resolve(outputTrimmedPath);
             })
             .on('error', (err) => {
                 console.error(`Error trimming video: ${err.message}`);
                 reject(err);
-            });
-
-        console.log(`Executing command: ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} "${trimmedOutputPath}"`);
-        ffmpegCommand.run();
+            })
+            .run();
     });
 }
+
 
 // Function to merge videos
 async function mergeVideos(fileListPath, outputPath) {
@@ -633,12 +627,27 @@ async function probeMediaDuration(filePath) {
     });
 }
 
+// Function to probe video duration
+async function probeVideoDuration(videoPath) {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(videoPath, (err, metadata) => {
+            if (err) {
+                console.error(`Error probing video ${videoPath}: ${err.message}`);
+                reject(err);
+            } else {
+                const duration = metadata.format.duration;
+                resolve(duration);
+            }
+        });
+    });
+}
+
 
 
 
 // Function to create the file list for FFmpeg
 async function createFileList(mediaPaths) {
-    const fileListPath = '/app/storage/processed/file_list.txt';
+    const fileListPath = path.join(storageDir, 'file_list.txt'); // Updated path to ensure it's in the correct directory
     let fileListContent = '';
 
     for (let mediaPath of mediaPaths) {
@@ -646,25 +655,25 @@ async function createFileList(mediaPaths) {
         let duration;
 
         try {
-            duration = await probeMediaDuration(cleanPath);  // Probe the duration of the media
+            duration = await probeMediaDuration(cleanPath); // Probe the duration of the media
         } catch (error) {
             console.error(`Error probing media ${cleanPath}: ${error.message}`);
-            continue;  // Skip this file and continue with others
+            continue; // Skip this file and continue with others
         }
 
-        if (duration === 'N/A' || duration < 1) {  // If no duration, convert to video with default duration
+        if (duration === 'N/A' || duration < 1) { // If no duration, convert to video with default duration
             try {
-                mediaPath = await convertImageToVideo(cleanPath, 5);  // Convert to a 5-second video
+                mediaPath = await convertImageToVideo(cleanPath, 5); // Convert to a 5-second video
             } catch (error) {
                 console.error(`Skipping file ${cleanPath} due to conversion error: ${error.message}`);
-                continue;  // Skip this file and continue with others
+                continue; // Skip this file and continue with others
             }
         }
 
         fileListContent += `file '${cleanPath}'\n`;
     }
 
-    fs.writeFileSync(fileListPath, fileListContent);  // Write the final file list
+    fs.writeFileSync(fileListPath, fileListContent); // Write the final file list
     console.log(`File list created at: ${fileListPath}`);
     return fileListPath;
 }
@@ -672,48 +681,66 @@ async function createFileList(mediaPaths) {
 
 
 
-// Example of how you would call the merge media sequence
-// Function to merge media sequences using a file list
-async function mergeMediaSequence(mediaPaths) {
-    try {
-        const fileList = await createFileList(mediaPaths);
-        console.log(`Merging media from file list: ${fileList}`);
+// Function to merge media sequence
+async function mergeMediaSequence(mediaArray, outputPath) {
+    const trimmedMediaPaths = [];
 
-        const outputFilePath = `/app/storage/processed/merged_sequence.mp4`;
+    for (const media of mediaArray) {
+        const { url, duration } = media;
 
-        ffmpeg()
-            .input(fileList)
-            .inputOptions('-f concat', '-safe 0')
-            .outputOptions('-c:v', 'libx264', '-pix_fmt', 'yuv420p')
-            .on('end', () => {
-                console.log(`Merged video saved to: ${outputFilePath}`);
-            })
-            .on('error', (err) => {
-                console.error(`Error merging media sequence: ${err.message}`);
-            })
-            .save(outputFilePath);
-    } catch (error) {
-        console.error(`Error merging media sequence: ${error.message}`);
+        // Validate URL
+        if (!url || typeof url !== 'string') {
+            console.error(`Invalid URL for media: ${JSON.stringify(media)}`);
+            continue; // Skip invalid media
+        }
+
+        // Download media file
+        const downloadedPath = await downloadMedia(url);
+        if (!downloadedPath) {
+            console.error(`Failed to download media from ${url}. Skipping...`);
+            continue; // Skip if download failed
+        }
+        console.log(`Downloaded media to: ${downloadedPath}`);
+
+        // Probe the video duration
+        const mediaDuration = await probeVideoDuration(downloadedPath);
+        if (mediaDuration === 'N/A') {
+            console.error(`Failed to probe duration for ${downloadedPath}. Skipping...`);
+            continue; // Skip if probing fails
+        }
+
+        console.log(`Probed video duration for ${downloadedPath}: ${mediaDuration} seconds`);
+
+        // Check if the media duration is valid
+        if (mediaDuration <= 0) {
+            console.error(`Invalid media duration for ${downloadedPath}. Skipping...`);
+            continue; // Skip invalid media
+        }
+
+        // If the media is a video and its duration is greater than the specified duration, trim it
+        if (mediaDuration > duration) {
+            console.log(`Trimming video ${downloadedPath} to ${duration} seconds`);
+            const trimmedPath = path.join(storageDir, `${path.basename(downloadedPath, path.extname(downloadedPath))}_trimmed.mp4`);
+            await trimVideo(downloadedPath, trimmedPath, 0, duration);
+            trimmedMediaPaths.push(trimmedPath);
+        } else {
+            trimmedMediaPaths.push(downloadedPath); // No trimming needed
+        }
     }
+
+    // Create a file list for merging
+    const fileListPath = await createFileList(trimmedMediaPaths);
+
+    // Log file list contents
+    console.log(`File list contents:\n${fs.readFileSync(fileListPath, 'utf8')}`);
+
+    // Merge the videos
+    const mergedOutputPath = outputPath || path.join(storageDir, 'merged_output.mp4');
+    await mergeVideos(fileListPath, mergedOutputPath);
+    console.log(`Merged media saved to: ${mergedOutputPath}`);
 }
 
 
-
-
-// Function to probe video duration
-const probeVideoDuration = async (filePath) => {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) {
-                console.error(`Error probing video: ${err}`);
-                return reject(err);
-            }
-            const duration = metadata.format.duration || 0;
-            console.log(`Probed video duration for ${filePath}: ${duration} seconds`);
-            resolve(duration);
-        });
-    });
-};
 
 // Function to merge media sequence
 async function mergeMediaSequence(mediaArray, outputPath) {
