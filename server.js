@@ -557,61 +557,44 @@ async function trimVideo(inputPath, outputTrimmedPath) {
 
 
 // Function to merge videos
-async function mergeVideos(fileListPath, outputPath) {
-    return new Promise((resolve, reject) => {
-        const ffmpegCommand = ffmpeg()
-            .input(fileListPath)
-            .inputOptions(['-f concat', '-safe 0'])
-            .outputOptions(['-c:v libx264', '-preset fast', '-crf 23']) // Re-encoding options
-            .output(outputPath)
-            .on('end', () => {
-                console.log(`Merged video saved to: ${outputPath}`);
-                resolve();
-            })
-            .on('error', (err) => {
-                console.error(`Error merging videos: ${err.message}`);
-                reject(err);
-            });
-
-        // Log the command for debugging
-        console.log(`Executing FFmpeg command for merging:`, ffmpegCommand); 
-        ffmpegCommand.run();
+async function mergeVideos(videoPaths) {
+    const outputMergedPath = '/path/to/output/merged_video.mp4'; // Set your desired output path
+    await new Promise((resolve, reject) => {
+        ffmpeg()
+            .input('concat:' + videoPaths.join('|')) // Use concat protocol
+            .outputOptions('-c', 'copy') // Copy the codec
+            .save(outputMergedPath)
+            .on('end', () => resolve(outputMergedPath))
+            .on('error', reject);
     });
+    return outputMergedPath;
 }
 
 
-// Function to convert images to videos with a fallback duration
-async function convertImageToVideo(imagePath, duration = 5) {
-    return new Promise((resolve, reject) => {
-        const cleanPath = cleanFileName(imagePath);
-        const outputVideoPath = `${cleanPath.split('.')[0]}_video.mp4`;
-
-        console.log(`Processing image: ${cleanPath}`);  // Add logging to track the exact image path
-
-        // Check if the file exists
-        if (!fs.existsSync(cleanPath)) {
-            console.error(`File ${cleanPath} does not exist! Skipping...`);
-            reject(new Error(`File not found: ${cleanPath}`));
-            return;
-        }
-
-        const probedDuration = duration === 'N/A' ? 5 : duration;
-
-        ffmpeg(cleanPath)
-            .loop(probedDuration)
-            .outputOptions('-c:v', 'libx264', '-t', probedDuration, '-pix_fmt', 'yuv420p')
-            .on('end', () => {
-                console.log(`Converted image ${cleanPath} to video ${outputVideoPath}`);
-                resolve(outputVideoPath);
-            })
-            .on('error', (err) => {
-                console.error(`Error converting ${cleanPath}: ${err.message}`);
-                reject(err);
-            })
-            .save(outputVideoPath);
+async function convertImageToVideo(imageUrl, duration) {
+    const outputVideoPath = '/path/to/output/video.mp4'; // Set your desired output path
+    await new Promise((resolve, reject) => {
+        ffmpeg(imageUrl)
+            .outputOptions('-t', duration) // Set the duration
+            .outputOptions('-vf', 'format=yuv420p') // Convert to a compatible format
+            .save(outputVideoPath)
+            .on('end', () => resolve(outputVideoPath))
+            .on('error', reject);
     });
+    return outputVideoPath;
 }
 
+async function removeAudioFromVideo(videoUrl) {
+    const outputVideoPath = '/path/to/output/no_audio_video.mp4'; // Set your desired output path
+    await new Promise((resolve, reject) => {
+        ffmpeg(videoUrl)
+            .outputOptions('-an') // Remove audio
+            .save(outputVideoPath)
+            .on('end', () => resolve(outputVideoPath))
+            .on('error', reject);
+    });
+    return outputVideoPath;
+}
 
 
 
@@ -723,78 +706,36 @@ async function getMediaInfo(mediaPath) {
 
 
 
-
 async function mergeMediaSequence(mediaFiles) {
-    const validMedia = [];
-    let totalDuration = 0;
+    const processedMedia = [];
 
     for (const file of mediaFiles) {
-        const url = typeof file === 'string' ? file : file.url;
-
-        if (!url || typeof url !== 'string') {
-            console.error(`Media file ${url} is not a valid string and will be removed.`);
-            continue;
-        }
-
-        try {
-            const media = await downloadMedia(url);
-            const { videoStreams, audioStreams } = await getMediaInfo(media);
-
-            if (videoStreams.length === 0 || audioStreams.length === 0) {
-                console.error(`Media file ${url} does not have both video and audio streams and will be removed.`);
-                continue;
+        if (file && file.url) {
+            try {
+                // Process the file (image or video)
+                if (file.type === 'image') {
+                    // Convert image to video with specified duration
+                    const videoPath = await convertImageToVideo(file.url, file.duration);
+                    processedMedia.push(videoPath);
+                } else if (file.type === 'video') {
+                    // Remove audio from video
+                    const videoWithoutAudio = await removeAudioFromVideo(file.url);
+                    processedMedia.push(videoWithoutAudio);
+                }
+            } catch (error) {
+                console.error(`Error processing media file ${file.url}:`, error);
+                continue; // Skip faulty media
             }
-
-            validMedia.push(media);
-            const duration = videoStreams[0].duration || 0; // Assuming all streams have the same duration
-            totalDuration += parseFloat(duration);
-        } catch (error) {
-            console.error(`Error downloading media from ${url}: ${error.message}`);
-            console.error(`Media file ${url} is faulty and will be removed.`);
         }
     }
 
-    if (validMedia.length === 0) {
-        throw new Error("No valid media to merge.");
+    if (processedMedia.length === 0) {
+        throw new Error('No valid media to merge.');
     }
 
-    const tempFiles = await Promise.all(validMedia.map((media, index) => {
-        const tempFilePath = path.join('/app/storage/temp', `temp_${index}.mp4`);
-        return new Promise((resolve, reject) => {
-            ffmpeg(media)
-                .outputOptions('-c:v', 'libx264') // Video codec
-                .outputOptions('-c:a', 'aac')      // Audio codec
-                .outputOptions('-strict', 'experimental')
-                .outputOptions('-vf', 'scale=1280:720') // Scale to a common resolution
-                .output(tempFilePath)
-                .on('end', () => resolve(tempFilePath))
-                .on('error', (err) => reject(`Error processing ${media}: ${err.message}`))
-                .run();
-        });
-    }));
-
-    // Create FFmpeg command for merging normalized files
-    return new Promise((resolve, reject) => {
-        const command = ffmpeg();
-
-        tempFiles.forEach(media => {
-            command.input(media);
-        });
-
-        command
-            .outputOptions('-filter_complex', `concat=n=${tempFiles.length}:v=1:a=1`)
-            .on('end', () => {
-                console.log('Merging completed successfully.');
-                resolve('/app/storage/processed/merged_sequence.mp4');
-            })
-            .on('error', (err) => {
-                console.error(`Error merging media sequence: ${err.message}`);
-                reject(err);
-            })
-            .save('/app/storage/processed/merged_sequence.mp4');
-    });
+    const mergedFilePath = await mergeVideos(processedMedia);
+    return mergedFilePath;
 }
-
 
 
 
