@@ -585,15 +585,18 @@ async function mergeVideos(fileListPath, outputPath) {
 }
 
 
-// Function to convert images to videos
-async function convertImageToVideo(imagePath, duration = 5) {  // Default duration to 5 seconds
+// Function to convert images to videos with a fallback duration
+async function convertImageToVideo(imagePath, duration = 5) {
     return new Promise((resolve, reject) => {
-        const cleanPath = cleanFileName(imagePath);  // Clean file path
-        const outputVideoPath = `${cleanPath.split('.')[0]}_video.mp4`;  // Generate output path
+        const cleanPath = cleanFileName(imagePath);
+        const outputVideoPath = `${cleanPath.split('.')[0]}_video.mp4`;
+
+        // If FFmpeg can't probe duration, set default duration to 5 seconds
+        const probedDuration = duration === 'N/A' ? 3 : duration;
 
         ffmpeg(cleanPath)
-            .loop(duration)
-            .outputOptions('-c:v', 'libx264', '-t', duration, '-pix_fmt', 'yuv420p')
+            .loop(probedDuration)
+            .outputOptions('-c:v', 'libx264', '-t', probedDuration, '-pix_fmt', 'yuv420p')
             .on('end', () => {
                 console.log(`Converted image ${cleanPath} to video ${outputVideoPath}`);
                 resolve(outputVideoPath);
@@ -608,24 +611,53 @@ async function convertImageToVideo(imagePath, duration = 5) {  // Default durati
 
 
 
+
 // Function to check if the file exists
 function fileExists(filePath) {
     return fs.existsSync(filePath);
 }
 
 
+async function probeMediaDuration(filePath) {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+            if (err) {
+                console.error(`Error probing media ${filePath}: ${err.message}`);
+                resolve('N/A');  // If there's an error probing, return N/A
+            } else {
+                const duration = metadata.format.duration;
+                resolve(duration ? parseFloat(duration) : 'N/A');
+            }
+        });
+    });
+}
+
+
+
+
+
 // Function to create the file list for FFmpeg
 async function createFileList(mediaPaths) {
     const fileListPath = '/app/storage/processed/file_list.txt';
-    const fileListContent = mediaPaths.map(mediaPath => {
-        const cleanPath = cleanFileName(mediaPath);  // Ensure path is clean
-        return `file '${cleanPath}'`;
-    }).join('\n');
+    let fileListContent = '';
 
-    fs.writeFileSync(fileListPath, fileListContent);  // Write to file
+    for (let mediaPath of mediaPaths) {
+        const cleanPath = cleanFileName(mediaPath);
+        let duration = await probeMediaDuration(cleanPath);  // Probe the duration of the media
+
+        if (duration === 'N/A' || duration < 1) {  // If no duration, convert to video with default duration
+            console.log(`File ${cleanPath} has invalid duration. Converting to video.`);
+            mediaPath = await convertImageToVideo(cleanPath, 5);  // Convert to a 5-second video
+        }
+
+        fileListContent += `file '${cleanPath}'\n`;
+    }
+
+    fs.writeFileSync(fileListPath, fileListContent);  // Write the final file list
     console.log(`File list created at: ${fileListPath}`);
     return fileListPath;
 }
+
 
 
 
