@@ -557,48 +557,51 @@ async function trimVideo(inputPath, outputPath, startTime, duration) {
 }
 
 // Function to merge images and videos in a given sequence
-const mergeMediaSequence = async (mediaSequence, outputPath) => {
-  const tempFiles = [];
-  try {
-    for (const [index, media] of mediaSequence.entries()) {
-      const ext = path.extname(media.url).toLowerCase();
-      const uniqueFilename = `${uuidv4()}_media_${index}.mp4`;
-      const tempFilePath = path.join(storageDir, uniqueFilename);
+async function mergeMediaSequence(mediaArray, outputPath) {
+    const trimmedMediaPaths = [];
 
-      if (ext === '.mp4') {
-        await downloadFile(media.url, tempFilePath);
-        const duration = await probeVideoDuration(tempFilePath);
-        console.log(`Media duration: ${duration}`);
+    for (const media of mediaArray) {
+        const { url, duration } = media;
 
-        if (duration > media.duration && media.duration > 0) {
-          // Use a new temporary file for the trimmed output
-          const trimmedFilePath = path.join(storageDir, `${uuidv4()}_trimmed_media_${index}.mp4`);
-          console.log(`Trimming video ${tempFilePath} to ${media.duration} seconds`);
-          await trimVideo(tempFilePath, trimmedFilePath, 0, media.duration);
-          tempFiles.push(trimmedFilePath); // Add the trimmed file to the list
+        // Download media file (ensure to implement this function)
+        const downloadedPath = await downloadMedia(url);
+
+        // Probe the video duration
+        const mediaDuration = await probeVideoDuration(downloadedPath);
+        console.log(`Probed video duration for ${downloadedPath}: ${mediaDuration} seconds`);
+
+        // If the media is a video and its duration is greater than the specified duration, trim it
+        if (mediaDuration > duration) {
+            console.log(`Trimming video ${downloadedPath} to ${duration} seconds`);
+            const trimmedPath = `${downloadedPath}_trimmed.mp4`;
+            await trimVideo(downloadedPath, trimmedPath, 0, duration);
+            trimmedMediaPaths.push(trimmedPath);
         } else {
-          console.log(`No trimming required for ${tempFilePath}`);
-          tempFiles.push(tempFilePath); // Use the original if no trimming
+            trimmedMediaPaths.push(downloadedPath); // No trimming needed
         }
-      } else {
-        const imageTempFilePath = await downloadImage(media.url, imagesDir);
-        if (imageTempFilePath) {
-          await createImageVideo(imageTempFilePath, media.duration, tempFilePath);
-          tempFiles.push(tempFilePath); // Add image video to the list
-        } else {
-          throw new Error(`Failed to download or process image: ${media.url}`);
-        }
-      }
     }
 
-    await mergeVideos(tempFiles, outputPath);
-  } catch (error) {
-    console.error('Error merging media sequence:', error);
-    throw error;
-  } finally {
-    tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
-  }
+    // Create a file list for merging
+    await createFileList(trimmedMediaPaths);
+
+    // Merge the videos
+    await mergeVideos(trimmedMediaPaths, outputPath);
+}
+
+// Adjusted merging function to ensure durations are respected.
+const mergeVideos = async (inputPaths, outputPath) => {
+    const listFilePath = path.join(storageDir, 'file_list.txt');
+    const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
+    fs.writeFileSync(listFilePath, fileListContent);
+
+    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
+    console.log('Executing FFmpeg command for merging:', command);
+
+    await execPromise(command, 600000); // 10 minutes timeout
+
+    fs.unlinkSync(listFilePath); // Clean up the list file
 };
+
 
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
