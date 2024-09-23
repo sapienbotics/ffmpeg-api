@@ -584,9 +584,12 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
         const videoDuration = await probeVideoDuration(tempFilePath);
         console.log(`Probed video duration for ${tempFilePath}: ${videoDuration} seconds`);
 
-        // Trim video if needed (if you want to handle this here)
+        // Trim video if needed
         if (videoDuration > media.duration) {
-          await trimVideo(tempFilePath, tempFilePath, 0, media.duration); // Trimming to the specified duration
+          const startTime = 0; // Starting from the beginning
+          const durationToTrim = media.duration; // Duration to keep
+          console.log(`Trimming video ${tempFilePath} to ${durationToTrim} seconds`);
+          await trimVideo(tempFilePath, tempFilePath, startTime, durationToTrim);
         }
 
       } else {
@@ -613,6 +616,7 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
     tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
   }
 };
+
 
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
