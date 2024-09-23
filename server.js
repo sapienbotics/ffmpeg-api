@@ -572,30 +572,54 @@ async function mergeVideos(videoPaths) {
 
 
 async function convertImageToVideo(imageUrl, duration) {
-console.log(`Converting image: ${imageUrl} for duration: ${duration}`);
-    const outputVideoPath = '/path/to/output/video.mp4'; // Set your desired output path
-    await new Promise((resolve, reject) => {
-        ffmpeg(imageUrl)
-            .outputOptions('-t', duration) // Set the duration
-            .outputOptions('-vf', 'format=yuv420p') // Convert to a compatible format
-            .save(outputVideoPath)
-            .on('end', () => resolve(outputVideoPath))
-            .on('error', reject);
-    });
-    return outputVideoPath;
+    console.log(`Converting image: ${imageUrl} for duration: ${duration}`);
+    // Your conversion logic, e.g., using ffmpeg to create a video
+    try {
+        // Assuming you have ffmpeg set up correctly
+        const outputPath = `/path/to/output/video.mp4`; // Define output path
+        await new Promise((resolve, reject) => {
+            ffmpeg(imageUrl)
+                .outputOptions('-t', duration)
+                .save(outputPath)
+                .on('end', () => {
+                    console.log(`Conversion successful: ${outputPath}`);
+                    resolve(outputPath);
+                })
+                .on('error', (err) => {
+                    console.error(`Error converting image to video: ${err.message}`);
+                    reject(err);
+                });
+        });
+        return outputPath; // Return the output path
+    } catch (error) {
+        console.error(`Failed to convert image: ${error.message}`);
+        return null;
+    }
 }
 
+
 async function removeAudioFromVideo(videoUrl) {
-console.log(`Removing audio from video: ${videoUrl}`);
-    const outputVideoPath = '/path/to/output/no_audio_video.mp4'; // Set your desired output path
-    await new Promise((resolve, reject) => {
-        ffmpeg(videoUrl)
-            .outputOptions('-an') // Remove audio
-            .save(outputVideoPath)
-            .on('end', () => resolve(outputVideoPath))
-            .on('error', reject);
-    });
-    return outputVideoPath;
+    console.log(`Removing audio from video: ${videoUrl}`);
+    try {
+        const outputPath = `/path/to/output/no_audio_video.mp4`; // Define output path
+        await new Promise((resolve, reject) => {
+            ffmpeg(videoUrl)
+                .audioCodec('none') // Remove audio
+                .save(outputPath)
+                .on('end', () => {
+                    console.log(`Audio removal successful: ${outputPath}`);
+                    resolve(outputPath);
+                })
+                .on('error', (err) => {
+                    console.error(`Error removing audio: ${err.message}`);
+                    reject(err);
+                });
+        });
+        return outputPath; // Return the output path
+    } catch (error) {
+        console.error(`Failed to remove audio: ${error.message}`);
+        return null;
+    }
 }
 
 
@@ -708,43 +732,55 @@ async function getMediaInfo(mediaPath) {
 
 
 
-async function mergeMediaSequence(mediaFiles) {
-    const processedMedia = [];
+async function mergeMediaSequence(mediaUrls) {
+    const processedFiles = [];
 
     console.log("Starting media processing...");
 
-    for (const file of mediaFiles) {
-        console.log(`Processing file: ${JSON.stringify(file)}`);
-        
-        if (file && file.url) {
-            try {
-                // Process the file (image or video)
-                if (file.type === 'image') {
-                    console.log(`Converting image to video: ${file.url}`);
-                    const videoPath = await convertImageToVideo(file.url, file.duration);
-                    processedMedia.push(videoPath);
-                } else if (file.type === 'video') {
-                    console.log(`Removing audio from video: ${file.url}`);
-                    const videoWithoutAudio = await removeAudioFromVideo(file.url);
-                    processedMedia.push(videoWithoutAudio);
-                }
-            } catch (error) {
-                console.error(`Error processing media file ${file.url}:`, error);
-                continue; // Skip faulty media
+    for (const media of mediaUrls) {
+        const { url, duration } = media;
+        console.log(`Processing file: ${JSON.stringify(media)}`);
+
+        let processedFile;
+
+        if (url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.png')) {
+            // Convert image to video
+            processedFile = await convertImageToVideo(url, duration);
+            if (processedFile) {
+                console.log(`Converted video path: ${processedFile}`);
+                processedFiles.push(processedFile);
+            } else {
+                console.error(`Failed to convert image to video: ${url}`);
+            }
+        } else if (url.endsWith('.mp4')) {
+            // Remove audio from video
+            processedFile = await removeAudioFromVideo(url);
+            if (processedFile) {
+                console.log(`Video without audio path: ${processedFile}`);
+                processedFiles.push(processedFile);
+            } else {
+                console.error(`Failed to remove audio from video: ${url}`);
             }
         } else {
-            console.warn(`Invalid file entry: ${JSON.stringify(file)}`);
+            console.error(`Unsupported media type: ${url}`);
         }
     }
 
-    console.log("Processed media files:", processedMedia);
+    console.log(`Processed media files: ${processedFiles}`);
 
-    if (processedMedia.length === 0) {
-        throw new Error('No valid media to merge.');
+    if (processedFiles.length === 0) {
+        throw new Error("No valid media to merge.");
     }
 
-    const mergedFilePath = await mergeVideos(processedMedia);
-    return mergedFilePath;
+    // Merge the processed files into a final video
+    try {
+        const mergedFile = await mergeVideos(processedFiles);
+        console.log(`Merged media sequence saved to: ${mergedFile}`);
+        return mergedFile;
+    } catch (error) {
+        console.error(`Error merging media sequence: ${error.message}`);
+        throw new Error("Error merging media sequence.");
+    }
 }
 
 
