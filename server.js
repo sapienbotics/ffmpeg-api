@@ -197,6 +197,7 @@ const downloadMedia = async (url) => {
 };
 
 
+
 // Function to apply audio to video with fallbacks
 const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
   try {
@@ -564,14 +565,13 @@ async function trimVideo(inputPath, outputPath, startTime, duration) {
   await execPromise(command);
 }
 
-// Function to merge images and videos in a given sequence
 async function mergeMediaSequence(mediaArray, outputPath) {
     const trimmedMediaPaths = [];
 
     for (const media of mediaArray) {
         const { url, duration } = media;
 
-        // Download media file (ensure to implement this function)
+        // Download media file
         const downloadedPath = await downloadMedia(url);
 
         // Probe the video duration
@@ -595,20 +595,6 @@ async function mergeMediaSequence(mediaArray, outputPath) {
     // Merge the videos
     await mergeVideos(trimmedMediaPaths, outputPath);
 }
-
-// Adjusted merging function to ensure durations are respected.
-const mergeVideos = async (inputPaths, outputPath) => {
-    const listFilePath = path.join(storageDir, 'file_list.txt');
-    const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
-    fs.writeFileSync(listFilePath, fileListContent);
-
-    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
-    console.log('Executing FFmpeg command for merging:', command);
-
-    await execPromise(command, 600000); // 10 minutes timeout
-
-    fs.unlinkSync(listFilePath); // Clean up the list file
-};
 
 
 // Endpoint to merge images and videos in sequence
