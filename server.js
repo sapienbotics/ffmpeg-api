@@ -197,6 +197,11 @@ const downloadMedia = async (url) => {
 };
 
 
+// Function to clean file name by removing query parameters
+function cleanFileName(url) {
+    return url.split('?')[0];  // Remove the query parameters
+}
+
 
 // Function to apply audio to video with fallbacks
 const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
@@ -579,7 +584,8 @@ async function mergeVideos(fileListPath, outputPath) {
     });
 }
 
-// Modify your image-to-video conversion logic to check file existence
+
+// Function to convert images to videos
 async function convertImageToVideo(imagePath, outputVideoPath, duration = 5) {
     const cleanImagePath = cleanFileName(imagePath);  // Clean the file name
 
@@ -614,14 +620,14 @@ function fileExists(filePath) {
 }
 
 
-
-// Function to create fileList
+// Function to create the file list for FFmpeg
 async function createFileList(mediaPaths) {
+    const storageDir = '/app/storage/processed';
     const fileListPath = path.join(storageDir, 'file_list.txt');
     const videoPaths = [];
 
     for (const media of mediaPaths) {
-        const cleanMedia = cleanFileName(media);
+        const cleanMedia = cleanFileName(media);  // Clean the file path
 
         if (cleanMedia.endsWith('.png') || cleanMedia.endsWith('.jpg')) {
             const outputVideoPath = cleanMedia.replace(/\.(png|jpg)$/, '.mp4');
@@ -641,6 +647,18 @@ async function createFileList(mediaPaths) {
     console.log(`File list created at: ${fileListPath}`);
     
     return fileListPath;
+}
+
+// Example of how you would call the merge media sequence
+async function mergeMediaSequence(mediaPaths) {
+    try {
+        const fileList = await createFileList(mediaPaths);
+        console.log(`Merging media from file list: ${fileList}`);
+
+        // Add the FFmpeg command to merge the videos from the file list here
+    } catch (error) {
+        console.error(`Error merging media sequence: ${error.message}`);
+    }
 }
 
 
