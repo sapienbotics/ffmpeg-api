@@ -533,8 +533,8 @@ const createImageVideo = async (imagePath, duration, outputPath) => {
 async function mergeVideos(fileListPath, outputPath) {
     return new Promise((resolve, reject) => {
         const ffmpegCommand = ffmpeg()
-            .input(fileListPath) // Ensure the correct path
-            .inputOptions('-f concat -safe 0')
+            .input(fileListPath)
+            .inputOptions(['-f concat', '-safe 0']) // Pass options as an array
             .outputOptions('-c copy')
             .output(outputPath)
             .on('end', () => {
@@ -546,10 +546,11 @@ async function mergeVideos(fileListPath, outputPath) {
                 reject(err);
             });
 
-        console.log(`Executing FFmpeg command for merging: ${ffmpegCommand}`);
+        console.log(`Executing FFmpeg command for merging: ${ffmpegCommand._getCommand()}`); // Logging the command properly
         ffmpegCommand.run();
     });
 }
+
 
 // Helper function to create a file list for FFmpeg
 async function createFileList(mediaPaths) {
