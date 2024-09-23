@@ -588,6 +588,7 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
         if (videoDuration > media.duration) {
           const startTime = 0; // Starting from the beginning
           const durationToTrim = media.duration; // Duration to keep
+          
           console.log(`Trimming video ${tempFilePath} to ${durationToTrim} seconds`);
 
           // Ensure that durationToTrim is valid
@@ -622,6 +623,7 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
     tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
   }
 };
+
 
 
 
