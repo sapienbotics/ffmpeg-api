@@ -184,18 +184,26 @@ async function downloadMedia(url) {
       method: 'GET',
       responseType: 'stream',
     });
+
+    // Resolve the file path
     const fileName = path.basename(url);
     const filePath = path.resolve('/app/storage/processed/', fileName);
-    const writer = (await fs.open(filePath, 'w')).createWriteStream();
+
+    // Create a writable stream for the file
+    const writer = fs.createWriteStream(filePath);
+
+    // Pipe the response stream to the file
     response.data.pipe(writer);
-    await new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
+
+    // Return a promise that resolves when the file is fully written
+    return new Promise((resolve, reject) => {
+      writer.on('finish', () => resolve(filePath));  // Resolve with file path
+      writer.on('error', reject);  // Reject if an error occurs
     });
-    return filePath;
+
   } catch (error) {
     console.error(`Error downloading media from ${url}:`, error.message);
-    return null; // Return null if download fails
+    return null;  // Return null if download fails
   }
 }
 
@@ -681,7 +689,6 @@ async function createFileList(mediaPaths) {
 
 
 
-// Main function to merge media sequence
 async function mergeMediaSequence(mediaSequence) {
   try {
     let totalDuration = 0;
@@ -722,7 +729,7 @@ async function mergeMediaSequence(mediaSequence) {
     const fileListContent = validMedia.map((media) => `file '${media.filePath}'`).join('\n');
 
     // Write the file list using fs.promises.writeFile
-    await fs.writeFile(fileListPath, fileListContent);
+    await fs.promises.writeFile(fileListPath, fileListContent);
 
     // Merge the media using ffmpeg
     return new Promise((resolve, reject) => {
