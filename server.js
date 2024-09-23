@@ -565,6 +565,7 @@ const createFileList = (inputPaths) => {
   return inputPaths.map(p => `file '${p}'`).join('\n');
 };
 
+
 // Function to merge images and videos in a given sequence
 const mergeMediaSequence = async (mediaSequence, outputPath) => {
   const tempFiles = [];
@@ -584,12 +585,17 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
         const videoDuration = await probeVideoDuration(tempFilePath);
         console.log(`Probed video duration for ${tempFilePath}: ${videoDuration} seconds`);
 
-        // Trim video if needed
+        // Check for valid duration and trim video if needed
         if (videoDuration > media.duration) {
           const startTime = 0; // Starting from the beginning
           const durationToTrim = media.duration; // Duration to keep
           console.log(`Trimming video ${tempFilePath} to ${durationToTrim} seconds`);
-          await trimVideo(tempFilePath, tempFilePath, startTime, durationToTrim);
+          
+          if (durationToTrim > 0) { // Ensure duration is valid
+            await trimVideo(tempFilePath, tempFilePath, startTime, durationToTrim);
+          } else {
+            throw new Error(`Invalid duration for trimming: ${durationToTrim}`);
+          }
         }
 
       } else {
