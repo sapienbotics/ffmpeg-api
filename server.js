@@ -572,6 +572,7 @@ async function mergeVideos(videoPaths) {
 
 
 async function convertImageToVideo(imageUrl, duration) {
+console.log(`Converting image: ${imageUrl} for duration: ${duration}`);
     const outputVideoPath = '/path/to/output/video.mp4'; // Set your desired output path
     await new Promise((resolve, reject) => {
         ffmpeg(imageUrl)
@@ -585,6 +586,7 @@ async function convertImageToVideo(imageUrl, duration) {
 }
 
 async function removeAudioFromVideo(videoUrl) {
+console.log(`Removing audio from video: ${videoUrl}`);
     const outputVideoPath = '/path/to/output/no_audio_video.mp4'; // Set your desired output path
     await new Promise((resolve, reject) => {
         ffmpeg(videoUrl)
