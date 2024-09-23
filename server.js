@@ -579,19 +579,20 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
       if (ext === '.mp4') {
         // If it's a video, download it directly
         await downloadFile(media.url, tempFilePath);
-        console.log('Downloaded video to:', tempFilePath);
         
         // Probe the video duration
         const videoDuration = await probeVideoDuration(tempFilePath);
         console.log(`Probed video duration for ${tempFilePath}: ${videoDuration} seconds`);
 
-        // Check for valid duration and trim video if needed
+        // Trim if necessary
         if (videoDuration > media.duration) {
           const startTime = 0; // Starting from the beginning
           const durationToTrim = media.duration; // Duration to keep
           console.log(`Trimming video ${tempFilePath} to ${durationToTrim} seconds`);
-          
-          if (durationToTrim > 0) { // Ensure duration is valid
+
+          // Ensure that durationToTrim is valid
+          if (durationToTrim > 0) { // Check if the duration to trim is positive
+            console.log(`Calling trimVideo with startTime: ${startTime}, duration: ${durationToTrim}`);
             await trimVideo(tempFilePath, tempFilePath, startTime, durationToTrim);
           } else {
             throw new Error(`Invalid duration for trimming: ${durationToTrim}`);
@@ -603,7 +604,6 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
         const imageTempFilePath = await downloadImage(media.url, imagesDir);
         if (imageTempFilePath) {
           await createImageVideo(imageTempFilePath, media.duration, tempFilePath);
-          console.log('Created video from image:', tempFilePath);
         } else {
           throw new Error(`Failed to download or process image: ${media.url}`);
         }
@@ -622,6 +622,9 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
     tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
   }
 };
+
+
+
 
 
 // Endpoint to merge images and videos in sequence
