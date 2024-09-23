@@ -533,90 +533,86 @@ app.get('/download/:filename', (req, res) => {
   }
 });
 
+
 // Function to convert an image into a video of specified duration
 const createImageVideo = async (imagePath, duration, outputPath) => {
-  try {
-    const command = `ffmpeg -loop 1 -i "${imagePath}" -c:v libx264 -t ${duration} -pix_fmt yuv420p -vf "scale=1280:720" -y "${outputPath}"`;
-    await execPromise(command);
-  } catch (error) {
-    console.error('Error creating video from image:', error);
-    throw error;
-  }
+  const command = `ffmpeg -loop 1 -i "${imagePath}" -c:v libx264 -t ${duration} -pix_fmt yuv420p -vf "scale=1280:720" -y "${outputPath}"`;
+  await execPromise(command);
+};
+
+// Function to probe video duration
+const probeVideoDuration = async (inputPath) => {
+  return new Promise((resolve, reject) => {
+    if (!inputPath) {
+      return reject(new Error('Input path for probing is undefined.'));
+    }
+
+    ffmpeg.ffprobe(inputPath, (err, metadata) => {
+      if (err) {
+        console.error('Error probing video:', err);
+        return reject(err);
+      }
+      const duration = metadata.format.duration;
+      resolve(duration);
+    });
+  });
+};
+
+
+
+// Function to create a list of files (not used directly but can be helpful)
+const createFileList = (inputPaths) => {
+  return inputPaths.map(p => `file '${p}'`).join('\n');
 };
 
 // Function to merge images and videos in a given sequence
 const mergeMediaSequence = async (mediaSequence, outputPath) => {
   const tempFiles = [];
   try {
+    // Iterate through the sequence and process each item (image or video)
     for (const [index, media] of mediaSequence.entries()) {
       const ext = path.extname(media.url).toLowerCase();
       const uniqueFilename = `${uuidv4()}_media_${index}.mp4`;
       const tempFilePath = path.join(storageDir, uniqueFilename);
 
       if (ext === '.mp4') {
-        // If it's a video, download it and trim it if necessary
-        const videoTempFilePath = await downloadFile(media.url, tempFilePath);
+        // If it's a video, download it directly
+        await downloadFile(media.url, tempFilePath);
+        console.log('Downloaded video to:', tempFilePath);
         
-        // Log the file path for debugging
-        console.log('Probing video duration for:', videoTempFilePath);
-        
-        // Check if the file exists
-        if (!fs.existsSync(videoTempFilePath)) {
-          throw new Error(`File does not exist: ${videoTempFilePath}`);
+        // Probe the video duration
+        const videoDuration = await probeVideoDuration(tempFilePath);
+        console.log(`Probed video duration for ${tempFilePath}: ${videoDuration} seconds`);
+
+        // Trim video if needed (if you want to handle this here)
+        if (videoDuration > media.duration) {
+          await trimVideo(tempFilePath, tempFilePath, 0, media.duration); // Trimming to the specified duration
         }
 
-        const videoDuration = await probeVideoDuration(videoTempFilePath);
-        if (videoDuration > media.duration) {
-          const trimmedFilePath = `${path.join(storageDir, `${uuidv4()}_trimmed_${index}.mp4`)}`;
-          await trimVideo(videoTempFilePath, trimmedFilePath, 0, media.duration);
-          tempFiles.push(trimmedFilePath);
-        } else {
-          tempFiles.push(videoTempFilePath);
-        }
       } else {
+        // If it's an image, convert it to a video of specified duration
         const imageTempFilePath = await downloadImage(media.url, imagesDir);
         if (imageTempFilePath) {
           await createImageVideo(imageTempFilePath, media.duration, tempFilePath);
-          tempFiles.push(tempFilePath);
+          console.log('Created video from image:', tempFilePath);
         } else {
           throw new Error(`Failed to download or process image: ${media.url}`);
         }
       }
+
+      tempFiles.push(tempFilePath);
     }
 
+    // After preparing all media, merge them in the specified sequence
     await mergeVideos(tempFiles, outputPath);
   } catch (error) {
     console.error('Error merging media sequence:', error);
     throw error;
   } finally {
-    tempFiles.forEach((filePath) => {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-    });
+    // Clean up temporary files
+    tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
   }
 };
-
-
-
-
-
-// Function to probe video duration
-const probeVideoDuration = async (videoPath) => {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(videoPath, (err, metadata) => {
-      if (err) {
-        console.error('Error probing video:', err);
-        reject(err);
-      } else {
-        const duration = metadata.format.duration;
-        resolve(duration);
-      }
-    });
-  });
-};
-
-
 
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
@@ -628,8 +624,8 @@ app.post('/merge-media-sequence', async (req, res) => {
 
     // Validate media sequence (each item must have a url and duration for images)
     for (const media of mediaSequence) {
-      if (!media.url || (media.url.toLowerCase().endsWith('.jpg') && !media.duration)) {
-        return res.status(400).json({ error: 'Each media must have a valid URL and duration for images.' });
+      if (!media.url || !media.duration) {
+        return res.status(400).json({ error: 'Each media must have a valid URL and duration.' });
       }
     }
 
@@ -645,6 +641,10 @@ app.post('/merge-media-sequence', async (req, res) => {
     res.status(500).json({ error: 'Failed to merge media sequence.' });
   }
 });
+
+
+
+
 
 
 
