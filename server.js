@@ -586,32 +586,26 @@ async function mergeVideos(fileListPath, outputPath) {
 
 
 // Function to convert images to videos
-async function convertImageToVideo(imagePath, outputVideoPath, duration = 5) {
-    const cleanImagePath = cleanFileName(imagePath);  // Clean the file name
-
-    if (!fileExists(cleanImagePath)) {
-        console.error(`Error: File ${cleanImagePath} does not exist.`);
-        throw new Error(`File not found: ${cleanImagePath}`);
-    }
-
+async function convertImageToVideo(imagePath, duration = 5) {  // Default duration to 5 seconds
     return new Promise((resolve, reject) => {
-        ffmpeg(cleanImagePath)
-            .outputOptions([
-                `-t ${duration}`, // Set duration for the video
-                '-pix_fmt yuv420p',
-                '-vf scale=500:-1' // Optional: Resize for consistency
-            ])
-            .save(outputVideoPath)
+        const cleanPath = cleanFileName(imagePath);  // Clean file path
+        const outputVideoPath = `${cleanPath.split('.')[0]}_video.mp4`;  // Generate output path
+
+        ffmpeg(cleanPath)
+            .loop(duration)
+            .outputOptions('-c:v', 'libx264', '-t', duration, '-pix_fmt', 'yuv420p')
             .on('end', () => {
-                console.log(`Converted ${cleanImagePath} to ${outputVideoPath}`);
-                resolve();
+                console.log(`Converted image ${cleanPath} to video ${outputVideoPath}`);
+                resolve(outputVideoPath);
             })
             .on('error', (err) => {
-                console.error(`Error converting ${cleanImagePath}: ${err.message}`);
+                console.error(`Error converting ${cleanPath}: ${err.message}`);
                 reject(err);
-            });
+            })
+            .save(outputVideoPath);
     });
 }
+
 
 
 // Function to check if the file exists
@@ -622,44 +616,44 @@ function fileExists(filePath) {
 
 // Function to create the file list for FFmpeg
 async function createFileList(mediaPaths) {
-    const storageDir = '/app/storage/processed';
-    const fileListPath = path.join(storageDir, 'file_list.txt');
-    const videoPaths = [];
+    const fileListPath = '/app/storage/processed/file_list.txt';
+    const fileListContent = mediaPaths.map(mediaPath => {
+        const cleanPath = cleanFileName(mediaPath);  // Ensure path is clean
+        return `file '${cleanPath}'`;
+    }).join('\n');
 
-    for (const media of mediaPaths) {
-        const cleanMedia = cleanFileName(media);  // Clean the file path
-
-        if (cleanMedia.endsWith('.png') || cleanMedia.endsWith('.jpg')) {
-            const outputVideoPath = cleanMedia.replace(/\.(png|jpg)$/, '.mp4');
-            await convertImageToVideo(cleanMedia, outputVideoPath);
-            videoPaths.push(outputVideoPath);
-        } else {
-            if (fileExists(cleanMedia)) {
-                videoPaths.push(cleanMedia);
-            } else {
-                console.error(`File ${cleanMedia} does not exist.`);
-            }
-        }
-    }
-
-    const fileListContent = videoPaths.map(video => `file '${video}'`).join('\n');
-    fs.writeFileSync(fileListPath, fileListContent);
+    fs.writeFileSync(fileListPath, fileListContent);  // Write to file
     console.log(`File list created at: ${fileListPath}`);
-    
     return fileListPath;
 }
 
+
+
 // Example of how you would call the merge media sequence
+// Function to merge media sequences using a file list
 async function mergeMediaSequence(mediaPaths) {
     try {
         const fileList = await createFileList(mediaPaths);
         console.log(`Merging media from file list: ${fileList}`);
 
-        // Add the FFmpeg command to merge the videos from the file list here
+        const outputFilePath = `/app/storage/processed/merged_sequence.mp4`;
+
+        ffmpeg()
+            .input(fileList)
+            .inputOptions('-f concat', '-safe 0')
+            .outputOptions('-c:v', 'libx264', '-pix_fmt', 'yuv420p')
+            .on('end', () => {
+                console.log(`Merged video saved to: ${outputFilePath}`);
+            })
+            .on('error', (err) => {
+                console.error(`Error merging media sequence: ${err.message}`);
+            })
+            .save(outputFilePath);
     } catch (error) {
         console.error(`Error merging media sequence: ${error.message}`);
     }
 }
+
 
 
 
