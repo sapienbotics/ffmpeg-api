@@ -176,6 +176,27 @@ const editVideo = async (inputPath, outputPath, edits) => {
   await execPromise(command);
 };
 
+const downloadMedia = async (url) => {
+    const response = await axios({
+        method: 'get',
+        url,
+        responseType: 'stream',
+    });
+
+    const fileName = path.basename(url);
+    const filePath = path.join(storageDir, fileName);
+
+    return new Promise((resolve, reject) => {
+        const writer = fs.createWriteStream(filePath);
+
+        response.data.pipe(writer);
+
+        writer.on('finish', () => resolve(filePath));
+        writer.on('error', (err) => reject(err));
+    });
+};
+
+
 // Function to apply audio to video with fallbacks
 const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
   try {
