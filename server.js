@@ -186,7 +186,7 @@ async function downloadMedia(url) {
     });
     const fileName = path.basename(url);
     const filePath = path.resolve('/app/storage/processed/', fileName);
-    const writer = fs.createWriteStream(filePath);
+    const writer = (await fs.open(filePath, 'w')).createWriteStream();
     response.data.pipe(writer);
     await new Promise((resolve, reject) => {
       writer.on('finish', resolve);
@@ -198,6 +198,7 @@ async function downloadMedia(url) {
     return null; // Return null if download fails
   }
 }
+
 
 // Function to clean file name by removing query parameters
 function cleanFileName(url) {
@@ -645,7 +646,6 @@ async function probeVideoDuration(filePath) {
 
 
 
-
 // Function to create the file list for FFmpeg
 async function createFileList(mediaPaths) {
     const fileListPath = path.join(storageDir, 'file_list.txt'); // Updated path to ensure it's in the correct directory
@@ -681,7 +681,7 @@ async function createFileList(mediaPaths) {
 
 
 
-// Main function to merge media sequence
+/ Main function to merge media sequence
 async function mergeMediaSequence(mediaSequence) {
   try {
     let totalDuration = 0;
@@ -720,6 +720,8 @@ async function mergeMediaSequence(mediaSequence) {
     // Generate file list for ffmpeg
     const fileListPath = '/app/storage/processed/file_list.txt';
     const fileListContent = validMedia.map((media) => `file '${media.filePath}'`).join('\n');
+
+    // Write the file list using fs.promises.writeFile
     await fs.writeFile(fileListPath, fileListContent);
 
     // Merge the media using ffmpeg
@@ -745,7 +747,6 @@ async function mergeMediaSequence(mediaSequence) {
     throw error;
   }
 }
-
 
 
 
