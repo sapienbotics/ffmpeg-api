@@ -562,7 +562,7 @@ async function mergeVideos(fileListPath, outputPath) {
         const ffmpegCommand = ffmpeg()
             .input(fileListPath)
             .inputOptions(['-f concat', '-safe 0'])
-            .outputOptions(['-c copy', '-loglevel debug']) // Added loglevel for debugging
+            .outputOptions(['-c:v libx264', '-preset fast', '-crf 23']) // Re-encoding options
             .output(outputPath)
             .on('end', () => {
                 console.log(`Merged video saved to: ${outputPath}`);
@@ -579,14 +579,27 @@ async function mergeVideos(fileListPath, outputPath) {
     });
 }
 
+
 // Function to create a file list for FFmpeg
 async function createFileList(mediaPaths) {
     const fileListPath = path.join(storageDir, 'file_list.txt');
     const fileListContent = mediaPaths.map(media => `file '${media}'`).join('\n');
     fs.writeFileSync(fileListPath, fileListContent);
     console.log(`File list created at: ${fileListPath}`);
+
+    // Check if files exist and log durations
+    for (const media of mediaPaths) {
+        if (fs.existsSync(media)) {
+            const duration = await probeVideoDuration(media);
+            console.log(`File ${media} exists. Duration: ${duration} seconds`);
+        } else {
+            console.error(`File not found: ${media}`);
+        }
+    }
+    
     return fileListPath; // Return the file list path
 }
+
 
 // Function to probe video duration
 const probeVideoDuration = async (filePath) => {
