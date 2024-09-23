@@ -709,16 +709,20 @@ async function getMediaInfo(mediaPath) {
 async function mergeMediaSequence(mediaFiles) {
     const processedMedia = [];
 
+    console.log("Starting media processing...");
+
     for (const file of mediaFiles) {
+        console.log(`Processing file: ${JSON.stringify(file)}`);
+        
         if (file && file.url) {
             try {
                 // Process the file (image or video)
                 if (file.type === 'image') {
-                    // Convert image to video with specified duration
+                    console.log(`Converting image to video: ${file.url}`);
                     const videoPath = await convertImageToVideo(file.url, file.duration);
                     processedMedia.push(videoPath);
                 } else if (file.type === 'video') {
-                    // Remove audio from video
+                    console.log(`Removing audio from video: ${file.url}`);
                     const videoWithoutAudio = await removeAudioFromVideo(file.url);
                     processedMedia.push(videoWithoutAudio);
                 }
@@ -726,8 +730,12 @@ async function mergeMediaSequence(mediaFiles) {
                 console.error(`Error processing media file ${file.url}:`, error);
                 continue; // Skip faulty media
             }
+        } else {
+            console.warn(`Invalid file entry: ${JSON.stringify(file)}`);
         }
     }
+
+    console.log("Processed media files:", processedMedia);
 
     if (processedMedia.length === 0) {
         throw new Error('No valid media to merge.');
@@ -736,6 +744,7 @@ async function mergeMediaSequence(mediaFiles) {
     const mergedFilePath = await mergeVideos(processedMedia);
     return mergedFilePath;
 }
+
 
 
 
