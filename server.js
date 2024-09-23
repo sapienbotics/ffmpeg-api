@@ -552,18 +552,31 @@ const probeVideoDuration = async (filePath) => {
   });
 };
 
-// Function to trim video
 async function trimVideo(inputPath, outputPath, startTime, duration) {
-  if (startTime < 0 || duration <= 0) {
-    console.error('Invalid startTime or duration:', { startTime, duration });
-    throw new Error('Invalid startTime or duration');
-  }
+    return new Promise((resolve, reject) => {
+        // Ensure the output file has a different name
+        const trimmedOutputPath = outputPath.endsWith('.mp4')
+            ? outputPath.replace('.mp4', '_trimmed.mp4')
+            : outputPath + '_trimmed.mp4';
 
-  const command = `ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} -c:v libx264 -c:a aac "${outputPath}"`;
-  console.log(`Executing command: ${command}`);
+        const ffmpegCommand = ffmpeg(inputPath)
+            .setStartTime(startTime)
+            .setDuration(duration)
+            .output(trimmedOutputPath)
+            .on('end', () => {
+                console.log(`Trimmed video saved to: ${trimmedOutputPath}`);
+                resolve(trimmedOutputPath);
+            })
+            .on('error', (err) => {
+                console.error(`Error trimming video: ${err.message}`);
+                reject(err);
+            });
 
-  await execPromise(command);
+        console.log(`Executing command: ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} "${trimmedOutputPath}"`);
+        ffmpegCommand.run();
+    });
 }
+
 
 async function mergeMediaSequence(mediaArray, outputPath) {
     const trimmedMediaPaths = [];
@@ -581,7 +594,7 @@ async function mergeMediaSequence(mediaArray, outputPath) {
         // If the media is a video and its duration is greater than the specified duration, trim it
         if (mediaDuration > duration) {
             console.log(`Trimming video ${downloadedPath} to ${duration} seconds`);
-            const trimmedPath = `${downloadedPath}_trimmed.mp4`;
+            const trimmedPath = path.join(storageDir, `${path.basename(downloadedPath, path.extname(downloadedPath))}_trimmed.mp4`);
             await trimVideo(downloadedPath, trimmedPath, 0, duration);
             trimmedMediaPaths.push(trimmedPath);
         } else {
@@ -595,6 +608,7 @@ async function mergeMediaSequence(mediaArray, outputPath) {
     // Merge the videos
     await mergeVideos(trimmedMediaPaths, outputPath);
 }
+
 
 
 // Endpoint to merge images and videos in sequence
