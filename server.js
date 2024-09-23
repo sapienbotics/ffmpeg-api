@@ -579,23 +579,48 @@ async function mergeVideos(fileListPath, outputPath) {
     });
 }
 
+// Function to convert image to video
+async function convertImageToVideo(imagePath, outputVideoPath, duration = 5) {
+    return new Promise((resolve, reject) => {
+        ffmpeg(imagePath)
+            .outputOptions([
+                `-t ${duration}`, // Set duration for the video
+                '-pix_fmt yuv420p',
+                '-vf scale=500:-1' // Optional: Resize for consistency
+            ])
+            .save(outputVideoPath)
+            .on('end', () => {
+                console.log(`Converted ${imagePath} to ${outputVideoPath}`);
+                resolve();
+            })
+            .on('error', (err) => {
+                console.error(`Error converting ${imagePath}: ${err.message}`);
+                reject(err);
+            });
+    });
+}
 
-// Function to create a file list for FFmpeg
+
+// Modify your existing function to create a file list after converting images
 async function createFileList(mediaPaths) {
     const fileListPath = path.join(storageDir, 'file_list.txt');
-    const fileListContent = mediaPaths.map(media => `file '${media}'`).join('\n');
-    fs.writeFileSync(fileListPath, fileListContent);
-    console.log(`File list created at: ${fileListPath}`);
+    const videoPaths = [];
 
-    // Check if files exist and log durations
     for (const media of mediaPaths) {
-        if (fs.existsSync(media)) {
-            const duration = await probeVideoDuration(media);
-            console.log(`File ${media} exists. Duration: ${duration} seconds`);
+        // Clean up file names if they have query parameters
+        const cleanMedia = media.split('?')[0];
+        if (cleanMedia.endsWith('.png') || cleanMedia.endsWith('.jpg')) {
+            const outputVideoPath = cleanMedia.replace(/\.(png|jpg)$/, '.mp4');
+            await convertImageToVideo(cleanMedia, outputVideoPath);
+            videoPaths.push(outputVideoPath);
         } else {
-            console.error(`File not found: ${media}`);
+            videoPaths.push(cleanMedia);
         }
     }
+
+    const fileListContent = videoPaths.map(video => `file '${video}'`).join('\n');
+    fs.writeFileSync(fileListPath, fileListContent);
+    console.log(`File list created at: ${fileListPath}`);
     
     return fileListPath; // Return the file list path
 }
