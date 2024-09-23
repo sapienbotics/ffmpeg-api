@@ -548,7 +548,6 @@ const createImageVideo = async (imagePath, duration, outputPath) => {
 const mergeMediaSequence = async (mediaSequence, outputPath) => {
   const tempFiles = [];
   try {
-    // Iterate through the sequence and process each item (image or video)
     for (const [index, media] of mediaSequence.entries()) {
       const ext = path.extname(media.url).toLowerCase();
       const uniqueFilename = `${uuidv4()}_media_${index}.mp4`;
@@ -557,19 +556,24 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
       if (ext === '.mp4') {
         // If it's a video, download it and trim it if necessary
         const videoTempFilePath = await downloadFile(media.url, tempFilePath);
-        const videoDuration = await probeVideoDuration(videoTempFilePath);
+        
+        // Log the file path for debugging
+        console.log('Probing video duration for:', videoTempFilePath);
+        
+        // Check if the file exists
+        if (!fs.existsSync(videoTempFilePath)) {
+          throw new Error(`File does not exist: ${videoTempFilePath}`);
+        }
 
+        const videoDuration = await probeVideoDuration(videoTempFilePath);
         if (videoDuration > media.duration) {
-          // Trim video if its duration exceeds the specified duration
           const trimmedFilePath = `${path.join(storageDir, `${uuidv4()}_trimmed_${index}.mp4`)}`;
           await trimVideo(videoTempFilePath, trimmedFilePath, 0, media.duration);
           tempFiles.push(trimmedFilePath);
         } else {
-          // Use the video as it is
           tempFiles.push(videoTempFilePath);
         }
       } else {
-        // If it's an image, convert it to a video of the specified duration
         const imageTempFilePath = await downloadImage(media.url, imagesDir);
         if (imageTempFilePath) {
           await createImageVideo(imageTempFilePath, media.duration, tempFilePath);
@@ -580,16 +584,22 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
       }
     }
 
-    // After preparing all media, merge them in the specified sequence
     await mergeVideos(tempFiles, outputPath);
   } catch (error) {
     console.error('Error merging media sequence:', error);
     throw error;
   } finally {
-    // Clean up temporary files
-    tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
+    tempFiles.forEach((filePath) => {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    });
   }
 };
+
+
+
+
 
 // Function to probe video duration
 const probeVideoDuration = async (videoPath) => {
