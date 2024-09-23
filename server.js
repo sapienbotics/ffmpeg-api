@@ -155,19 +155,6 @@ const normalizeVideo = async (inputPath, outputPath) => {
   await execPromise(command);
 };
 
-// Merge videos
-const mergeVideos = async (inputPaths, outputPath) => {
-  const listFilePath = path.join(storageDir, 'file_list.txt');
-  const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
-  fs.writeFileSync(listFilePath, fileListContent);
-
-  const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
-  console.log('Executing FFmpeg command for merging:', command);
-
-  await execPromise(command, 600000); // 10 minutes timeout
-
-  fs.unlinkSync(listFilePath); // Clean up the list file
-};
 
 // Function to resize video using FFmpeg
 const resizeVideo = async (inputPath, outputPath, width, height) => {
