@@ -696,14 +696,14 @@ function isValidUrl(string) {
 
 
 // Helper function to get media duration
-async function getMediaDuration(mediaFile) {
+async function getMediaDuration(mediaPath) {
     return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(mediaFile, (err, metadata) => {
+        ffmpeg.ffprobe(mediaPath, (err, metadata) => {
             if (err) {
-                reject(err);
-            } else {
-                resolve(metadata.format.duration);
+                return reject(err);
             }
+            const duration = metadata.format.duration || 0;
+            resolve(duration);
         });
     });
 }
@@ -739,45 +739,46 @@ async function mergeMediaSequence(mediaFiles) {
         throw new Error("No valid media to merge.");
     }
 
-    const distributedDuration = totalDuration / validMedia.length;
-
-    const tempFiles = validMedia.map((media, index) => {
+    const tempFiles = await Promise.all(validMedia.map((media, index) => {
         const tempFilePath = path.join('/app/storage/temp', `temp_${index}.mp4`);
         return new Promise((resolve, reject) => {
             ffmpeg(media)
-                .outputOptions('-c:v', 'libx264') // Normalize to H.264 codec
-                .outputOptions('-preset', 'fast')
-                .outputOptions('-c:a', 'aac') // Normalize to AAC audio codec
+                .outputOptions('-c:v', 'libx264') // Video codec
+                .outputOptions('-c:a', 'aac')      // Audio codec
+                .outputOptions('-strict', 'experimental')
+                .outputOptions('-vf', 'scale=1280:720') // Scale to a common resolution
                 .output(tempFilePath)
                 .on('end', () => resolve(tempFilePath))
                 .on('error', (err) => reject(`Error processing ${media}: ${err.message}`))
                 .run();
         });
-    });
+    }));
 
-    const normalizedFiles = await Promise.all(tempFiles);
-
-    // Create a FFmpeg command for merging normalized files
+    // Create FFmpeg command for merging normalized files
     return new Promise((resolve, reject) => {
         const command = ffmpeg();
 
-        normalizedFiles.forEach(media => {
+        tempFiles.forEach(media => {
             command.input(media);
         });
 
         command
-            .outputOptions('-filter_complex', `concat=n=${normalizedFiles.length}:v=1:a=1`)
+            .outputOptions('-filter_complex', `concat=n=${tempFiles.length}:v=1:a=1`)
             .on('end', () => {
                 console.log('Merging completed successfully.');
-                resolve('/app/storage/processed/merged_sequence.mp4'); // Adjust the output path as needed
+                resolve('/app/storage/processed/merged_sequence.mp4');
             })
             .on('error', (err) => {
                 console.error(`Error merging media sequence: ${err.message}`);
                 reject(err);
             })
-            .save('/app/storage/processed/merged_sequence.mp4'); // Adjust the output path as needed
+            .save('/app/storage/processed/merged_sequence.mp4');
     });
 }
+
+
+
+
 
 // Endpoint handler
 app.post('/merge-media-sequence', async (req, res) => {
