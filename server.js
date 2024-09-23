@@ -529,54 +529,7 @@ const createImageVideo = async (imagePath, duration, outputPath) => {
 };
 
 
-// Merging videos
-async function mergeVideos(fileListPath, outputPath) {
-    return new Promise((resolve, reject) => {
-        const ffmpegCommand = ffmpeg()
-            .input(fileListPath)
-            .inputOptions(['-f concat', '-safe 0'])
-            .outputOptions('-c copy')
-            .output(outputPath)
-            .on('end', () => {
-                console.log(`Merged video saved to: ${outputPath}`);
-                resolve();
-            })
-            .on('error', (err) => {
-                console.error(`Error merging videos: ${err.message}`);
-                reject(err);
-            });
 
-        // Log the command for debugging
-        console.log(`Executing FFmpeg command for merging:`, ffmpegCommand); 
-        ffmpegCommand.run();
-    });
-}
-
-
-// Helper function to create a file list for FFmpeg
-async function createFileList(mediaPaths) {
-    const fileListPath = path.join(storageDir, 'file_list.txt');
-    const fileListContent = mediaPaths.map(media => `file '${media}'`).join('\n');
-    fs.writeFileSync(fileListPath, fileListContent);
-    console.log(`File list created at: ${fileListPath}`);
-    return fileListPath; // Return the file list path
-}
-
-
-// Function to probe video duration
-const probeVideoDuration = async (filePath) => {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
-      if (err) {
-        console.error(`Error probing video: ${err}`);
-        return reject(err);
-      }
-      const duration = metadata.format.duration || 0;
-      console.log(`Probed video duration for ${filePath}: ${duration} seconds`);
-      resolve(duration);
-    });
-  });
-};
 
 async function trimVideo(inputPath, outputPath, startTime, duration) {
     return new Promise((resolve, reject) => {
@@ -603,7 +556,54 @@ async function trimVideo(inputPath, outputPath, startTime, duration) {
     });
 }
 
+// Function to merge videos
+async function mergeVideos(fileListPath, outputPath) {
+    return new Promise((resolve, reject) => {
+        const ffmpegCommand = ffmpeg()
+            .input(fileListPath)
+            .inputOptions(['-f concat', '-safe 0'])
+            .outputOptions(['-c copy', '-loglevel debug']) // Added loglevel for debugging
+            .output(outputPath)
+            .on('end', () => {
+                console.log(`Merged video saved to: ${outputPath}`);
+                resolve();
+            })
+            .on('error', (err) => {
+                console.error(`Error merging videos: ${err.message}`);
+                reject(err);
+            });
 
+        // Log the command for debugging
+        console.log(`Executing FFmpeg command for merging:`, ffmpegCommand); 
+        ffmpegCommand.run();
+    });
+}
+
+// Function to create a file list for FFmpeg
+async function createFileList(mediaPaths) {
+    const fileListPath = path.join(storageDir, 'file_list.txt');
+    const fileListContent = mediaPaths.map(media => `file '${media}'`).join('\n');
+    fs.writeFileSync(fileListPath, fileListContent);
+    console.log(`File list created at: ${fileListPath}`);
+    return fileListPath; // Return the file list path
+}
+
+// Function to probe video duration
+const probeVideoDuration = async (filePath) => {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+            if (err) {
+                console.error(`Error probing video: ${err}`);
+                return reject(err);
+            }
+            const duration = metadata.format.duration || 0;
+            console.log(`Probed video duration for ${filePath}: ${duration} seconds`);
+            resolve(duration);
+        });
+    });
+};
+
+// Function to merge media sequence
 async function mergeMediaSequence(mediaArray, outputPath) {
     const trimmedMediaPaths = [];
 
@@ -617,6 +617,12 @@ async function mergeMediaSequence(mediaArray, outputPath) {
         // Probe the video duration
         const mediaDuration = await probeVideoDuration(downloadedPath);
         console.log(`Probed video duration for ${downloadedPath}: ${mediaDuration} seconds`);
+
+        // Check if the media duration is valid
+        if (mediaDuration <= 0) {
+            console.error(`Invalid media duration for ${downloadedPath}. Skipping...`);
+            continue; // Skip invalid media
+        }
 
         // If the media is a video and its duration is greater than the specified duration, trim it
         if (mediaDuration > duration) {
@@ -632,36 +638,32 @@ async function mergeMediaSequence(mediaArray, outputPath) {
     // Create a file list for merging
     const fileListPath = await createFileList(trimmedMediaPaths);
 
+    // Log file list contents
+    console.log(`File list contents:\n${fs.readFileSync(fileListPath, 'utf8')}`);
+
     // Merge the videos
     const mergedOutputPath = outputPath || path.join(storageDir, 'merged_output.mp4');
     await mergeVideos(fileListPath, mergedOutputPath);
     console.log(`Merged media saved to: ${mergedOutputPath}`);
 }
 
-
-
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
-  try {
-    const { mediaSequence } = req.body;
-    if (!mediaSequence || !Array.isArray(mediaSequence)) {
-      return res.status(400).json({ error: 'Invalid mediaSequence input. It must be an array of media objects.' });
+    try {
+        const { mediaSequence } = req.body;
+        if (!mediaSequence || !Array.isArray(mediaSequence)) {
+            return res.status(400).json({ error: 'Invalid mediaSequence input. It must be an array of media objects.' });
+        }
+
+        const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_sequence.mp4`);
+        await mergeMediaSequence(mediaSequence, outputFilePath);
+
+        res.status(200).json({ message: 'Media merged successfully', outputUrl: outputFilePath });
+    } catch (error) {
+        console.error('Error merging media sequence:', error);
+        res.status(500).json({ error: 'Failed to merge media sequence.' });
     }
-
-    const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_sequence.mp4`);
-    await mergeMediaSequence(mediaSequence, outputFilePath);
-
-    res.status(200).json({ message: 'Media merged successfully', outputUrl: outputFilePath });
-  } catch (error) {
-    console.error('Error merging media sequence:', error);
-    res.status(500).json({ error: 'Failed to merge media sequence.' });
-  }
 });
-
-
-
-
-
 
 
 
