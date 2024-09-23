@@ -591,8 +591,16 @@ async function convertImageToVideo(imagePath, duration = 5) {
         const cleanPath = cleanFileName(imagePath);
         const outputVideoPath = `${cleanPath.split('.')[0]}_video.mp4`;
 
-        // If FFmpeg can't probe duration, set default duration to 5 seconds
-        const probedDuration = duration === 'N/A' ? 3 : duration;
+        console.log(`Processing image: ${cleanPath}`);  // Add logging to track the exact image path
+
+        // Check if the file exists
+        if (!fs.existsSync(cleanPath)) {
+            console.error(`File ${cleanPath} does not exist! Skipping...`);
+            reject(new Error(`File not found: ${cleanPath}`));
+            return;
+        }
+
+        const probedDuration = duration === 'N/A' ? 5 : duration;
 
         ffmpeg(cleanPath)
             .loop(probedDuration)
@@ -608,6 +616,7 @@ async function convertImageToVideo(imagePath, duration = 5) {
             .save(outputVideoPath);
     });
 }
+
 
 
 
@@ -635,7 +644,6 @@ async function probeMediaDuration(filePath) {
 
 
 
-
 // Function to create the file list for FFmpeg
 async function createFileList(mediaPaths) {
     const fileListPath = '/app/storage/processed/file_list.txt';
@@ -643,11 +651,22 @@ async function createFileList(mediaPaths) {
 
     for (let mediaPath of mediaPaths) {
         const cleanPath = cleanFileName(mediaPath);
-        let duration = await probeMediaDuration(cleanPath);  // Probe the duration of the media
+        let duration;
+
+        try {
+            duration = await probeMediaDuration(cleanPath);  // Probe the duration of the media
+        } catch (error) {
+            console.error(`Error probing media ${cleanPath}: ${error.message}`);
+            continue;  // Skip this file and continue with others
+        }
 
         if (duration === 'N/A' || duration < 1) {  // If no duration, convert to video with default duration
-            console.log(`File ${cleanPath} has invalid duration. Converting to video.`);
-            mediaPath = await convertImageToVideo(cleanPath, 5);  // Convert to a 5-second video
+            try {
+                mediaPath = await convertImageToVideo(cleanPath, 5);  // Convert to a 5-second video
+            } catch (error) {
+                console.error(`Skipping file ${cleanPath} due to conversion error: ${error.message}`);
+                continue;  // Skip this file and continue with others
+            }
         }
 
         fileListContent += `file '${cleanPath}'\n`;
