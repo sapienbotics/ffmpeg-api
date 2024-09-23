@@ -681,7 +681,7 @@ async function createFileList(mediaPaths) {
 
 
 
-/ Main function to merge media sequence
+// Main function to merge media sequence
 async function mergeMediaSequence(mediaSequence) {
   try {
     let totalDuration = 0;
