@@ -591,6 +591,22 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
   }
 };
 
+// Function to probe video duration
+const probeVideoDuration = async (videoPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        console.error('Error probing video:', err);
+        reject(err);
+      } else {
+        const duration = metadata.format.duration;
+        resolve(duration);
+      }
+    });
+  });
+};
+
+
 
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
