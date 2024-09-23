@@ -535,8 +535,13 @@ app.get('/download/:filename', (req, res) => {
 
 // Function to convert an image into a video of specified duration
 const createImageVideo = async (imagePath, duration, outputPath) => {
-  const command = `ffmpeg -loop 1 -i "${imagePath}" -c:v libx264 -t ${duration} -pix_fmt yuv420p -vf "scale=1280:720" -y "${outputPath}"`;
-  await execPromise(command);
+  try {
+    const command = `ffmpeg -loop 1 -i "${imagePath}" -c:v libx264 -t ${duration} -pix_fmt yuv420p -vf "scale=1280:720" -y "${outputPath}"`;
+    await execPromise(command);
+  } catch (error) {
+    console.error('Error creating video from image:', error);
+    throw error;
+  }
 };
 
 // Function to merge images and videos in a given sequence
@@ -550,19 +555,29 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
       const tempFilePath = path.join(storageDir, uniqueFilename);
 
       if (ext === '.mp4') {
-        // If it's a video, download it directly
-        await downloadFile(media.url, tempFilePath);
+        // If it's a video, download it and trim it if necessary
+        const videoTempFilePath = await downloadFile(media.url, tempFilePath);
+        const videoDuration = await probeVideoDuration(videoTempFilePath);
+
+        if (videoDuration > media.duration) {
+          // Trim video if its duration exceeds the specified duration
+          const trimmedFilePath = `${path.join(storageDir, `${uuidv4()}_trimmed_${index}.mp4`)}`;
+          await trimVideo(videoTempFilePath, trimmedFilePath, 0, media.duration);
+          tempFiles.push(trimmedFilePath);
+        } else {
+          // Use the video as it is
+          tempFiles.push(videoTempFilePath);
+        }
       } else {
-        // If it's an image, convert it to a video of specified duration
+        // If it's an image, convert it to a video of the specified duration
         const imageTempFilePath = await downloadImage(media.url, imagesDir);
         if (imageTempFilePath) {
           await createImageVideo(imageTempFilePath, media.duration, tempFilePath);
+          tempFiles.push(tempFilePath);
         } else {
           throw new Error(`Failed to download or process image: ${media.url}`);
         }
       }
-
-      tempFiles.push(tempFilePath);
     }
 
     // After preparing all media, merge them in the specified sequence
@@ -575,6 +590,7 @@ const mergeMediaSequence = async (mediaSequence, outputPath) => {
     tempFiles.forEach((filePath) => fs.unlinkSync(filePath));
   }
 };
+
 
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
@@ -603,6 +619,7 @@ app.post('/merge-media-sequence', async (req, res) => {
     res.status(500).json({ error: 'Failed to merge media sequence.' });
   }
 });
+
 
 
 
