@@ -161,24 +161,45 @@ app.post('/merge-media-sequence', async (req, res) => {
     }
 });
 
-// Endpoint to get the duration of an audio file
+
+// Endpoint to get audio duration
 app.post('/get-audio-duration', async (req, res) => {
+  try {
     const { audioUrl } = req.body;
 
+    // Validate audioUrl
     if (!audioUrl) {
-        return res.status(400).json({ error: 'No audio file URL provided' });
+      return res.status(400).json({ error: 'Missing audio URL.' });
     }
 
-    try {
-        const filePath = path.resolve(audioUrl);
-        const duration = await probeAudioDuration(filePath);
+    // Temporary path to store the audio file
+    const tempAudioPath = path.join(storageDir, `${uuidv4()}_audio.mp3`);
 
-        res.status(200).json({ message: 'Audio duration retrieved successfully', duration });
-    } catch (error) {
-        console.error(`Error retrieving audio duration: ${error.message}`);
-        res.status(500).json({ error: 'Failed to retrieve audio duration' });
-    }
+    // Download the audio file to a temp path
+    await downloadFile(audioUrl, tempAudioPath);
+
+    // Get audio metadata using ffmpeg
+    ffmpeg.ffprobe(tempAudioPath, (err, metadata) => {
+      if (err) {
+        console.error('Error fetching audio metadata:', err);
+        return res.status(500).json({ error: 'Error fetching audio metadata.' });
+      }
+
+      // Extract duration from metadata
+      const duration = metadata.format.duration;
+
+      // Clean up the temporary audio file
+      fs.unlinkSync(tempAudioPath);
+
+      // Respond with the audio duration
+      res.json({ duration });
+    });
+  } catch (error) {
+    console.error('Error processing get-audio-duration request:', error.message);
+    res.status(500).json({ error: 'Failed to retrieve audio duration.' });
+  }
 });
+
 
 // Endpoint to download merged files
 app.get('/download/:filename', (req, res) => {
