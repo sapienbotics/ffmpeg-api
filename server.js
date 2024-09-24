@@ -45,16 +45,18 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-// Convert image to video with specified duration
+// Convert image to video with fallback error handling
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         ffmpeg(imagePath)
-            .loop(duration) // Loop the image for the given duration
+            .inputOptions('-f image2') // Treat input as an image
+            .loop(duration) // Loop the image for the specified duration
             .outputOptions([
-                `-t ${duration}`,      // Set the duration
-                '-c:v libx264',        // Use H.264 encoding
-                '-vf "scale=640:360"', // Scale the image to standard 640x360 resolution
-                '-pix_fmt yuv420p',    // Use the standard pixel format
+                `-t ${duration}`,        // Set the duration of the output video
+                '-c:v libx264',          // Use H.264 encoding
+                '-vf "scale=640:360"',   // Force scaling to 640x360 resolution
+                '-pix_fmt yuv420p',      // Ensure compatibility with most players
+                '-r 30',                 // Set frame rate to 30fps
             ])
             .on('end', () => {
                 console.log(`Converted image to video: ${outputVideoPath}`);
@@ -67,9 +69,6 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             .save(outputVideoPath);
     });
 };
-
-
-
 
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
@@ -95,7 +94,7 @@ app.post('/merge-media-sequence', async (req, res) => {
         }));
 
         // Step 2: Process each media file (trim videos, convert images to videos)
-        await Promise.all(mediaSequence.map(async media => {
+        const processedMedia = await Promise.all(mediaSequence.map(async media => {
             const fileName = path.basename(media.url);
             const filePath = path.join(processedDir, fileName);
             const trimmedFilePath = path.join(processedDir, `trimmed_${fileName}`);
@@ -110,7 +109,7 @@ app.post('/merge-media-sequence', async (req, res) => {
                         .output(trimmedFilePath)
                         .on('end', () => {
                             console.log(`Processed video: ${trimmedFilePath}`);
-                            resolve();
+                            resolve(trimmedFilePath);
                         })
                         .on('error', err => {
                             console.error(`Error processing video: ${filePath}`, err);
@@ -118,12 +117,26 @@ app.post('/merge-media-sequence', async (req, res) => {
                         })
                         .run();
                 });
-            } else if (fileName.endsWith('.jpg') || fileName.endsWith('.png')) {
+            } else if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png')) {
                 // Convert images to videos
-                return convertImageToVideo(filePath, trimmedFilePath, media.duration);
+                try {
+                    await convertImageToVideo(filePath, trimmedFilePath, media.duration);
+                    return trimmedFilePath;
+                } catch (err) {
+                    console.error(`Skipping image due to error: ${fileName}`);
+                    return null; // Skip this media if conversion fails
+                }
             }
-            return Promise.resolve();
+
+            return null; // In case it's an unsupported file format
         }));
+
+        // Filter out nulls (failed conversions)
+        const validMedia = processedMedia.filter(media => media !== null);
+
+        if (validMedia.length === 0) {
+            return res.status(500).json({ error: 'No media files processed successfully.' });
+        }
 
         // Step 3: Create file_list.txt for FFmpeg
         const fileListPath = createFileList(mediaSequence, processedDir);
