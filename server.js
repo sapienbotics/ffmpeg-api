@@ -64,6 +64,7 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
 };
 
 
+
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
     const { mediaSequence } = req.body;
