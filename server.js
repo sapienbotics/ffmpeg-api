@@ -48,7 +48,7 @@ const createFileList = (mediaSequence, outputDir) => {
 // Convert image to video with fallback error handling
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
-        ffmpeg(imagePath)
+        const ffmpegProcess = ffmpeg(imagePath)
             .inputOptions('-f image2') // Treat input as an image
             .loop(duration) // Loop the image for the specified duration
             .outputOptions([
@@ -64,11 +64,32 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             })
             .on('error', (err) => {
                 console.error(`Error converting image: ${imagePath}`, err);
-                reject(err);
+
+                // Attempt a fallback conversion with simpler scaling if the first attempt fails
+                console.log(`Attempting fallback conversion for image: ${imagePath}`);
+                ffmpeg(imagePath)
+                    .inputOptions('-f image2') // Treat input as an image
+                    .loop(duration) // Loop the image for the given duration
+                    .outputOptions([
+                        `-t ${duration}`,      // Set the duration
+                        '-c:v libx264',        // Use H.264 encoding
+                        '-vf "scale=640:-2"',  // Scale with width 640 and auto height (preserve aspect ratio)
+                        '-pix_fmt yuv420p',    // Use the standard pixel format
+                    ])
+                    .on('end', () => {
+                        console.log(`Fallback conversion succeeded for image: ${outputVideoPath}`);
+                        resolve();
+                    })
+                    .on('error', (fallbackErr) => {
+                        console.error(`Fallback conversion failed for image: ${imagePath}`, fallbackErr);
+                        reject(fallbackErr); // Reject after fallback also fails
+                    })
+                    .save(outputVideoPath);
             })
             .save(outputVideoPath);
     });
 };
+
 
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
