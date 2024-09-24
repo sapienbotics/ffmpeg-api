@@ -143,6 +143,23 @@ async function mergeMediaSequence(mediaFiles, outputFilePath) {
     }
 }
 
+// Download file
+const downloadFile = async (url, filepath) => {
+  const writer = fs.createWriteStream(filepath);
+  const response = await axios({
+    url,
+    method: 'GET',
+    responseType: 'stream',
+  });
+
+  response.data.pipe(writer);
+
+  return new Promise((resolve, reject) => {
+    writer.on('finish', resolve);
+    writer.on('error', reject);
+  });
+};
+
 // Endpoint to merge images and videos in sequence
 app.post('/merge-media-sequence', async (req, res) => {
     try {
