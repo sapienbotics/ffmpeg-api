@@ -107,8 +107,13 @@ const mergeVideos = async (inputPaths, outputPath) => {
     const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
     fs.writeFileSync(listFilePath, fileListContent);
 
-    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
-    await execPromise(command, 600000); // 10 minutes timeout
+    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel debug -err_detect ignore_err -err_detect_ratio 1000000`;
+
+    const { stdout, stderr } = await execPromise(command);
+
+    if (stderr) {
+      console.error(`Error merging videos: ${stderr}`);
+    }
 
     fs.unlinkSync(listFilePath); // Clean up the list file
   } catch (error) {
@@ -116,6 +121,7 @@ const mergeVideos = async (inputPaths, outputPath) => {
     throw error;
   }
 };
+
 
 const downloadImage = async (imageUrl, downloadDir) => {
   try {
@@ -231,6 +237,8 @@ app.post('/merge-media-sequence', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while merging the media sequence.' });
   }
 });
+
+
 
 app.get('/download/:filename', (req, res) => {
   const { filename } = req.params;
