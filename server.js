@@ -45,18 +45,17 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-// Convert image to video with the specified duration
+// Convert image to video with specified duration
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         ffmpeg(imagePath)
-            .loop(duration) // Repeat the image for the given duration
+            .loop(duration) // Loop the image for the given duration
             .outputOptions([
-                `-t ${duration}`, // Set the duration
-                '-c:v libx264',   // Use libx264 for encoding
-                '-vf scale=640:360', // Scale the image to standard resolution
-                '-pix_fmt yuv420p', // Specify pixel format (standard)
+                `-t ${duration}`,      // Set the duration
+                '-c:v libx264',        // Use H.264 encoding
+                '-vf "scale=640:360"', // Scale the image to standard 640x360 resolution
+                '-pix_fmt yuv420p',    // Use the standard pixel format
             ])
-            .save(outputVideoPath)
             .on('end', () => {
                 console.log(`Converted image to video: ${outputVideoPath}`);
                 resolve();
@@ -64,7 +63,8 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             .on('error', (err) => {
                 console.error(`Error converting image: ${imagePath}`, err);
                 reject(err);
-            });
+            })
+            .save(outputVideoPath);
     });
 };
 
