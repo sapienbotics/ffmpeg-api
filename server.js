@@ -154,6 +154,42 @@ const downloadImage = async (imageUrl, downloadDir) => {
   }
 };
 
+
+const getAudioDuration = async (audioPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(audioPath, (err, metadata) => {
+      if (err) {
+        console.error('Error fetching audio metadata:', err);
+        reject(err);
+      } else {
+        const duration = metadata.format.duration;
+        resolve(duration);
+      }
+    });
+  });
+};
+
+app.post('/get-audio-duration', async (req, res) => {
+  try {
+    const { audioUrl } = req.body;
+
+    if (!audioUrl) {
+      return res.status(400).json({ error: 'Missing audio URL.' });
+    }
+
+    const tempAudioPath = path.join(storageDir, `${uuidv4()}_audio.mp3`);
+    await downloadFile(audioUrl, tempAudioPath);
+
+    const duration = await getAudioDuration(tempAudioPath);
+    fs.unlinkSync(tempAudioPath);
+
+    res.json({ duration });
+  } catch (error) {
+    console.error('Error processing get-audio-duration request:', error.message);
+    res.status(500).json({ error: 'Failed to retrieve audio duration.' });
+  }
+});
+
 app.post('/merge-media-sequence', async (req, res) => {
   try {
     const { mediaSequence } = req.body;
