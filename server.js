@@ -1,149 +1,32 @@
 const express = require('express');
-const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
+const { exec } = require('child_process');
+const util = require('util');
+const ffmpeg = require('fluent-ffmpeg');
+const { promisify } = require('util');
+
 const app = express();
 app.use(express.json());
 
-const storageDir = path.join(__dirname, 'storage');
+const storageDir = '/app/storage/processed';
+const imagesDir = path.join(__dirname, 'images');
+const videosDir = path.join(__dirname, 'videos');
 
-// Helper function to probe video duration using FFMPEG
-function probeVideoDuration(filePath) {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) return reject(err);
-            const duration = metadata.format.duration;
-            resolve(duration);
-        });
-    });
+if (!fs.existsSync(storageDir)) {
+  fs.mkdirSync(storageDir, { recursive: true });
+}
+if (!fs.existsSync(imagesDir)) {
+  fs.mkdirSync(imagesDir, { recursive: true });
+}
+if (!fs.existsSync(videosDir)) {
+  fs.mkdirSync(videosDir, { recursive: true });
 }
 
-// Helper function to probe audio duration using FFMPEG
-function probeAudioDuration(filePath) {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) return reject(err);
-            if (!metadata.streams || metadata.streams.length === 0) {
-                return reject(new Error('No audio streams found'));
-            }
-            const audioStream = metadata.streams.find(stream => stream.codec_type === 'audio');
-            if (audioStream) {
-                const duration = metadata.format.duration;
-                resolve(duration);
-            } else {
-                reject(new Error('No audio stream in the file'));
-            }
-        });
-    });
-}
+const execPromise = util.promisify(exec);
 
-// Function to convert an image to a video of a given duration
-async function convertImageToVideo(imageUrl, duration) {
-    const outputPath = path.join(storageDir, `${uuidv4()}_converted_video.mp4`);
-
-    return new Promise((resolve, reject) => {
-        ffmpeg(imageUrl)
-            .inputFormat('image2') // Specify input format
-            .duration(duration) // Set duration
-            .fps(30) // Set frames per second
-            .save(outputPath)
-            .on('end', () => {
-                console.log(`Converted video path: ${outputPath}`);
-                resolve(outputPath);
-            })
-            .on('error', (err) => {
-                console.error(`Error converting image to video: ${err.message}`);
-                reject(err);
-            });
-    });
-}
-
-// Helper function to check media duration
-async function probeMediaDuration(filePath) {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) {
-                console.error(`Error probing media ${filePath}: ${err.message}`);
-                resolve('N/A'); // If there's an error probing, return N/A
-            } else {
-                const duration = metadata.format.duration;
-                resolve(duration ? parseFloat(duration) : 'N/A');
-            }
-        });
-    });
-}
-
-// Function to create the file list for FFmpeg
-async function createFileList(mediaPaths) {
-    const fileListPath = path.join(storageDir, 'file_list.txt'); 
-    let fileListContent = '';
-
-    for (let mediaPath of mediaPaths) {
-        const cleanPath = path.resolve(mediaPath);
-        let duration;
-
-        try {
-            duration = await probeMediaDuration(cleanPath); // Probe the duration of the media
-        } catch (error) {
-            console.error(`Error probing media ${cleanPath}: ${error.message}`);
-            continue; // Skip this file and continue with others
-        }
-
-        if (duration === 'N/A' || duration < 1) { // If no duration, convert to video with default duration
-            try {
-                mediaPath = await convertImageToVideo(cleanPath, 5); // Convert to a 5-second video
-            } catch (error) {
-                console.error(`Skipping file ${cleanPath} due to conversion error: ${error.message}`);
-                continue; // Skip this file and continue with others
-            }
-        }
-
-        fileListContent += `file '${cleanPath}'\n`;
-    }
-
-    fs.writeFileSync(fileListPath, fileListContent); // Write the final file list
-    console.log(`File list created at: ${fileListPath}`);
-    return fileListPath;
-}
-
-// Function to merge media sequence
-async function mergeMediaSequence(mediaFiles, outputFilePath) {
-    const inputFiles = mediaFiles.filter(file => file !== null).map(file => file.url || file); // Ensure valid file paths
-
-    if (inputFiles.length === 0) {
-        console.error('No valid media files to process.');
-        return null;
-    }
-
-    try {
-        const fileListPath = await createFileList(inputFiles);
-
-        await new Promise((resolve, reject) => {
-            ffmpeg()
-                .input(fileListPath)
-                .inputFormat('concat')
-                .outputOptions('-safe', '0') // Allow both relative and absolute paths in the file list
-                .outputOptions('-c', 'copy') // Copy codec, no re-encoding
-                .save(outputFilePath)
-                .on('end', () => {
-                    console.log('Merging finished successfully.');
-                    resolve();
-                })
-                .on('error', (err) => {
-                    console.error(`Error during merging: ${err.message}`);
-                    reject(err);
-                });
-        });
-
-        return outputFilePath;
-    } catch (error) {
-        console.error(`Error merging media sequence: ${error.message}`);
-        return null;
-    }
-}
-
-// Download file
 const downloadFile = async (url, filepath) => {
   const writer = fs.createWriteStream(filepath);
   const response = await axios({
@@ -160,81 +43,173 @@ const downloadFile = async (url, filepath) => {
   });
 };
 
-// Endpoint to merge images and videos in sequence
-app.post('/merge-media-sequence', async (req, res) => {
-    try {
-        const { mediaSequence } = req.body;
-        if (!mediaSequence || !Array.isArray(mediaSequence)) {
-            return res.status(400).json({ error: 'Invalid mediaSequence input. It must be an array of media objects.' });
-        }
+const processMedia = async (mediaList) => {
+  const imagePaths = [];
+  const videoPaths = [];
 
-        const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_sequence.mp4`);
-        await mergeMediaSequence(mediaSequence, outputFilePath);
+  for (const media of mediaList) {
+    const ext = path.extname(media.url).toLowerCase();
+    const filename = `${uuidv4()}${ext}`;
+    const filePath = ext === '.mp4' ? path.join(videosDir, filename) : path.join(imagesDir, filename);
 
-        res.status(200).json({ message: 'Media merged successfully', outputUrl: outputFilePath });
-    } catch (error) {
-        console.error('Error merging media sequence:', error);
-        res.status(500).json({ error: 'Failed to merge media sequence.' });
+    await downloadFile(media.url, filePath);
+    if (ext === '.mp4') {
+      videoPaths.push(filePath);
+    } else {
+      imagePaths.push(filePath);
     }
-});
+  }
 
+  return { imagePaths, videoPaths };
+};
 
-// Endpoint to get audio duration
-app.post('/get-audio-duration', async (req, res) => {
+const trimVideo = async (inputPath, outputPath, startTime, duration) => {
   try {
-    const { audioUrl } = req.body;
+    const command = `ffmpeg -i "${inputPath}" -ss ${startTime} -t ${duration} -c:v libx264 -c:a aac "${outputPath}"`;
+    await execPromise(command);
+  } catch (error) {
+    console.error('Error trimming video:', error);
+    throw error;
+  }
+};
 
-    // Validate audioUrl
-    if (!audioUrl) {
-      return res.status(400).json({ error: 'Missing audio URL.' });
+const resizeVideo = async (inputPath, outputPath, width, height) => {
+  try {
+    const command = `ffmpeg -i "${inputPath}" -vf "scale=${width}:${height}" -c:v libx264 -c:a aac "${outputPath}"`;
+    await execPromise(command);
+  } catch (error) {
+    console.error('Error resizing video:', error);
+    throw error;
+  }
+};
+
+const editVideo = async (inputPath, outputPath, edits) => {
+  try {
+    let filters = '';
+    if (edits.crop) {
+      filters += `crop=${edits.crop}`;
+    }
+    if (edits.scale) {
+      filters += `${filters ? ',' : ''}scale=${edits.scale}`;
     }
 
-    // Temporary path to store the audio file
-    const tempAudioPath = path.join(storageDir, `${uuidv4()}_audio.mp3`);
+    const command = `ffmpeg -i "${inputPath}" -vf "${filters}" -c:v libx264 -c:a aac "${outputPath}"`;
+    await execPromise(command);
+  } catch (error) {
+    console.error('Error editing video:', error);
+    throw error;
+  }
+};
 
-    // Download the audio file to a temp path
-    await downloadFile(audioUrl, tempAudioPath);
+const mergeVideos = async (inputPaths, outputPath) => {
+  try {
+    const listFilePath = path.join(storageDir, 'file_list.txt');
+    const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
+    fs.writeFileSync(listFilePath, fileListContent);
 
-    // Get audio metadata using ffmpeg
-    ffmpeg.ffprobe(tempAudioPath, (err, metadata) => {
-      if (err) {
-        console.error('Error fetching audio metadata:', err);
-        return res.status(500).json({ error: 'Error fetching audio metadata.' });
-      }
+    const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel verbose`;
+    await execPromise(command, 600000); // 10 minutes timeout
 
-      // Extract duration from metadata
-      const duration = metadata.format.duration;
+    fs.unlinkSync(listFilePath); // Clean up the list file
+  } catch (error) {
+    console.error('Error merging videos:', error);
+    throw error;
+  }
+};
 
-      // Clean up the temporary audio file
-      fs.unlinkSync(tempAudioPath);
+const downloadImage = async (imageUrl, downloadDir) => {
+  try {
+    const uniqueId = crypto.randomBytes(8).toString('hex');
+    let extension = path.extname(imageUrl).split('?')[0];
+    if (!extension) {
+      extension = '.jpg'; // Default to .jpg if no extension is found
+    }
 
-      // Respond with the audio duration
-      res.json({ duration });
+    const sanitizedFilename = `${uniqueId}${extension}`;
+    const filePath = path.join(downloadDir, sanitizedFilename);
+
+    const response = await axios({
+      url: imageUrl,
+      method: 'GET',
+      responseType: 'stream',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Referer': 'https://example.com' // Adjust the referer if needed
+      },
+      validateStatus: function (status) {
+        return status >= 200 && status < 400; // Resolve only if status code is 2xx to 3xx
+      },
+    });
+
+    const writer = fs.createWriteStream(filePath);
+    response.data.pipe(writer);
+
+    return new Promise((resolve, reject) => {
+      writer.on('finish', () => resolve(filePath));
+      writer.on('error', reject);
     });
   } catch (error) {
-    console.error('Error processing get-audio-duration request:', error.message);
-    res.status(500).json({ error: 'Failed to retrieve audio duration.' });
+    console.error(`Error downloading image: ${error.message}`);
+    return null; // Return null to indicate a failure
+  }
+};
+
+app.post('/merge-media-sequence', async (req, res) => {
+  try {
+    const { mediaSequence } = req.body;
+
+    if (!mediaSequence || !Array.isArray(mediaSequence)) {
+      return res.status(400).json({ error: 'Invalid mediaSequence input. It must be an array of media objects.' });
+    }
+
+    const processedMedia = [];
+
+    for (const media of mediaSequence) {
+      const { url, duration, type } = media;
+
+      if (type === 'image') {
+        const tempImagePath = await downloadImage(url, imagesDir);
+
+        if (tempImagePath) {
+          const tempVideoPath = path.join(videosDir, `${uuidv4()}_temp_video.mp4`);
+          const command = `ffmpeg -loop 1 -i "${tempImagePath}" -c:v libx264 -t ${duration} -pix_fmt yuv420p ${tempVideoPath}`;
+          await execPromise(command);
+
+          processedMedia.push(tempVideoPath);
+        }
+      } else if (type === 'video') {
+        const tempVideoPath = await downloadFile(url, videosDir);
+        const trimmedVideoPath = path.join(videosDir, `${uuidv4()}_trimmed_video.mp4`);
+        await trimVideo(tempVideoPath, trimmedVideoPath, 0, duration);
+
+        processedMedia.push(trimmedVideoPath);
+      }
+    }
+
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
+    await mergeVideos(processedMedia, outputFilePath);
+
+    res.status(200).json({ message: 'Media sequence merged successfully', outputUrl: outputFilePath });
+  } catch (error) {
+    console.error('Error processing merge-media-sequence request:', error.message);
+    res.status(500).json({ error: 'An error occurred while merging the media sequence.' });
   }
 });
 
-
-// Endpoint to download merged files
 app.get('/download/:filename', (req, res) => {
-    const { filename } = req.params;
-    const filePath = path.join(storageDir, filename);
+  const { filename } = req.params;
+  const filePath = path.join(storageDir, filename);
 
-    // Check if file exists
-    if (fs.existsSync(filePath)) {
-        // Set appropriate headers for file download
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.sendFile(filePath);
-    } else {
-        res.status(404).json({ error: 'File not found' });
-    }
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.sendFile(filePath);
+  } else {
+    res.status(404).json({ error: 'File not found' });
+  }
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
