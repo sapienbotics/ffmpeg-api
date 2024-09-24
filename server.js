@@ -45,6 +45,24 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
+// Convert image to video with the specified duration
+const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
+    return new Promise((resolve, reject) => {
+        ffmpeg(imagePath)
+            .loop(duration) // Loop the image for the specified duration
+            .outputOptions('-c:v libx264', '-tune stillimage', '-pix_fmt yuv420p', `-t ${duration}`)
+            .save(outputVideoPath)
+            .on('end', () => {
+                console.log(`Converted image to video: ${outputVideoPath}`);
+                resolve();
+            })
+            .on('error', (err) => {
+                console.error(`Error converting image: ${imagePath}`, err);
+                reject(err);
+            });
+    });
+};
+
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
     const { mediaSequence } = req.body;
@@ -68,14 +86,14 @@ app.post('/merge-media-sequence', async (req, res) => {
             }
         }));
 
-        // Step 2: Process each media file
+        // Step 2: Process each media file (trim videos, convert images to videos)
         await Promise.all(mediaSequence.map(async media => {
             const fileName = path.basename(media.url);
             const filePath = path.join(processedDir, fileName);
             const trimmedFilePath = path.join(processedDir, `trimmed_${fileName}`);
 
-            // If it's a video, trim it and remove audio
             if (fileName.endsWith('.mp4') || fileName.endsWith('.mov')) {
+                // Trim videos
                 return new Promise((resolve, reject) => {
                     ffmpeg(filePath)
                         .setStartTime(0) // Always start at 0
@@ -92,9 +110,10 @@ app.post('/merge-media-sequence', async (req, res) => {
                         })
                         .run();
                 });
+            } else if (fileName.endsWith('.jpg') || fileName.endsWith('.png')) {
+                // Convert images to videos
+                return convertImageToVideo(filePath, trimmedFilePath, media.duration);
             }
-
-            // If it's an image, we don't need to process it further
             return Promise.resolve();
         }));
 
