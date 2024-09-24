@@ -49,8 +49,13 @@ const createFileList = (mediaSequence, outputDir) => {
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         ffmpeg(imagePath)
-            .loop(duration) // Loop the image for the specified duration
-            .outputOptions('-c:v libx264', `-t ${duration}`) // Removed 'pix_fmt' option
+            .loop(duration) // Repeat the image for the given duration
+            .outputOptions([
+                `-t ${duration}`, // Set the duration
+                '-c:v libx264',   // Use libx264 for encoding
+                '-vf scale=640:360', // Scale the image to standard resolution
+                '-pix_fmt yuv420p', // Specify pixel format (standard)
+            ])
             .save(outputVideoPath)
             .on('end', () => {
                 console.log(`Converted image to video: ${outputVideoPath}`);
@@ -62,6 +67,7 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             });
     });
 };
+
 
 
 
