@@ -104,7 +104,11 @@ const editVideo = async (inputPath, outputPath, edits) => {
 const mergeVideos = async (inputPaths, outputPath) => {
   try {
     const listFilePath = path.join(storageDir, 'file_list.txt');
+
     const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
+
+    console.log('File list contents:', fileListContent);
+
     fs.writeFileSync(listFilePath, fileListContent);
 
     const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel debug -err_detect ignore_err`;
