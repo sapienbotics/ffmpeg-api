@@ -103,12 +103,16 @@ const editVideo = async (inputPath, outputPath, edits) => {
 
 const mergeVideos = async (inputPaths, outputPath) => {
   try {
+    // Check if all file paths exist before merging videos
+    for (const path of inputPaths) {
+      if (!fs.existsSync(path)) {
+        throw new Error(`File not found: ${path}`);
+      }
+    }
+
     const listFilePath = path.join(storageDir, 'file_list.txt');
-
     const fileListContent = inputPaths.map(p => `file '${p}'`).join('\n');
-
     console.log('File list contents:', fileListContent);
-
     fs.writeFileSync(listFilePath, fileListContent);
 
     const command = `ffmpeg -f concat -safe 0 -i ${listFilePath} -c copy -y ${outputPath} -progress ${path.join(storageDir, 'ffmpeg_progress.log')} -loglevel debug -err_detect ignore_err`;
@@ -202,15 +206,17 @@ app.post('/get-audio-duration', async (req, res) => {
 
 app.post('/merge-media-sequence', async (req, res) => {
   try {
-    const { mediaSequence } = req.body;
-
-    if (!mediaSequence || !Array.isArray(mediaSequence)) {
-      return res.status(400).json({ error: 'Invalid mediaSequence input. It must be an array of media objects.' });
+    // Check if all file paths exist before merging videos
+    for (const media of req.body.mediaSequence) {
+      if (media.type === 'video' && !fs.existsSync(media.url)) {
+        return res.status(400).json({ error: `Video file not found: ${media.url}` });
+      }
     }
 
+    // Proceed with merging videos
     const processedMedia = [];
 
-    for (const media of mediaSequence) {
+    for (const media of req.body.mediaSequence) {
       const { url, duration, type } = media;
 
       if (type === 'image') {
