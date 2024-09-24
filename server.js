@@ -19,6 +19,25 @@ function probeVideoDuration(filePath) {
     });
 }
 
+// Helper function to probe audio duration using FFMPEG
+function probeAudioDuration(filePath) {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(filePath, (err, metadata) => {
+            if (err) return reject(err);
+            if (!metadata.streams || metadata.streams.length === 0) {
+                return reject(new Error('No audio streams found'));
+            }
+            const audioStream = metadata.streams.find(stream => stream.codec_type === 'audio');
+            if (audioStream) {
+                const duration = metadata.format.duration;
+                resolve(duration);
+            } else {
+                reject(new Error('No audio stream in the file'));
+            }
+        });
+    });
+}
+
 // Function to convert an image to a video of a given duration
 async function convertImageToVideo(imageUrl, duration) {
     const outputPath = path.join(storageDir, `${uuidv4()}_converted_video.mp4`);
@@ -139,6 +158,25 @@ app.post('/merge-media-sequence', async (req, res) => {
     } catch (error) {
         console.error('Error merging media sequence:', error);
         res.status(500).json({ error: 'Failed to merge media sequence.' });
+    }
+});
+
+// Endpoint to get the duration of an audio file
+app.post('/get-audio-duration', async (req, res) => {
+    const { audioUrl } = req.body;
+
+    if (!audioUrl) {
+        return res.status(400).json({ error: 'No audio file URL provided' });
+    }
+
+    try {
+        const filePath = path.resolve(audioUrl);
+        const duration = await probeAudioDuration(filePath);
+
+        res.status(200).json({ message: 'Audio duration retrieved successfully', duration });
+    } catch (error) {
+        console.error(`Error retrieving audio duration: ${error.message}`);
+        res.status(500).json({ error: 'Failed to retrieve audio duration' });
     }
 });
 
