@@ -50,7 +50,7 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         ffmpeg(imagePath)
             .loop(duration) // Loop the image for the specified duration
-            .outputOptions('-c:v libx264', '-tune stillimage', '-pix_fmt yuv420p', `-t ${duration}`)
+            .outputOptions('-c:v libx264', `-t ${duration}`) // Removed 'pix_fmt' option
             .save(outputVideoPath)
             .on('end', () => {
                 console.log(`Converted image to video: ${outputVideoPath}`);
@@ -62,6 +62,7 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             });
     });
 };
+
 
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
