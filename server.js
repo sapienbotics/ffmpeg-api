@@ -69,8 +69,6 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     });
 };
 
-
-
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
     const { mediaSequence } = req.body;
@@ -106,7 +104,7 @@ app.post('/merge-media-sequence', async (req, res) => {
                         ffmpeg(filePath)
                             .setStartTime(0)
                             .setDuration(media.duration)
-                            .outputOptions('-an')
+                            .outputOptions('-an')  // Remove audio
                             .output(trimmedFilePath)
                             .on('end', () => {
                                 console.log(`Processed video: ${trimmedFilePath}`);
@@ -150,64 +148,6 @@ app.post('/merge-media-sequence', async (req, res) => {
     } catch (err) {
         console.error('Error processing merge-media-sequence:', err);
         res.status(500).send('Error processing request');
-    }
-});
-
-// Endpoint to download the merged video
-app.get('/download/:fileName', (req, res) => {
-    const { fileName } = req.params;
-    const filePath = path.join(storageDir, fileName);
-
-    if (fs.existsSync(filePath)) {
-        res.download(filePath);
-    } else {
-        res.status(404).send('File not found');
-    }
-});
-
-// Endpoint to get audio duration
-app.post('/get-audio-duration', async (req, res) => {
-    try {
-        const { audioUrl } = req.body;
-
-        // Validate audioUrl
-        if (!audioUrl) {
-            return res.status(400).json({ error: 'Missing audio URL.' });
-        }
-
-        // Generate a temporary path to store the downloaded audio file
-        const tempAudioPath = path.join(storageDir, `${uuidv4()}_audio.mp3`);
-
-        // Download the audio file to a temporary path
-        await downloadFile(audioUrl, tempAudioPath);
-
-        // Use ffmpeg to extract the metadata of the audio file
-        ffmpeg.ffprobe(tempAudioPath, (err, metadata) => {
-            // If there's an error fetching metadata, handle it
-            if (err) {
-                console.error('Error fetching audio metadata:', err);
-                return res.status(500).json({ error: 'Error fetching audio metadata.' });
-            }
-
-            // Check if metadata contains duration information
-            if (!metadata.format || !metadata.format.duration) {
-                // Clean up the temporary audio file before returning an error
-                fs.unlinkSync(tempAudioPath);
-                return res.status(500).json({ error: 'Unable to retrieve audio duration.' });
-            }
-
-            // Extract duration from metadata
-            const duration = metadata.format.duration;
-
-            // Clean up the temporary audio file after processing
-            fs.unlinkSync(tempAudioPath);
-
-            // Respond with the audio duration
-            res.json({ duration });
-        });
-    } catch (error) {
-        console.error('Error processing get-audio-duration request:', error.message);
-        res.status(500).json({ error: 'Failed to retrieve audio duration.' });
     }
 });
 
