@@ -122,33 +122,32 @@ const createFileList = (mediaSequence, outputDir) => {
 };
 
 
-// Combined and optimized Image to Video conversion with error handling for dimensions
 async function convertImageToVideo(imageUrl, duration) {
-    const outputVideoPath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    const localImagePath = path.join(outputDir, path.basename(imageUrl));
-
-    await downloadFile(imageUrl, localImagePath);  // Download the image
+    const outputFilePath = path.join(outputDir, `${path.basename(imageUrl, path.extname(imageUrl))}.mp4`);
 
     return new Promise((resolve, reject) => {
-        ffmpeg(localImagePath)
-            .inputOptions('-loop', '1')  // Loop the image to fill the duration
+        ffmpeg(imageUrl)
             .outputOptions([
                 '-t', duration,  // Set duration
-                '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease',  // Scale to 1280x720, maintain aspect ratio
-                '-pix_fmt', 'yuv420p',  // Ensure video compatibility
-                '-r', '25',  // Set frame rate to 25fps
+                '-s', '640x360',  // Set resolution to 640x360 (adjust as needed)
+                '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
+                '-c:v', 'libx264',  // Encode with libx264
+                '-preset', 'fast',  // Faster encoding
+                '-movflags', 'faststart',  // Optimize for playback
+                '-pix_fmt', 'yuv420p',  // Ensure compatibility
             ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
-                resolve(outputVideoPath);
+                resolve(outputFilePath);
             })
             .on('error', (err) => {
                 console.error(`Error converting image to video: ${err.message}`);
                 reject(err);
             })
-            .save(outputVideoPath);
+            .save(outputFilePath);
     });
 }
+
 
 
 const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
