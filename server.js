@@ -79,6 +79,7 @@ async function trimVideo(inputFilePath, duration) {
 
 
 
+// Function to convert image to video
 async function convertImageToVideo(imageUrl, duration) {
     return new Promise((resolve, reject) => {
         const outputPath = path.join(outputDir, `${path.basename(imageUrl, path.extname(imageUrl))}.mp4`);
@@ -88,13 +89,23 @@ async function convertImageToVideo(imageUrl, duration) {
             .loop(1)  // Loop the image
             .outputOptions([
                 `-c:v libx264`,  // Set video codec
-                `-t ${duration}`,  // Set duration
-                '-pix_fmt yuv420p' // Ensure compatibility
+                `-t ${duration}`,  // Set total duration
+                '-pix_fmt yuv420p', // Ensure compatibility
+                '-vf "scale=640:360"' // Optional: scale to a specific resolution
             ])
             .save(outputPath)
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
-                resolve(outputPath);
+                
+                // Check the output video size
+                const stats = fs.statSync(outputPath);
+                if (stats.size < 1000) { // Check if the output video is too small
+                    console.error(`Generated video for ${imageUrl} is too small, skipping.`);
+                    fs.unlinkSync(outputPath); // Delete the empty file
+                    return resolve(null); // Return null to skip adding to paths
+                }
+                
+                resolve(outputPath); // Return valid output path
             })
             .on('error', (error) => {
                 console.error(`Error converting image ${imageUrl}: ${error.message}`);
@@ -102,6 +113,7 @@ async function convertImageToVideo(imageUrl, duration) {
             });
     });
 }
+
 
 
 
@@ -222,8 +234,10 @@ async function processMediaSequence(mediaSequence) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
 
             try {
-                const convertedVideoPath = await convertImageToVideo(url, duration);
-                videoPaths.push(convertedVideoPath);  // Add the converted video path to paths
+                const videoPath = await convertImageToVideo(url, duration);
+                if (videoPath) { // Only add valid video paths
+                    videoPaths.push(videoPath);  // Add the converted video path to paths
+                }
             } catch (error) {
                 console.error(`Error processing media ${url}: ${error.message}`);
                 continue;  // Skip to the next media
@@ -231,7 +245,6 @@ async function processMediaSequence(mediaSequence) {
         }
     }
 
-    // Ensure all media have been processed before merging
     if (videoPaths.length > 0) {
         try {
             const mergeResult = await mergeMediaUsingFile(videoPaths, totalDuration);  // Pass total expected duration
@@ -246,6 +259,13 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
+
+// Example merge function (ensure this is defined correctly in your code)
+async function mergeMediaUsingFile(videoPaths, totalDuration) {
+    // Your merging logic here...
+    // You may want to handle fade effects for better transitions between videos.
+}
+
 
 
 
