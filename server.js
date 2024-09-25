@@ -128,13 +128,13 @@ async function convertImageToVideo(imageUrl, duration) {
     return new Promise((resolve, reject) => {
         ffmpeg(imageUrl)
             .outputOptions([
-                '-t', duration,  // Set duration
-                '-s', '640x360',  // Set resolution to 640x360 (adjust as needed)
-                '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
-                '-c:v', 'libx264',  // Encode with libx264
-                '-preset', 'fast',  // Faster encoding
-                '-movflags', 'faststart',  // Optimize for playback
-                '-pix_fmt', 'yuv420p',  // Ensure compatibility
+                '-t', duration,
+                '-s', '640x360',
+                '-vf', 'fps=25',
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-movflags', 'faststart',
+                '-pix_fmt', 'yuv420p',
             ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
@@ -147,6 +147,7 @@ async function convertImageToVideo(imageUrl, duration) {
             .save(outputFilePath);
     });
 }
+
 
 
 
@@ -222,8 +223,8 @@ async function processMediaSequence(mediaSequence) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
 
             try {
-                const videoPath = await convertImageToVideo(url, duration);
-                videoPaths.push(videoPath);  // Add the converted video path to paths
+                const convertedVideoPath = await convertImageToVideo(url, duration);
+                videoPaths.push(convertedVideoPath);  // Add the converted video path to paths
             } catch (error) {
                 console.error(`Error processing media ${url}: ${error.message}`);
                 continue;  // Skip to the next media
@@ -231,6 +232,7 @@ async function processMediaSequence(mediaSequence) {
         }
     }
 
+    // Ensure all media have been processed before merging
     if (videoPaths.length > 0) {
         try {
             const mergeResult = await mergeMediaUsingFile(videoPaths, totalDuration);  // Pass total expected duration
@@ -245,7 +247,6 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
-
 
 
 
