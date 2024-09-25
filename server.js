@@ -64,7 +64,7 @@ async function convertImageToVideo(imageUrl, duration) {
             resolve(outputFilePath);
         });
     });
-});
+}
 
 
 // Function to process media sequence
