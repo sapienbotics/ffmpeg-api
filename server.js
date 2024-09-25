@@ -72,7 +72,7 @@ const convertImageToVideo = async (imageUrl, duration) => {
     });
 };
 
-// Updated mergeMedia function with proper URL validation
+
 const mergeMedia = async (mediaArray) => {
     const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4')); // Ensure media is defined before checking extension
     if (validMedia.length === 0) {
@@ -81,10 +81,21 @@ const mergeMedia = async (mediaArray) => {
 
     return new Promise((resolve, reject) => {
         const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
-
+        
+        // Create ffmpeg instance
         const ffmpegCmd = ffmpeg();
 
-        validMedia.forEach(media => ffmpegCmd.input(media));
+        validMedia.forEach(media => {
+            // Add re-encoding and resolution standardization
+            ffmpegCmd.input(media)
+                     .outputOptions([
+                         '-vf scale=960:540', // Standardize the resolution to 960x540 (adjust if necessary)
+                         '-c:v libx264',      // Standardize video codec to H.264
+                         '-preset veryfast',  // Set encoding speed to fast
+                         '-crf 23',           // Set constant rate factor for quality (lower value = higher quality)
+                         '-pix_fmt yuv420p'   // Standard pixel format
+                     ]);
+        });
 
         ffmpegCmd
             .on('end', () => {
