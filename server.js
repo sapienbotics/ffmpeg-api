@@ -101,7 +101,7 @@ const mergeMediaSequence = async (req, res) => {
             }
         }
 
-        // Check if validMediaSequence has any valid entries
+        // Ensure validMediaSequence is defined before checking its length
         if (validMediaSequence.length > 0) {
             console.log(`Merging the following media:`, validMediaSequence);
             // Proceed with merging
@@ -116,6 +116,7 @@ const mergeMediaSequence = async (req, res) => {
         res.status(500).json({ error: 'An error occurred during merging' });
     }
 };
+
 
 // Function to merge videos
 const mergeVideos = (videoPaths) => {
