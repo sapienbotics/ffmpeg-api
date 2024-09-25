@@ -84,7 +84,6 @@ const mergeMediaUsingFile = async (mediaArray) => {
     const concatFileContent = validMedia.map(media => `file '${media}'`).join('\n');
     fs.writeFileSync(concatFilePath, concatFileContent);
 
-    // Log the contents of concat_list.txt for debugging
     console.log(`Contents of concat file: ${concatFileContent}`);
 
     const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
@@ -92,13 +91,13 @@ const mergeMediaUsingFile = async (mediaArray) => {
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(concatFilePath)
-            .inputOptions(['-f', 'concat', '-safe', '0']) // Ensure input options are set correctly
-            .outputOptions('-c', 'copy')  // Copy streams without re-encoding
+            .inputOptions(['-f', 'concat', '-safe', '0'])
+            .outputOptions('-c', 'copy')
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
                     status: 'success',
-                    outputFileUrl: `https://yourdomain.com/path/to/${path.basename(outputFilePath)}`,
+                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`, // Updated to your domain
                 });
             })
             .on('error', (err) => {
@@ -108,6 +107,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
             .save(outputFilePath);
     });
 };
+
 
 
 
@@ -246,6 +246,24 @@ app.get('/download/:filename', (req, res) => {
         res.status(404).send('File not found');
     }
 });
+
+// Download endpoint for merged media
+app.get('/download/merged/:filename', (req, res) => {
+    const fileName = req.params.filename;
+    const filePath = path.join(outputDir, fileName);
+
+    if (fs.existsSync(filePath)) {
+        res.download(filePath, (err) => {
+            if (err) {
+                console.error(`Error downloading file: ${fileName}`, err);
+                res.status(500).send('Error downloading file');
+            }
+        });
+    } else {
+        res.status(404).send('File not found');
+    }
+});
+
 
 
 
