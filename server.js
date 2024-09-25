@@ -11,10 +11,14 @@ app.use(express.json());
 
 const storageDir = path.join(__dirname, 'storage', 'processed');
 const processedDir = path.join(storageDir, 'media');
+const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
 
-// Ensure processed directory exists
+// Ensure processed and output directories exist
 if (!fs.existsSync(processedDir)) {
     fs.mkdirSync(processedDir, { recursive: true });
+}
+if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
 }
 
 // Helper function to download files
@@ -46,25 +50,55 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
+// Updated convertImageToVideo with outputDir defined
 const convertImageToVideo = async (imageUrl, duration) => {
-    const outputFilePath = path.join(outputDir, `output_${Date.now()}.mp4`);
-    
-    // Ensure duration is passed correctly as a number
-    const command = `ffmpeg -loop 1 -i ${imageUrl} -c:v libx264 -t ${duration} -pix_fmt yuv420p ${outputFilePath}`;
-
-    // Execute command
     return new Promise((resolve, reject) => {
-        exec(command, (error) => {
-            if (error) {
-                console.error(`Error processing image ${imageUrl}:`, error);
-                return reject(error);
-            }
-            resolve(outputFilePath);
-        });
+        const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
+        
+        ffmpeg(imageUrl)
+            .outputOptions([
+                '-vf', `scale=640:360`, // Scale the video as needed
+                '-t', duration, // Set duration
+            ])
+            .on('end', () => {
+                console.log(`Converted ${imageUrl} to video.`);
+                resolve(outputFilePath);
+            })
+            .on('error', (err) => {
+                console.error(`Error converting image to video: ${err.message}`);
+                reject(err);
+            })
+            .save(outputFilePath);
     });
 };
 
+// Updated mergeMedia function with output link returned
+const mergeMedia = async (mediaArray) => {
+    const validMedia = mediaArray.filter(media => media.url.endsWith('.mp4')); // Filter for valid video URLs
+    if (validMedia.length === 0) {
+        throw new Error('No valid media to merge.');
+    }
 
+    return new Promise((resolve, reject) => {
+        const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
+
+        ffmpeg()
+            .input(validMedia[0].url) // Start with the first valid media
+            .input(validMedia[1]?.url || null) // Add subsequent videos if available
+            .on('end', () => {
+                console.log('Merging finished.');
+                resolve({
+                    status: 'success',
+                    outputFileUrl: `https://yourdomain.com/path/to/${path.basename(outputFilePath)}`, // Update this URL to your hosting
+                });
+            })
+            .on('error', (err) => {
+                console.error(`Error merging media: ${err.message}`);
+                reject(err);
+            })
+            .mergeToFile(outputFilePath);
+    });
+};
 
 // Function to process media sequence
 async function processMediaSequence(mediaSequence) {
@@ -91,7 +125,7 @@ async function processMediaSequence(mediaSequence) {
 
     if (videoPaths.length > 0) {
         try {
-            const mergedVideoPath = await mergeVideos(videoPaths);
+            const mergedVideoPath = await mergeMedia(videoPaths);
             console.log(`Merged video created at: ${mergedVideoPath}`);
         } catch (error) {
             console.error(`Error merging videos: ${error.message}`);
@@ -101,30 +135,15 @@ async function processMediaSequence(mediaSequence) {
     }
 }
 
-
-
-async function mergeVideos(videoPaths) {
-    const outputDir = path.join(__dirname, 'output'); // Ensure this directory exists
-    const outputFilePath = path.join(outputDir, `merged_${Date.now()}.mp4`); // Unique filename for merged video
-
-    // Create filter_complex string
-    const filterComplex = videoPaths.map((v, i) => `[${i}:v]`).join('') + `concat=n=${videoPaths.length}:v=1:a=0`;
-
-    // Construct ffmpeg command
-    const command = `ffmpeg ${videoPaths.map(v => `-i ${v}`).join(' ')} -filter_complex "${filterComplex}" -y ${outputFilePath}`;
-
-    return new Promise((resolve, reject) => {
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Error merging videos: ${stderr}`);
-                return reject(error);
-            }
-            resolve(outputFilePath);
+// Helper function to clean up temporary files
+const cleanupTempFiles = (filePaths) => {
+    filePaths.forEach(filePath => {
+        fs.unlink(filePath, (err) => {
+            if (err) console.error(`Error deleting file: ${filePath}`, err);
+            else console.log(`Deleted temporary file: ${filePath}`);
         });
     });
-}
-
-
+};
 
 // Function to determine media type based on URL extension
 const getMediaType = (url) => {
@@ -140,15 +159,9 @@ const getMediaType = (url) => {
 // Helper function to generate a unique output path for image-to-video conversion
 function generateOutputPath(url) {
     const baseName = path.basename(url, path.extname(url));
-    const outputDir = path.join(__dirname, 'output'); // Ensure this directory exists
-    // Check if the output directory exists, if not create it
-    if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
-    }
     const outputPath = path.join(outputDir, `${baseName}_${Date.now()}.mp4`); // Unique filename
     return outputPath;
 }
-
 
 // Endpoint to merge media sequences
 app.post('/merge-media-sequence', async (req, res) => {
@@ -164,14 +177,12 @@ app.post('/merge-media-sequence', async (req, res) => {
             return res.status(400).json({ error: 'Invalid media sequence format. It should be an array.' });
         }
 
-        // Initialize validMediaSequence as an empty array
         let validMediaSequence = [];
 
         // Loop through the media sequence and process each item
         for (const media of mediaSequence) {
             const { url, duration } = media;
 
-            // Check if url and duration are defined and log them
             if (!url || !duration) {
                 console.error(`Invalid media entry: ${JSON.stringify(media)}. Skipping this entry.`);
                 continue;
@@ -183,34 +194,30 @@ app.post('/merge-media-sequence', async (req, res) => {
             try {
                 let outputVideoPath;
 
-                // If the media is an image, convert it to a video
                 if (type === 'image') {
-                    outputVideoPath = generateOutputPath(url); // Generate output path for image-to-video conversion
+                    outputVideoPath = generateOutputPath(url); 
                     console.log(`Converting image to video: ${url}`);
-                    await convertImageToVideo(url, outputVideoPath, duration); // Convert image to video
-                    validMediaSequence.push(outputVideoPath); // Add valid output to sequence
+                    await convertImageToVideo(url, outputVideoPath, duration); 
+                    validMediaSequence.push(outputVideoPath);
                     console.log(`Image converted to video: ${outputVideoPath}`);
-                } 
-                // If the media is a video, add it directly
-                else if (type === 'video') {
+                } else if (type === 'video') {
                     console.log(`Processing video: ${url}`);
-                    outputVideoPath = url; // Use the video URL directly
-                    validMediaSequence.push(outputVideoPath); // Add valid video to sequence
+                    outputVideoPath = url;
+                    validMediaSequence.push(outputVideoPath);
                 }
             } catch (error) {
                 console.error(`Error processing media: ${url}`, error);
-                continue; // Continue processing even if one media fails
+                continue;
             }
         }
 
-        // Log the validMediaSequence
         console.log('Valid media sequence:', validMediaSequence);
 
-        // Only proceed if there are valid media files
         if (validMediaSequence.length > 0) {
             console.log('Merging media:', validMediaSequence);
-            await mergeVideos(validMediaSequence); // Merge the valid media files
-            res.status(200).json({ message: 'Media merged successfully' });
+            const result = await mergeMedia(validMediaSequence); 
+            cleanupTempFiles(validMediaSequence); // Clean up temp files
+            res.status(200).json({ message: 'Media merged successfully', link: result.outputFileUrl });
         } else {
             console.error('No valid media files to merge.');
             res.status(400).json({ error: 'No valid media files to merge' });
@@ -226,44 +233,26 @@ app.post('/get-audio-duration', async (req, res) => {
   try {
     const { audioUrl } = req.body;
 
-    // Validate audioUrl
     if (!audioUrl) {
       return res.status(400).json({ error: 'Missing audio URL.' });
     }
 
-    // Generate a temporary path to store the downloaded audio file
     const tempAudioPath = path.join(storageDir, `${uuidv4()}_audio.mp3`);
 
-    // Download the audio file to a temporary path
     await downloadFile(audioUrl, tempAudioPath);
 
-    // Use ffmpeg to extract the metadata of the audio file
     ffmpeg.ffprobe(tempAudioPath, (err, metadata) => {
-      // If there's an error fetching metadata, handle it
       if (err) {
         console.error('Error fetching audio metadata:', err);
-        return res.status(500).json({ error: 'Error fetching audio metadata.' });
+        return res.status(500).json({ error: 'Error processing audio file.' });
       }
 
-      // Check if metadata contains duration information
-      if (!metadata.format || !metadata.format.duration) {
-        // Clean up the temporary audio file before returning an error
-        fs.unlinkSync(tempAudioPath);
-        return res.status(500).json({ error: 'Unable to retrieve audio duration.' });
-      }
-
-      // Extract duration from metadata
       const duration = metadata.format.duration;
-
-      // Clean up the temporary audio file after processing
-      fs.unlinkSync(tempAudioPath);
-
-      // Respond with the audio duration
       res.json({ duration });
     });
   } catch (error) {
-    console.error('Error processing get-audio-duration request:', error.message);
-    res.status(500).json({ error: 'Failed to retrieve audio duration.' });
+    console.error('Error fetching audio duration:', error);
+    res.status(500).json({ error: 'Error processing the request.' });
   }
 });
 
