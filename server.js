@@ -70,25 +70,34 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
+// Optimize Image to Video conversion
 async function convertImageToVideo(imageUrl, duration) {
-    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    
+    const outputVideoPath = path.join(outputDir, `${Date.now()}_image.mp4`);
+    const localImagePath = path.join(outputDir, path.basename(imageUrl));
+
+    await downloadFile(imageUrl, localImagePath); // Download the image
+
     return new Promise((resolve, reject) => {
-        ffmpeg()
-            .input(imageUrl)
-            .loop(duration)  // Set the duration of the image video
-            .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
+        ffmpeg(localImagePath)
+            .inputOptions('-loop', '1') // Loop image
+            .outputOptions([
+                '-t', duration, // Set video duration
+                '-vf', 'scale=1280:720:force_original_aspect_ratio=increase', // Ensure efficient scaling to a common size
+                '-r', '30', // Set frame rate to 30fps
+                '-pix_fmt', 'yuv420p' // Ensures compatibility across players
+            ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
-                resolve(outputFilePath);
+                resolve(outputVideoPath);
             })
             .on('error', (err) => {
                 console.error(`Error converting image to video: ${err.message}`);
                 reject(err);
             })
-            .save(outputFilePath);
+            .save(outputVideoPath);
     });
 }
+
 
 
 
@@ -112,12 +121,15 @@ const mergeMediaUsingFile = async (mediaArray) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c', 'copy')
+            .outputOptions([
+                '-c', 'copy',
+                '-y' // Overwrite output file if exists
+            ])
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
                     status: 'success',
-                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`, // Updated to your domain
+                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`,
                 });
             })
             .on('error', (err) => {
@@ -127,6 +139,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
             .save(outputFilePath);
     });
 };
+
 
 
 
