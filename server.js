@@ -73,49 +73,49 @@ if (validMediaSequence.length > 0) {
 
 
 // Endpoint to merge media sequences
-app.post('/merge-media-sequence', mergeMediaSequence);
-
-// Function to handle merging media sequences
-const mergeMediaSequence = async (req, res) => {
+app.post('/merge-media-sequence', async (req, res) => {
     try {
         const mediaSequence = req.body.mediaSequence; // Expecting an array of media paths
-        let validMediaSequence = []; // Initialize validMediaSequence
+        if (!Array.isArray(mediaSequence)) {
+            return res.status(400).json({ error: 'Invalid media sequence format. It should be an array.' });
+        }
+
+        let validMediaSequence = []; // Initialize validMediaSequence array
 
         for (const media of mediaSequence) {
-            const { type, path, duration } = media; // Assuming media has type and path properties
+            const { type, path, duration } = media; // Assuming media has type, path, and duration properties
 
             try {
                 let outputVideoPath;
 
                 if (type === 'image') {
-                    outputVideoPath = generateOutputPath(path); // Generate output path for image to video
+                    outputVideoPath = generateOutputPath(path); // Generate output path for image-to-video conversion
                     await convertImageToVideo(path, outputVideoPath, duration);
-                    validMediaSequence.push(outputVideoPath); // Push only valid output
+                    validMediaSequence.push(outputVideoPath); // Add valid output to sequence
                 } else if (type === 'video') {
-                    outputVideoPath = path; // Directly use the video path if it's valid
-                    validMediaSequence.push(outputVideoPath); // Push valid video path
+                    outputVideoPath = path; // Directly use the video path
+                    validMediaSequence.push(outputVideoPath); // Add valid video to sequence
                 }
             } catch (error) {
                 console.error(`Error processing media: ${path}`, error);
-                // Handle specific media errors if needed
+                // Handle specific media conversion errors, but continue processing others
             }
         }
 
-        // Ensure validMediaSequence is defined before checking its length
+        // Ensure validMediaSequence is defined and not empty before proceeding
         if (validMediaSequence.length > 0) {
-            console.log(`Merging the following media:`, validMediaSequence);
-            // Proceed with merging
-            await mergeVideos(validMediaSequence);
+            console.log('Merging the following media:', validMediaSequence);
+            await mergeVideos(validMediaSequence); // Call to merge valid media files
             res.status(200).json({ message: 'Media merged successfully' });
         } else {
-            console.error('No valid media files to merge. Please check previous conversion steps.');
+            console.error('No valid media files to merge. Please check the conversion steps.');
             res.status(400).json({ error: 'No valid media files to merge' });
         }
     } catch (error) {
-        console.error('Error in mergeMediaSequence:', error);
+        console.error('Error in merge-media-sequence:', error);
         res.status(500).json({ error: 'An error occurred during merging' });
     }
-};
+});
 
 
 // Function to merge videos
