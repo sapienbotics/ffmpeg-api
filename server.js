@@ -50,6 +50,8 @@ const createFileList = (mediaSequence, outputDir) => {
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         console.log(`Starting conversion for image: ${imagePath}`);
+        console.log(`Output Video Path: ${outputVideoPath}`);
+        console.log(`Duration Set: ${duration}`);
         
         ffmpeg(imagePath)
             .inputOptions('-loop 1') // Loop the image
@@ -57,7 +59,6 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
                 `-t ${duration}`, // Set the duration of the output video
                 '-c:v libx264', // Use H.264 encoding
                 '-pix_fmt yuv420p', // Ensure compatibility with most players
-                '-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2"', // Resize and pad
                 '-r 30' // Set frame rate
             ])
             .on('start', (commandLine) => {
@@ -77,6 +78,7 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             .save(outputVideoPath);
     });
 };
+
 
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
