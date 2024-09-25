@@ -97,15 +97,17 @@ const mergeVideos = (videoPaths) => {
 
 
 
+// Endpoint to merge media sequences
 app.post('/merge-media-sequence', async (req, res) => {
     try {
-        const mediaSequence = req.body.mediaSequence; // Expecting an array of media paths
+        const mediaSequence = req.body.mediaSequence;
 
-        // Log incoming mediaSequence for debugging
+        // Log the received mediaSequence for debugging
         console.log("Received media sequence: ", mediaSequence);
 
         // Ensure mediaSequence is an array
         if (!Array.isArray(mediaSequence)) {
+            console.error('Invalid media sequence. Expected an array.');
             return res.status(400).json({ error: 'Invalid media sequence format. It should be an array.' });
         }
 
@@ -114,45 +116,57 @@ app.post('/merge-media-sequence', async (req, res) => {
 
         // Loop through the media sequence and process each item
         for (const media of mediaSequence) {
-            const { type, path, duration } = media; // Assuming media has type, path, and duration properties
+            const { type, path, duration } = media;
+
+            // Check if type, path, and duration are defined and log them
+            if (!type || !path || !duration) {
+                console.error(`Invalid media entry: ${JSON.stringify(media)}. Skipping this entry.`);
+                continue;
+            }
+
+            console.log(`Processing media - Type: ${type}, Path: ${path}, Duration: ${duration}`);
 
             try {
                 let outputVideoPath;
 
-                // If media type is image, convert it to a video
+                // If the media is an image, convert it to a video
                 if (type === 'image') {
                     outputVideoPath = generateOutputPath(path); // Generate output path for image-to-video conversion
-                    console.log(`Starting conversion for image: ${path}`);
+                    console.log(`Converting image to video: ${path}`);
                     await convertImageToVideo(path, outputVideoPath, duration); // Convert image to video
                     validMediaSequence.push(outputVideoPath); // Add valid output to sequence
                     console.log(`Image converted to video: ${outputVideoPath}`);
                 } 
-                // If media type is video, add it directly to the sequence
+                // If the media is a video, add it directly
                 else if (type === 'video') {
                     console.log(`Processing video: ${path}`);
-                    outputVideoPath = path; // Directly use the video path
+                    outputVideoPath = path; // Use the video path directly
                     validMediaSequence.push(outputVideoPath); // Add valid video to sequence
                 }
             } catch (error) {
                 console.error(`Error processing media: ${path}`, error);
-                // Continue processing remaining media files even if one fails
+                continue; // Continue processing even if one media fails
             }
         }
 
-        // Check if validMediaSequence contains any valid media files
+        // Log the validMediaSequence
+        console.log('Valid media sequence:', validMediaSequence);
+
+        // Only proceed if there are valid media files
         if (validMediaSequence.length > 0) {
-            console.log('Merging the following media:', validMediaSequence);
-            await mergeVideos(validMediaSequence); // Call to merge valid media files
+            console.log('Merging media:', validMediaSequence);
+            await mergeVideos(validMediaSequence); // Merge the valid media files
             res.status(200).json({ message: 'Media merged successfully' });
         } else {
-            console.error('No valid media files to merge. Please check the conversion steps.');
+            console.error('No valid media files to merge.');
             res.status(400).json({ error: 'No valid media files to merge' });
         }
     } catch (error) {
-        console.error('Error in merge-media-sequence:', error);
-        res.status(500).json({ error: 'An error occurred during merging' });
+        console.error('Error in merge-media-sequence endpoint:', error);
+        res.status(500).json({ error: 'An error occurred during media merging' });
     }
 });
+
 
 
 
