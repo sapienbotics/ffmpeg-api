@@ -47,41 +47,36 @@ const createFileList = (mediaSequence, outputDir) => {
 };
 
 // Function to convert image to video
-const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
+async function convertImageToVideo(imageUrl, outputPath, duration) {
     return new Promise((resolve, reject) => {
-        const ffmpegCommand = `ffmpeg -loop 1 -i ${imagePath} -y -t ${duration} -c:v libx264 -pix_fmt yuv420p -r 30 ${outputVideoPath}`;
-        
-        exec(ffmpegCommand, (error, stdout, stderr) => {
+        const command = `ffmpeg -loop 1 -i ${imageUrl} -c:v libx264 -t ${duration} -pix_fmt yuv420p ${outputPath}`;
+        exec(command, (error, stdout, stderr) => {
             if (error) {
-                console.error(`Error converting image ${imagePath}:`, stderr);
-                return reject(new Error('Conversion failed!'));
+                console.error(`Error converting image to video: ${stderr}`);
+                return reject(error);
             }
             resolve();
         });
     });
-};
+}
 
 // Function to merge videos
-const mergeVideos = (videoPaths) => {
+async function mergeVideos(videoPaths) {
+    const outputDir = path.join(__dirname, 'output'); // Ensure this directory exists
+    const outputFilePath = path.join(outputDir, `merged_${Date.now()}.mp4`); // Unique filename for merged video
+    const filterComplex = videoPaths.map((v, i) => `[${i}:v]`).join('') + `concat=n=${videoPaths.length}:v=1:a=0`;
+    const command = `ffmpeg ${videoPaths.map(v => `-i ${v}`).join(' ')} -filter_complex "${filterComplex}" -y ${outputFilePath}`;
+
     return new Promise((resolve, reject) => {
-        // Create a file list for ffmpeg
-        const fileListPath = '/usr/src/app/storage/processed/media/file_list.txt';
-        const fileListContent = videoPaths.map(path => `file '${path}'`).join('\n');
-
-        // Write file list to a temporary file
-        fs.writeFileSync(fileListPath, fileListContent);
-
-        const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${fileListPath} -c:v libx264 -an -y /usr/src/app/storage/processed/merged_video.mp4`;
-
-        exec(ffmpegCommand, (error, stdout, stderr) => {
+        exec(command, (error, stdout, stderr) => {
             if (error) {
-                console.error('Error merging videos:', stderr);
-                return reject(new Error('Merging failed!'));
+                console.error(`Error merging videos: ${stderr}`);
+                return reject(error);
             }
-            resolve();
+            resolve(outputFilePath);
         });
     });
-};
+}
 
 // Function to determine media type based on URL extension
 const getMediaType = (url) => {
@@ -94,13 +89,13 @@ const getMediaType = (url) => {
     return null; // Unknown type
 };
 
-// Function to generate output path for media files
-const generateOutputPath = (inputPath) => {
-    const fileName = path.basename(inputPath);
-    const fileExtension = path.extname(inputPath);
-    const outputFileName = `${path.basename(fileName, fileExtension)}_${uuidv4()}${fileExtension}`;
-    return path.join(processedDir, outputFileName); // Save in the processedDir
-};
+// Helper function to generate a unique output path for image-to-video conversion
+function generateOutputPath(url) {
+    const baseName = path.basename(url, path.extname(url));
+    const outputDir = path.join(__dirname, 'output'); // Ensure this directory exists
+    const outputPath = path.join(outputDir, `${baseName}_${Date.now()}.mp4`); // Unique filename
+    return outputPath;
+}
 
 
 // Endpoint to merge media sequences
