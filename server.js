@@ -80,27 +80,26 @@ async function trimVideo(inputFilePath, duration) {
 
 
 async function convertImageToVideo(imageUrl, duration) {
-    const outputFilePath = path.join(outputDir, `${path.basename(imageUrl, path.extname(imageUrl))}.mp4`);
-
     return new Promise((resolve, reject) => {
-        ffmpeg(imageUrl)
+        const outputPath = path.join(outputDir, `${path.basename(imageUrl, path.extname(imageUrl))}.mp4`);
+        
+        ffmpeg()
+            .input(imageUrl)
+            .loop(1)  // Loop the image
             .outputOptions([
-                '-t', duration,  // Set duration
-                '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
-                '-c:v', 'libx264',  // Encode with libx264
-                '-preset', 'fast',  // Faster encoding
-                '-movflags', 'faststart',  // Optimize for playback
-                '-pix_fmt', 'yuv420p',  // Ensure compatibility
+                `-c:v libx264`,  // Set video codec
+                `-t ${duration}`,  // Set duration
+                '-pix_fmt yuv420p' // Ensure compatibility
             ])
+            .save(outputPath)
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
-                resolve(outputFilePath);
+                resolve(outputPath);
             })
-            .on('error', (err) => {
-                console.error(`Error converting image to video: ${err.message}`);
-                reject(err);
-            })
-            .save(outputFilePath);
+            .on('error', (error) => {
+                console.error(`Error converting image ${imageUrl}: ${error.message}`);
+                reject(error);
+            });
     });
 }
 
