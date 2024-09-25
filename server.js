@@ -53,14 +53,20 @@ async function trimVideo(inputFilePath, duration) {
                 // Ensure we don't try to trim to a duration longer than the video
                 const trimDuration = Math.min(duration, videoDuration);
 
+                // Determine if we should apply the fade-out effect
+                const shouldApplyFadeOut = trimDuration > 3; // Apply fade-out if duration is more than 3 seconds
+                const fadeOutOptions = shouldApplyFadeOut 
+                    ? `-vf "fade=t=out:st=${trimDuration - 1}:d=1,fps=25"` // Fade-out starts 1 second before the end
+                    : '-vf fps=25'; // Keep the frame rate if no fade-out
+
                 ffmpeg(inputFilePath)
                     .outputOptions([
                         '-t', trimDuration,  // Set duration
-                        '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
+                        fadeOutOptions,      // Apply fade-out if necessary
                         '-c:v', 'libx264',  // Encode with libx264
-                        '-preset', 'fast',  // Faster encoding
+                        '-preset', 'fast',   // Faster encoding
                         '-movflags', 'faststart',  // Optimize for playback
-                        '-pix_fmt', 'yuv420p'  // Ensure compatibility
+                        '-pix_fmt', 'yuv420p' // Ensure compatibility
                     ])
                     .on('end', () => {
                         console.log(`Trimmed video created: ${outputFilePath}`);
@@ -74,6 +80,7 @@ async function trimVideo(inputFilePath, duration) {
             });
     });
 }
+
 
 // Function to convert image to video
 async function convertImageToVideo(imageUrl, duration) {
