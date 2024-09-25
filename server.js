@@ -44,10 +44,11 @@ async function trimVideo(inputFilePath, duration) {
         ffmpeg(inputFilePath)
             .outputOptions([
                 '-t', duration,  // Set duration
-                '-c:v', 'libx264',  // Encode using libx264
+                '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
+                '-c:v', 'libx264',  // Encode with libx264
                 '-preset', 'fast',  // Faster encoding
-                '-movflags', 'faststart',  // Ensure proper video playback
-                '-vf', 'fps=25',  // Ensure frame rate consistency
+                '-movflags', 'faststart',  // Optimize for playback
+                '-pix_fmt', 'yuv420p'  // Ensure compatibility
             ])
             .on('end', () => {
                 console.log(`Trimmed video created: ${outputFilePath}`);
@@ -60,6 +61,7 @@ async function trimVideo(inputFilePath, duration) {
             .save(outputFilePath);
     });
 }
+
 
 
 
@@ -82,17 +84,16 @@ async function convertImageToVideo(imageUrl, duration) {
     const outputVideoPath = path.join(outputDir, `${Date.now()}_image.mp4`);
     const localImagePath = path.join(outputDir, path.basename(imageUrl));
 
-    // Download the image to the local file system
-    await downloadFile(imageUrl, localImagePath);
+    await downloadFile(imageUrl, localImagePath);  // Download the image
 
     return new Promise((resolve, reject) => {
         ffmpeg(localImagePath)
             .inputOptions('-loop', '1')  // Loop the image to fill the duration
             .outputOptions([
                 '-t', duration,  // Set duration
-                '-vf', 'scale=1280:720:force_original_aspect_ratio=increase,pad=1280:720:(ow-iw)/2:(oh-ih)/2',  // Scale and pad to maintain aspect ratio
+                '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease',  // Scale to 1280x720, maintain aspect ratio
                 '-pix_fmt', 'yuv420p',  // Ensure video compatibility
-                '-r', '25',  // Match frame rate to other videos
+                '-r', '25',  // Set frame rate to 25fps
             ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
@@ -162,31 +163,31 @@ async function processMediaSequence(mediaSequence) {
         // Track total expected duration
         totalDuration += duration;
 
-        if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
-            console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-            const localVideoPath = path.join(outputDir, path.basename(url));
-            await downloadFile(url, localVideoPath);
+        try {
+            if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
+                console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
+                const localVideoPath = path.join(outputDir, path.basename(url));
+                await downloadFile(url, localVideoPath);
 
-            const trimmedVideoPath = await trimVideo(localVideoPath, duration);  // Trim the video to the required duration
-            videoPaths.push(trimmedVideoPath);  // Add trimmed video to paths
-        } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
-            console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
-
-            try {
-                const videoPath = await convertImageToVideo(url, duration);
-                videoPaths.push(videoPath);  // Add the converted video path to paths
-            } catch (error) {
-                console.error(`Error converting image to video: ${error.message}`);
-                continue;
+                const trimmedVideoPath = await trimVideo(localVideoPath, duration);  // Trim video
+                videoPaths.push(trimmedVideoPath);  // Add trimmed video to paths
+            } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
+                console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
+                const videoPath = await convertImageToVideo(url, duration);  // Convert image to video
+                videoPaths.push(videoPath);  // Add converted video to paths
+            } else {
+                console.warn(`Unsupported media type: ${fileType}`);
             }
+        } catch (error) {
+            console.error(`Error processing media ${url}: ${error.message}`);
         }
     }
 
     if (videoPaths.length > 0) {
         try {
-            const mergeResult = await mergeMediaUsingFile(videoPaths, totalDuration);  // Pass total expected duration
+            const mergeResult = await mergeMediaUsingFile(videoPaths, totalDuration);  // Merge videos
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
-            return mergeResult.outputFileUrl;  // Return the merged video URL
+            return mergeResult.outputFileUrl;
         } catch (error) {
             console.error(`Error merging videos: ${error.message}`);
             throw error;
