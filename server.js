@@ -89,7 +89,8 @@ const mergeMediaUsingFile = async (mediaArray) => {
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(concatFilePath)
-            .inputOptions('-f concat', '-safe 0')
+            .inputOptions('-f concat') // Correctly placing input options
+            .inputOptions('-safe 0') // Allowing the use of relative paths in the concat file
             .outputOptions('-c copy')  // Copy streams without re-encoding
             .on('end', () => {
                 console.log('Merging finished.');
@@ -105,6 +106,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
             .save(outputFilePath);
     });
 };
+
 
 
 
@@ -180,6 +182,7 @@ app.post('/merge-media-sequence', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 
 
