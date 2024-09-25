@@ -46,37 +46,21 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
+// Function to convert image to video
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
-        console.log(`Starting conversion for image: ${imagePath}`);
-        console.log(`Output Video Path: ${outputVideoPath}`);
-        console.log(`Duration Set: ${duration}`);
+        const ffmpegCommand = `ffmpeg -loop 1 -i ${imagePath} -y -t ${duration} -c:v libx264 -pix_fmt yuv420p -r 30 ${outputVideoPath}`;
         
-        ffmpeg(imagePath)
-            .inputOptions('-loop 1')
-            .outputOptions([
-                `-t ${duration}`,
-                '-c:v libx264',
-                '-pix_fmt yuv420p',
-                '-r 30'
-            ])
-            .on('start', (commandLine) => {
-                console.log(`FFmpeg command: ${commandLine}`);
-            })
-            .on('progress', (progress) => {
-                console.log(`Processing: ${progress.percent}% done`);
-            })
-            .on('end', () => {
-                console.log(`Successfully converted image to video: ${outputVideoPath}`);
-                resolve();
-            })
-            .on('error', (err) => {
-                console.error(`Error converting image: ${imagePath}`, err);
-                reject(err);
-            })
-            .save(outputVideoPath);
+        exec(ffmpegCommand, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error converting image ${imagePath}:`, stderr);
+                return reject(new Error('Conversion failed!'));
+            }
+            resolve();
+        });
     });
 };
+
 
 // Check if valid media before merging
 if (validMediaSequence.length > 0) {
@@ -88,88 +72,73 @@ if (validMediaSequence.length > 0) {
 
 
 
+// Endpoint to merge media sequences
+app.post('/merge-media-sequence', mergeMediaSequence);
 
-// Merge media sequence endpoint
-app.post('/merge-media-sequence', async (req, res) => {
-    const { mediaSequence } = req.body;
-
+// Function to handle merging media sequences
+const mergeMediaSequence = async (req, res) => {
     try {
-        if (!mediaSequence || mediaSequence.length === 0) {
-            return res.status(400).send('Invalid media sequence');
-        }
+        const mediaSequence = req.body.mediaSequence; // Expecting an array of media paths
+        let validMediaSequence = []; // Initialize validMediaSequence
 
-        await Promise.all(mediaSequence.map(async media => {
-            const fileName = path.basename(media.url);
-            const filePath = path.join(processedDir, fileName);
-
-            if (!fs.existsSync(filePath)) {
-                console.log(`Downloading: ${media.url}`);
-                await downloadFile(media.url, filePath);
-            } else {
-                console.log(`File already exists: ${filePath}`);
-            }
-        }));
-
-        let totalDuration = mediaSequence.reduce((sum, media) => sum + media.duration, 0);
-        let validMediaSequence = [];
-
-        await Promise.all(mediaSequence.map(async media => {
-            const fileName = path.basename(media.url);
-            const filePath = path.join(processedDir, fileName);
-            const trimmedFilePath = path.join(processedDir, `trimmed_${fileName}`);
+        for (const media of mediaSequence) {
+            const { type, path, duration } = media; // Assuming media has type and path properties
 
             try {
-                if (fileName.endsWith('.mp4') || fileName.endsWith('.mov')) {
-                    await new Promise((resolve, reject) => {
-                        ffmpeg(filePath)
-                            .setStartTime(0)
-                            .setDuration(media.duration)
-                            .outputOptions('-an')  // Remove audio
-                            .output(trimmedFilePath)
-                            .on('end', () => {
-                                console.log(`Processed video: ${trimmedFilePath}`);
-                                resolve();
-                            })
-                            .on('error', reject)
-                            .run();
-                    });
-                    validMediaSequence.push({ url: trimmedFilePath, duration: media.duration });
-                } else if (fileName.endsWith('.jpg') || fileName.endsWith('.png')) {
-                    await convertImageToVideo(filePath, trimmedFilePath, media.duration);
-                    validMediaSequence.push({ url: trimmedFilePath, duration: media.duration });
+                let outputVideoPath;
+
+                if (type === 'image') {
+                    outputVideoPath = generateOutputPath(path); // Generate output path for image to video
+                    await convertImageToVideo(path, outputVideoPath, duration);
+                    validMediaSequence.push(outputVideoPath); // Push only valid output
+                } else if (type === 'video') {
+                    outputVideoPath = path; // Directly use the video path if it's valid
+                    validMediaSequence.push(outputVideoPath); // Push valid video path
                 }
             } catch (error) {
-                console.error(`Error processing media: ${fileName}`, error);
+                console.error(`Error processing media: ${path}`, error);
+                // Handle specific media errors if needed
             }
-        }));
-
-        if (validMediaSequence.length === 0) {
-            return res.status(500).send('All media files failed to process');
         }
 
-        const newDuration = totalDuration / validMediaSequence.length;
-        validMediaSequence.forEach(media => {
-            media.duration = newDuration;
-        });
-
-        const fileListPath = createFileList(validMediaSequence, processedDir);
-        const mergedVideoPath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
-        const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${fileListPath} -c:v libx264 -an -y ${mergedVideoPath}`;
-
-        exec(ffmpegCommand, (error) => {
-            if (error) {
-                console.error('Error merging media:', error);
-                return res.status(500).send('Error merging media');
-            }
-
-            console.log('Media merged successfully:', mergedVideoPath);
-            res.json({ mergedVideoPath });
-        });
-    } catch (err) {
-        console.error('Error processing merge-media-sequence:', err);
-        res.status(500).send('Error processing request');
+        // Check if validMediaSequence has any valid entries
+        if (validMediaSequence.length > 0) {
+            console.log(`Merging the following media:`, validMediaSequence);
+            // Proceed with merging
+            await mergeVideos(validMediaSequence);
+            res.status(200).json({ message: 'Media merged successfully' });
+        } else {
+            console.error('No valid media files to merge. Please check previous conversion steps.');
+            res.status(400).json({ error: 'No valid media files to merge' });
+        }
+    } catch (error) {
+        console.error('Error in mergeMediaSequence:', error);
+        res.status(500).json({ error: 'An error occurred during merging' });
     }
-});
+};
+
+// Function to merge videos
+const mergeVideos = (videoPaths) => {
+    return new Promise((resolve, reject) => {
+        // Create a file list for ffmpeg
+        const fileListPath = '/usr/src/app/storage/processed/media/file_list.txt';
+        const fileListContent = videoPaths.map(path => `file '${path}'`).join('\n');
+
+        // Write file list to a temporary file
+        fs.writeFileSync(fileListPath, fileListContent);
+
+        const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${fileListPath} -c:v libx264 -an -y /usr/src/app/storage/processed/merged_video.mp4`;
+
+        exec(ffmpegCommand, (error, stdout, stderr) => {
+            if (error) {
+                console.error('Error merging videos:', stderr);
+                return reject(new Error('Merging failed!'));
+            }
+            resolve();
+        });
+    });
+};
+
 
 // Download endpoint for processed media
 app.get('/download/:filename', (req, res) => {
