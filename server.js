@@ -72,7 +72,28 @@ if (validMediaSequence.length > 0) {
 
 
 
-// Endpoint to merge media sequences
+
+// Function to merge videos
+const mergeVideos = (videoPaths) => {
+    return new Promise((resolve, reject) => {
+        // Create a file list for ffmpeg
+        const fileListPath = '/usr/src/app/storage/processed/media/file_list.txt';
+        const fileListContent = videoPaths.map(path => `file '${path}'`).join('\n');
+
+        // Write file list to a temporary file
+        fs.writeFileSync(fileListPath, fileListContent);
+
+        const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${fileListPath} -c:v libx264 -an -y /usr/src/app/storage/processed/merged_video.mp4`;
+
+        exec(ffmpegCommand, (error, stdout, stderr) => {
+            if (error) {
+                console.error('Error merging videos:', stderr);
+                return reject(new Error('Merging failed!'));
+            }
+            resolve();
+        });
+    });
+};// Endpoint to merge media sequences
 app.post('/merge-media-sequence', async (req, res) => {
     try {
         const mediaSequence = req.body.mediaSequence; // Expecting an array of media paths
@@ -121,28 +142,6 @@ app.post('/merge-media-sequence', async (req, res) => {
     }
 });
 
-
-// Function to merge videos
-const mergeVideos = (videoPaths) => {
-    return new Promise((resolve, reject) => {
-        // Create a file list for ffmpeg
-        const fileListPath = '/usr/src/app/storage/processed/media/file_list.txt';
-        const fileListContent = videoPaths.map(path => `file '${path}'`).join('\n');
-
-        // Write file list to a temporary file
-        fs.writeFileSync(fileListPath, fileListContent);
-
-        const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${fileListPath} -c:v libx264 -an -y /usr/src/app/storage/processed/merged_video.mp4`;
-
-        exec(ffmpegCommand, (error, stdout, stderr) => {
-            if (error) {
-                console.error('Error merging videos:', stderr);
-                return reject(new Error('Merging failed!'));
-            }
-            resolve();
-        });
-    });
-};
 
 
 // Download endpoint for processed media
