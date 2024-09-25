@@ -77,13 +77,16 @@ async function trimVideo(inputFilePath, duration) {
 
 async function convertImageToVideo(imageUrl, duration) {
     const outputVideoPath = path.join(outputDir, `${Date.now()}_image.mp4`);
+    
     return new Promise((resolve, reject) => {
         ffmpeg(imageUrl)
             .inputOptions('-loop', '1')  // Loop the image to fill the duration
             .outputOptions([
                 '-t', duration,  // Set exact duration
+                '-vf', 'scale=640:360',  // Set resolution to avoid issues
                 '-pix_fmt', 'yuv420p',  // Ensure video compatibility
                 '-r', '30',  // Set frame rate to 30 fps
+                '-b:v', '500k'  // Set a reasonable bitrate
             ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
@@ -161,7 +164,7 @@ const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions(['-c', 'copy', '-movflags', 'faststart'])  // Faststart for smooth playback
+            .outputOptions(['-c', 'copy', '-movflags', 'faststart', '-shortest'])  // Faststart for smooth playback
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
@@ -177,6 +180,7 @@ const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
             .save(outputFilePath);
     });
 };
+
 
 
 
