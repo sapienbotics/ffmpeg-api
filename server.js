@@ -89,10 +89,17 @@ const getMediaType = (url) => {
     return null; // Unknown type
 };
 
+const fs = require('fs');
+const path = require('path');
+
 // Helper function to generate a unique output path for image-to-video conversion
 function generateOutputPath(url) {
     const baseName = path.basename(url, path.extname(url));
     const outputDir = path.join(__dirname, 'output'); // Ensure this directory exists
+    // Check if the output directory exists, if not create it
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+    }
     const outputPath = path.join(outputDir, `${baseName}_${Date.now()}.mp4`); // Unique filename
     return outputPath;
 }
