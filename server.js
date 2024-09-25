@@ -71,8 +71,8 @@ async function convertImageToVideo(imageUrl, duration) {
 }
 
 
+
 const mergeMediaUsingFile = async (mediaArray) => {
-    // Filter valid MP4 media from the input array
     const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4'));
 
     if (validMedia.length === 0) {
@@ -92,8 +92,8 @@ const mergeMediaUsingFile = async (mediaArray) => {
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(concatFilePath)
-            .inputOptions('-f concat', '-safe 0') // Ensure that the input options are correctly set
-            .outputOptions('-c copy')  // Copy streams without re-encoding
+            .inputOptions(['-f', 'concat', '-safe', '0']) // Ensure input options are set correctly
+            .outputOptions('-c', 'copy')  // Copy streams without re-encoding
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
@@ -108,6 +108,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
             .save(outputFilePath);
     });
 };
+
 
 
 
