@@ -48,14 +48,13 @@ const createFileList = (mediaSequence, outputDir) => {
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         ffmpeg(imagePath)
-            .inputOptions('-f image2')
-            .loop(duration)
+            .inputOptions('-loop 1') // Loop the image
             .outputOptions([
-                `-t ${duration}`,        // Set the duration of the output video
-                '-c:v libx264',          // Use H.264 encoding
-                '-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2"',  // Dynamic scaling and padding to ensure proper aspect ratio
-                '-pix_fmt yuv420p',      // Set pixel format
-                '-r 25',                 // Set frame rate
+                `-t ${duration}`, // Set the duration of the output video
+                '-c:v libx264', // Use H.264 encoding
+                '-pix_fmt yuv420p', // Set pixel format
+                '-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2"', // Scaling and padding
+                '-r 30' // Set frame rate
             ])
             .on('end', () => {
                 console.log(`Converted image to video: ${outputVideoPath}`);
@@ -68,6 +67,7 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             .save(outputVideoPath);
     });
 };
+
 
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
