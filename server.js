@@ -89,8 +89,6 @@ const getMediaType = (url) => {
     return null; // Unknown type
 };
 
-const fs = require('fs');
-const path = require('path');
 
 // Helper function to generate a unique output path for image-to-video conversion
 function generateOutputPath(url) {
