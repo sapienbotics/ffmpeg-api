@@ -46,25 +46,24 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-// Function to convert image to video
-async function convertImageToVideo(imageUrl, duration) {
-    const outputDir = path.join(__dirname, 'output');
-    const outputFilePath = path.join(outputDir, `${path.basename(imageUrl)}_${Date.now()}.mp4`);
-
-    // Construct ffmpeg command to convert image to video
+const convertImageToVideo = async (imageUrl, duration) => {
+    const outputFilePath = path.join(outputDir, `output_${Date.now()}.mp4`);
+    
+    // Ensure duration is passed correctly as a number
     const command = `ffmpeg -loop 1 -i ${imageUrl} -c:v libx264 -t ${duration} -pix_fmt yuv420p ${outputFilePath}`;
 
+    // Execute command
     return new Promise((resolve, reject) => {
-        exec(command, (error, stdout, stderr) => {
+        exec(command, (error) => {
             if (error) {
-                console.error(`Error processing media: ${stderr}`);
+                console.error(`Error processing image ${imageUrl}:`, error);
                 return reject(error);
             }
-            console.log(`Image converted to video: ${outputFilePath}`);
             resolve(outputFilePath);
         });
     });
-}
+};
+
 
 
 // Function to process media sequence
