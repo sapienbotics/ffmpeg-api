@@ -84,13 +84,15 @@ const mergeMediaUsingFile = async (mediaArray) => {
     const concatFileContent = validMedia.map(media => `file '${media}'`).join('\n');
     fs.writeFileSync(concatFilePath, concatFileContent);
 
+    // Log the contents of concat_list.txt for debugging
+    console.log(`Contents of concat file: ${concatFileContent}`);
+
     const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
 
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(concatFilePath)
-            .inputOptions('-f concat') // Correctly placing input options
-            .inputOptions('-safe 0') // Allowing the use of relative paths in the concat file
+            .inputOptions('-f concat', '-safe 0') // Ensure that the input options are correctly set
             .outputOptions('-c copy')  // Copy streams without re-encoding
             .on('end', () => {
                 console.log('Merging finished.');
@@ -106,6 +108,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
             .save(outputFilePath);
     });
 };
+
 
 
 
