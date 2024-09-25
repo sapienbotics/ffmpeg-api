@@ -94,6 +94,15 @@ const getMediaType = (url) => {
     return null; // Unknown type
 };
 
+// Function to generate output path for media files
+const generateOutputPath = (inputPath) => {
+    const fileName = path.basename(inputPath);
+    const fileExtension = path.extname(inputPath);
+    const outputFileName = `${path.basename(fileName, fileExtension)}_${uuidv4()}${fileExtension}`;
+    return path.join(processedDir, outputFileName); // Save in the processedDir
+};
+
+
 // Endpoint to merge media sequences
 app.post('/merge-media-sequence', async (req, res) => {
     try {
@@ -121,7 +130,7 @@ app.post('/merge-media-sequence', async (req, res) => {
                 continue;
             }
 
-            const type = getMediaType(url); // Determine media type
+            const type = path.extname(url).toLowerCase() === '.mp4' ? 'video' : 'image';
             console.log(`Processing media - Type: ${type}, URL: ${url}, Duration: ${duration}`);
 
             try {
@@ -138,10 +147,8 @@ app.post('/merge-media-sequence', async (req, res) => {
                 // If the media is a video, add it directly
                 else if (type === 'video') {
                     console.log(`Processing video: ${url}`);
-                    outputVideoPath = url; // Use the video path directly
+                    outputVideoPath = url; // Use the video URL directly
                     validMediaSequence.push(outputVideoPath); // Add valid video to sequence
-                } else {
-                    console.error(`Unsupported media type for URL: ${url}. Skipping this entry.`);
                 }
             } catch (error) {
                 console.error(`Error processing media: ${url}`, error);
