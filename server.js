@@ -82,12 +82,14 @@ async function trimVideo(inputFilePath, duration) {
 // Function to convert image to video
 async function convertImageToVideo(imageUrl, duration) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    
+
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(imageUrl)
-            .loop(duration)  // Set the duration of the image video
-            .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
+            .outputOptions([
+                `-t ${duration}`,  // Explicitly set the output duration
+                '-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2'
+            ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video: ${outputFilePath}.`);
                 resolve(outputFilePath);
@@ -97,19 +99,6 @@ async function convertImageToVideo(imageUrl, duration) {
                 reject(err);
             })
             .save(outputFilePath);
-    });
-}
-
-// Function to get the duration of a video
-async function getVideoDuration(videoPath) {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(videoPath, (err, metadata) => {
-            if (err) {
-                return reject(err);
-            }
-            const duration = metadata.format.duration;
-            resolve(duration);
-        });
     });
 }
 
@@ -154,6 +143,19 @@ async function convertImageToVideo(imageUrl, duration) {
                 reject(err);
             })
             .save(outputFilePath);
+    });
+}
+
+// Function to get the duration of a video
+async function getVideoDuration(videoPath) {
+    return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(videoPath, (err, metadata) => {
+            if (err) {
+                return reject(err);
+            }
+            const duration = metadata.format.duration;
+            resolve(duration);
+        });
     });
 }
 
@@ -208,8 +210,6 @@ async function checkUrlAccessibility(url) {
 
 
 
-
-// Function to process media sequence
 // Function to process media sequence
 async function processMediaSequence(mediaSequence) {
     const videoPaths = [];
@@ -258,7 +258,6 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
-
 
 
 
