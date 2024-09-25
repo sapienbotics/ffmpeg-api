@@ -52,21 +52,10 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             .outputOptions([
                 `-t ${duration}`, // Set the duration of the output video
                 '-c:v libx264', // Use H.264 encoding
-                '-pix_fmt yuv420p', // Set pixel format
-                '-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2"', // Scaling and padding
-                '-r 30' // Set frame rate
-            ])
-            .on('end', () => {
-                console.log(`Converted image to video: ${outputVideoPath}`);
-                resolve();
-            })
-            .on('error', (err) => {
-                console.error(`Error converting image: ${imagePath}`, err);
-                reject(err);
-            })
-            .save(outputVideoPath);
-    });
-};
+                '-pix_fmt yuv420p', // Ensure compatibility with most players
+                '-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2"', // Resize and pad
+               
+
 
 
 // Merge media sequence endpoint
