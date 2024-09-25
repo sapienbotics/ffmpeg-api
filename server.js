@@ -53,12 +53,12 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
         console.log(`Duration Set: ${duration}`);
         
         ffmpeg(imagePath)
-            .inputOptions('-loop 1') // Loop the image
+            .inputOptions('-loop 1')
             .outputOptions([
-                `-t ${duration}`, // Set the duration of the output video
-                '-c:v libx264', // Use H.264 encoding
-                '-pix_fmt yuv420p', // Ensure compatibility with most players
-                '-r 30' // Set frame rate
+                `-t ${duration}`,
+                '-c:v libx264',
+                '-pix_fmt yuv420p',
+                '-r 30'
             ])
             .on('start', (commandLine) => {
                 console.log(`FFmpeg command: ${commandLine}`);
@@ -77,6 +77,15 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             .save(outputVideoPath);
     });
 };
+
+// Check if valid media before merging
+if (validMediaSequence.length > 0) {
+    console.log(`Merging the following media:`, validMediaSequence);
+    // Proceed with merging...
+} else {
+    console.error('No valid media files to merge. Please check previous conversion steps.');
+}
+
 
 
 
