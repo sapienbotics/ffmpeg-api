@@ -125,7 +125,10 @@ async function processMediaSequence(mediaSequence) {
 
         if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
             console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-            videoPaths.push(url); // Add video URL to paths
+            // Download video file locally before adding to the paths
+            const localVideoPath = path.join(outputDir, path.basename(url)); // Local file path
+            await downloadFile(url, localVideoPath); // Download the video
+            videoPaths.push(localVideoPath); // Add local video path to paths
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
             try {
@@ -140,7 +143,6 @@ async function processMediaSequence(mediaSequence) {
 
     if (videoPaths.length > 0) {
         try {
-            // Call mergeMediaUsingFile instead of mergeMedia
             const mergeResult = await mergeMediaUsingFile(videoPaths);
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
             return mergeResult.outputFileUrl; // Return the merged video URL
@@ -153,6 +155,7 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
