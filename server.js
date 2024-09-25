@@ -75,6 +75,28 @@ async function trimVideo(inputFilePath, duration) {
     });
 }
 
+async function convertImageToVideo(imageUrl, duration) {
+    const outputVideoPath = path.join(outputDir, `${Date.now()}_image.mp4`);
+    return new Promise((resolve, reject) => {
+        ffmpeg(imageUrl)
+            .inputOptions('-loop', '1')  // Loop the image to fill the duration
+            .outputOptions([
+                '-t', duration,  // Set exact duration
+                '-pix_fmt', 'yuv420p',  // Ensure video compatibility
+                '-r', '30',  // Set frame rate to 30 fps
+            ])
+            .on('end', () => {
+                console.log(`Converted ${imageUrl} to video.`);
+                resolve(outputVideoPath);
+            })
+            .on('error', (err) => {
+                console.error(`Error converting image to video: ${err.message}`);
+                reject(err);
+            })
+            .save(outputVideoPath);
+    });
+}
+
 
 
 
@@ -155,8 +177,6 @@ const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
             .save(outputFilePath);
     });
 };
-
-
 
 
 
