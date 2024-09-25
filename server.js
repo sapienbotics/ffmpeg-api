@@ -97,11 +97,10 @@ const mergeVideos = (videoPaths) => {
 
 
 
-// Endpoint to merge media sequences
 app.post('/merge-media-sequence', async (req, res) => {
     try {
         const mediaSequence = req.body.mediaSequence; // Expecting an array of media paths
-        
+
         // Log incoming mediaSequence for debugging
         console.log("Received media sequence: ", mediaSequence);
 
