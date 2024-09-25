@@ -47,24 +47,71 @@ const createFileList = (mediaSequence, outputDir) => {
 };
 
 // Function to convert image to video
-async function convertImageToVideo(imageUrl, outputPath, duration) {
+async function convertImageToVideo(imageUrl, duration) {
+    const outputDir = path.join(__dirname, 'output');
+    const outputFilePath = path.join(outputDir, `${path.basename(imageUrl)}_${Date.now()}.mp4`);
+
+    // Construct ffmpeg command to convert image to video
+    const command = `ffmpeg -loop 1 -i ${imageUrl} -c:v libx264 -t ${duration} -pix_fmt yuv420p ${outputFilePath}`;
+
     return new Promise((resolve, reject) => {
-        const command = `ffmpeg -loop 1 -i ${imageUrl} -c:v libx264 -t ${duration} -pix_fmt yuv420p ${outputPath}`;
         exec(command, (error, stdout, stderr) => {
             if (error) {
-                console.error(`Error converting image to video: ${stderr}`);
+                console.error(`Error processing media: ${stderr}`);
                 return reject(error);
             }
-            resolve();
+            console.log(`Image converted to video: ${outputFilePath}`);
+            resolve(outputFilePath);
         });
     });
+});
+
+
+// Function to process media sequence
+async function processMediaSequence(mediaSequence) {
+    const videoPaths = [];
+
+    for (const media of mediaSequence) {
+        const { url, duration } = media;
+        const fileType = path.extname(url).toLowerCase();
+
+        if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
+            console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
+            videoPaths.push(url); // Add video URL to paths
+        } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
+            console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
+            try {
+                const videoPath = await convertImageToVideo(url, duration);
+                videoPaths.push(videoPath); // Add the converted video path to paths
+            } catch (error) {
+                console.error(`Error converting image to video: ${error.message}`);
+                continue; // Skip to next media item
+            }
+        }
+    }
+
+    if (videoPaths.length > 0) {
+        try {
+            const mergedVideoPath = await mergeVideos(videoPaths);
+            console.log(`Merged video created at: ${mergedVideoPath}`);
+        } catch (error) {
+            console.error(`Error merging videos: ${error.message}`);
+        }
+    } else {
+        console.error('No valid media found for merging.');
+    }
 }
 
-// Function to merge videos
+
+
 async function mergeVideos(videoPaths) {
     const outputDir = path.join(__dirname, 'output'); // Ensure this directory exists
     const outputFilePath = path.join(outputDir, `merged_${Date.now()}.mp4`); // Unique filename for merged video
+
+    // Create filter_complex string
     const filterComplex = videoPaths.map((v, i) => `[${i}:v]`).join('') + `concat=n=${videoPaths.length}:v=1:a=0`;
+
+    // Construct ffmpeg command
     const command = `ffmpeg ${videoPaths.map(v => `-i ${v}`).join(' ')} -filter_complex "${filterComplex}" -y ${outputFilePath}`;
 
     return new Promise((resolve, reject) => {
@@ -78,6 +125,8 @@ async function mergeVideos(videoPaths) {
     });
 }
 
+
+
 // Function to determine media type based on URL extension
 const getMediaType = (url) => {
     const extension = path.extname(url).toLowerCase();
@@ -88,7 +137,6 @@ const getMediaType = (url) => {
     }
     return null; // Unknown type
 };
-
 
 // Helper function to generate a unique output path for image-to-video conversion
 function generateOutputPath(url) {
@@ -173,7 +221,6 @@ app.post('/merge-media-sequence', async (req, res) => {
         res.status(500).json({ error: 'An error occurred during media merging' });
     }
 });
-
 
 // Download endpoint for processed media
 app.get('/download/:filename', (req, res) => {
