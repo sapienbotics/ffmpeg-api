@@ -75,21 +75,22 @@ const createFileList = (mediaSequence, outputDir) => {
 };
 
 
-// Optimize Image to Video conversion with error handling for dimensions
+// Combined and optimized Image to Video conversion with error handling for dimensions
 async function convertImageToVideo(imageUrl, duration) {
     const outputVideoPath = path.join(outputDir, `${Date.now()}_image.mp4`);
     const localImagePath = path.join(outputDir, path.basename(imageUrl));
 
-    await downloadFile(imageUrl, localImagePath); // Download the image
+    // Download the image to the local file system
+    await downloadFile(imageUrl, localImagePath);
 
     return new Promise((resolve, reject) => {
         ffmpeg(localImagePath)
             .inputOptions('-loop', '1')  // Loop the image to fill the duration
             .outputOptions([
                 '-t', duration,  // Set duration
-                '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease', // Scale to 1280x720, maintain aspect ratio
+                '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease',  // Scale to 1280x720, maintain aspect ratio
                 '-pix_fmt', 'yuv420p',  // Ensure video compatibility
-                '-r', '30',  // Set frame rate to 30fps
+                '-r', '25',  // Set frame rate (adjust to match other videos)
             ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
@@ -107,19 +108,18 @@ async function convertImageToVideo(imageUrl, duration) {
 
 
 
-const mergeMediaUsingFile = async (mediaArray) => {
+
+
+const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
     const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4'));
 
     if (validMedia.length === 0) {
         throw new Error('No valid media to merge.');
     }
 
-    // Create a concat file
     const concatFilePath = path.join(outputDir, `concat_list_${Date.now()}.txt`);
     const concatFileContent = validMedia.map(media => `file '${media}'`).join('\n');
     fs.writeFileSync(concatFilePath, concatFileContent);
-
-    console.log(`Contents of concat file: ${concatFileContent}`);
 
     const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
 
@@ -127,15 +127,13 @@ const mergeMediaUsingFile = async (mediaArray) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions([
-                '-c', 'copy',
-                '-y' // Overwrite output file if exists
-            ])
+            .outputOptions('-c', 'copy')
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
                     status: 'success',
                     outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`,
+                    duration: totalDuration
                 });
             })
             .on('error', (err) => {
@@ -153,40 +151,40 @@ const mergeMediaUsingFile = async (mediaArray) => {
 // Function to process media sequence
 async function processMediaSequence(mediaSequence) {
     const videoPaths = [];
+    let totalDuration = 0;
 
     for (const media of mediaSequence) {
         const { url, duration } = media;
         const fileType = path.extname(url).toLowerCase();
-        const startTime = Date.now();
+
+        // Track total expected duration
+        totalDuration += duration;
 
         if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
             console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-            try {
-                const trimmedVideo = await trimVideo(url, duration);
-                videoPaths.push(trimmedVideo);
-            } catch (error) {
-                console.error(`Error trimming video: ${error.message}`);
-                continue;
-            }
+            const localVideoPath = path.join(outputDir, path.basename(url));
+            await downloadFile(url, localVideoPath);
+
+            const trimmedVideoPath = await trimVideo(localVideoPath, duration);  // Trim the video to the required duration
+            videoPaths.push(trimmedVideoPath);  // Add trimmed video to paths
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
+
             try {
                 const videoPath = await convertImageToVideo(url, duration);
-                videoPaths.push(videoPath);
+                videoPaths.push(videoPath);  // Add the converted video path to paths
             } catch (error) {
                 console.error(`Error converting image to video: ${error.message}`);
                 continue;
             }
         }
-
-        console.log(`Processed ${url} in ${(Date.now() - startTime) / 1000} seconds`);
     }
 
     if (videoPaths.length > 0) {
         try {
-            const mergeResult = await mergeMediaUsingFile(videoPaths);
+            const mergeResult = await mergeMediaUsingFile(videoPaths, totalDuration);  // Pass total expected duration
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
-            return mergeResult.outputFileUrl;
+            return mergeResult.outputFileUrl;  // Return the merged video URL
         } catch (error) {
             console.error(`Error merging videos: ${error.message}`);
             throw error;
@@ -196,6 +194,7 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
