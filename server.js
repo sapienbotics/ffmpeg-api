@@ -45,10 +45,10 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-const ffmpeg = require('fluent-ffmpeg');
-
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
+        console.log(`Starting conversion for image: ${imagePath}`);
+        
         ffmpeg(imagePath)
             .inputOptions('-loop 1') // Loop the image
             .outputOptions([
@@ -58,8 +58,14 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
                 '-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2"', // Resize and pad
                 '-r 30' // Set frame rate
             ])
+            .on('start', (commandLine) => {
+                console.log(`FFmpeg command: ${commandLine}`);
+            })
+            .on('progress', (progress) => {
+                console.log(`Processing: ${progress.percent}% done`);
+            })
             .on('end', () => {
-                console.log(`Converted image to video: ${outputVideoPath}`);
+                console.log(`Successfully converted image to video: ${outputVideoPath}`);
                 resolve();
             })
             .on('error', (err) => {
