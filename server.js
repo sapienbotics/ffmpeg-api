@@ -50,15 +50,15 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-// Updated convertImageToVideo with outputDir defined
+// Updated convertImageToVideo function with correct duration handling
 const convertImageToVideo = async (imageUrl, duration) => {
     return new Promise((resolve, reject) => {
         const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-        
+
         ffmpeg(imageUrl)
             .outputOptions([
-                '-vf', `scale=640:360`, // Scale the video as needed
-                '-t', duration, // Set duration
+                '-vf', 'scale=640:360', // Adjust scaling if necessary
+                `-t ${duration}`, // Correctly set the duration
             ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
@@ -72,9 +72,9 @@ const convertImageToVideo = async (imageUrl, duration) => {
     });
 };
 
-// Updated mergeMedia function with output link returned
+// Updated mergeMedia function with proper URL validation
 const mergeMedia = async (mediaArray) => {
-    const validMedia = mediaArray.filter(media => media.url.endsWith('.mp4')); // Filter for valid video URLs
+    const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4')); // Ensure media is defined before checking extension
     if (validMedia.length === 0) {
         throw new Error('No valid media to merge.');
     }
@@ -82,9 +82,11 @@ const mergeMedia = async (mediaArray) => {
     return new Promise((resolve, reject) => {
         const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
 
-        ffmpeg()
-            .input(validMedia[0].url) // Start with the first valid media
-            .input(validMedia[1]?.url || null) // Add subsequent videos if available
+        const ffmpegCmd = ffmpeg();
+
+        validMedia.forEach(media => ffmpegCmd.input(media));
+
+        ffmpegCmd
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
@@ -99,6 +101,7 @@ const mergeMedia = async (mediaArray) => {
             .mergeToFile(outputFilePath);
     });
 };
+
 
 // Function to process media sequence
 async function processMediaSequence(mediaSequence) {
@@ -163,15 +166,11 @@ function generateOutputPath(url) {
     return outputPath;
 }
 
-// Endpoint to merge media sequences
+// Updated media processing logic in the /merge-media-sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
     try {
         const mediaSequence = req.body.mediaSequence;
 
-        // Log the received mediaSequence for debugging
-        console.log("Received media sequence: ", mediaSequence);
-
-        // Ensure mediaSequence is an array
         if (!Array.isArray(mediaSequence)) {
             console.error('Invalid media sequence. Expected an array.');
             return res.status(400).json({ error: 'Invalid media sequence format. It should be an array.' });
@@ -179,7 +178,6 @@ app.post('/merge-media-sequence', async (req, res) => {
 
         let validMediaSequence = [];
 
-        // Loop through the media sequence and process each item
         for (const media of mediaSequence) {
             const { url, duration } = media;
 
@@ -188,39 +186,29 @@ app.post('/merge-media-sequence', async (req, res) => {
                 continue;
             }
 
-            const type = path.extname(url).toLowerCase() === '.mp4' ? 'video' : 'image';
-            console.log(`Processing media - Type: ${type}, URL: ${url}, Duration: ${duration}`);
-
-            try {
-                let outputVideoPath;
-
-                if (type === 'image') {
-                    outputVideoPath = generateOutputPath(url); 
-                    console.log(`Converting image to video: ${url}`);
-                    await convertImageToVideo(url, outputVideoPath, duration); 
-                    validMediaSequence.push(outputVideoPath);
-                    console.log(`Image converted to video: ${outputVideoPath}`);
-                } else if (type === 'video') {
-                    console.log(`Processing video: ${url}`);
-                    outputVideoPath = url;
-                    validMediaSequence.push(outputVideoPath);
+            const fileType = path.extname(url).toLowerCase();
+            if (fileType === '.mp4') {
+                validMediaSequence.push(url);
+            } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
+                console.log(`Processing image: ${url}`);
+                try {
+                    const videoPath = await convertImageToVideo(url, duration);
+                    validMediaSequence.push(videoPath);
+                } catch (error) {
+                    console.error(`Error converting image to video: ${error.message}`);
+                    continue;
                 }
-            } catch (error) {
-                console.error(`Error processing media: ${url}`, error);
-                continue;
+            } else {
+                console.log(`Skipping unsupported media type: ${fileType}`);
             }
         }
 
-        console.log('Valid media sequence:', validMediaSequence);
-
         if (validMediaSequence.length > 0) {
             console.log('Merging media:', validMediaSequence);
-            const result = await mergeMedia(validMediaSequence); 
-            cleanupTempFiles(validMediaSequence); // Clean up temp files
+            const result = await mergeMedia(validMediaSequence);
             res.status(200).json({ message: 'Media merged successfully', link: result.outputFileUrl });
         } else {
-            console.error('No valid media files to merge.');
-            res.status(400).json({ error: 'No valid media files to merge' });
+            res.status(400).json({ error: 'No valid media to merge' });
         }
     } catch (error) {
         console.error('Error in merge-media-sequence endpoint:', error);
