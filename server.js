@@ -181,10 +181,7 @@ app.post('/merge-media-sequence', async (req, res) => {
     }
 });
 
-// Start the server
-app.listen(8080, () => {
-    console.log('Server running on port 8080');
-});
+
 
 // Endpoint to get audio duration
 app.post('/get-audio-duration', async (req, res) => {
