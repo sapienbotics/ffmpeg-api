@@ -45,6 +45,8 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
+const ffmpeg = require('fluent-ffmpeg');
+
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         ffmpeg(imagePath)
@@ -54,6 +56,29 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
                 '-c:v libx264', // Use H.264 encoding
                 '-pix_fmt yuv420p', // Ensure compatibility with most players
                 '-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2"', // Resize and pad
+                '-r 30' // Set frame rate
+            ])
+            .on('end', () => {
+                console.log(`Converted image to video: ${outputVideoPath}`);
+                resolve();
+            })
+            .on('error', (err) => {
+                console.error(`Error converting image: ${imagePath}`, err);
+                reject(err);
+            })
+            .save(outputVideoPath);
+    });
+};
+
+// Example usage
+convertImageToVideo('path/to/image.jpg', 'path/to/output/video.mp4', 5)
+    .then(() => {
+        console.log('Image converted to video successfully.');
+    })
+    .catch((error) => {
+        console.error('Failed to convert image to video:', error);
+    });
+
                
 
 
