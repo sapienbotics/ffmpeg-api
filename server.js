@@ -260,20 +260,6 @@ async function processMediaSequence(mediaSequence) {
     }
 }
 
-// Example merge function (ensure this is defined correctly in your code)
-async function mergeMediaUsingFile(videoPaths, totalDuration) {
-    // Your merging logic here...
-    // You may want to handle fade effects for better transitions between videos.
-}
-
-
-
-
-
-
-
-
-
 
 
 
