@@ -93,11 +93,15 @@ const mergeVideos = (videoPaths) => {
             resolve();
         });
     });
-};// Endpoint to merge media sequences
+};
+
+
+
+// Endpoint to merge media sequences
 app.post('/merge-media-sequence', async (req, res) => {
     try {
         const mediaSequence = req.body.mediaSequence; // Expecting an array of media paths
-        
+
         // Check if mediaSequence is an array
         if (!Array.isArray(mediaSequence)) {
             return res.status(400).json({ error: 'Invalid media sequence format. It should be an array.' });
@@ -113,11 +117,14 @@ app.post('/merge-media-sequence', async (req, res) => {
             try {
                 let outputVideoPath;
 
+                // If media type is image, convert it to a video
                 if (type === 'image') {
                     outputVideoPath = generateOutputPath(path); // Generate output path for image-to-video conversion
-                    await convertImageToVideo(path, outputVideoPath, duration);
+                    await convertImageToVideo(path, outputVideoPath, duration); // Convert image to video
                     validMediaSequence.push(outputVideoPath); // Add valid output to sequence
-                } else if (type === 'video') {
+                } 
+                // If media type is video, add it directly to the sequence
+                else if (type === 'video') {
                     outputVideoPath = path; // Directly use the video path
                     validMediaSequence.push(outputVideoPath); // Add valid video to sequence
                 }
@@ -127,7 +134,7 @@ app.post('/merge-media-sequence', async (req, res) => {
             }
         }
 
-        // Check if there are valid media to merge
+        // Check if validMediaSequence contains any valid media files
         if (validMediaSequence.length > 0) {
             console.log('Merging the following media:', validMediaSequence);
             await mergeVideos(validMediaSequence); // Call to merge valid media files
