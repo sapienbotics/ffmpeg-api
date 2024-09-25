@@ -101,8 +101,11 @@ const mergeVideos = (videoPaths) => {
 app.post('/merge-media-sequence', async (req, res) => {
     try {
         const mediaSequence = req.body.mediaSequence; // Expecting an array of media paths
+        
+        // Log incoming mediaSequence for debugging
+        console.log("Received media sequence: ", mediaSequence);
 
-        // Check if mediaSequence is an array
+        // Ensure mediaSequence is an array
         if (!Array.isArray(mediaSequence)) {
             return res.status(400).json({ error: 'Invalid media sequence format. It should be an array.' });
         }
@@ -120,11 +123,14 @@ app.post('/merge-media-sequence', async (req, res) => {
                 // If media type is image, convert it to a video
                 if (type === 'image') {
                     outputVideoPath = generateOutputPath(path); // Generate output path for image-to-video conversion
+                    console.log(`Starting conversion for image: ${path}`);
                     await convertImageToVideo(path, outputVideoPath, duration); // Convert image to video
                     validMediaSequence.push(outputVideoPath); // Add valid output to sequence
+                    console.log(`Image converted to video: ${outputVideoPath}`);
                 } 
                 // If media type is video, add it directly to the sequence
                 else if (type === 'video') {
+                    console.log(`Processing video: ${path}`);
                     outputVideoPath = path; // Directly use the video path
                     validMediaSequence.push(outputVideoPath); // Add valid video to sequence
                 }
