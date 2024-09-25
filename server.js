@@ -5,6 +5,7 @@ const { exec } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const ffmpeg = require('fluent-ffmpeg');
+
 const app = express();
 app.use(express.json());
 
@@ -45,6 +46,7 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
+// Function to convert an image to a video
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         console.log(`Starting conversion for image: ${imagePath}`);
@@ -75,19 +77,6 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             .save(outputVideoPath);
     });
 };
-
-// Example usage
-convertImageToVideo('path/to/image.jpg', 'path/to/output/video.mp4', 5)
-    .then(() => {
-        console.log('Image converted to video successfully.');
-    })
-    .catch((error) => {
-        console.error('Failed to convert image to video:', error);
-    });
-
-               
-
-
 
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
@@ -156,7 +145,7 @@ app.post('/merge-media-sequence', async (req, res) => {
         const mergedVideoPath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
         const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${fileListPath} -c:v libx264 -an -y ${mergedVideoPath}`;
 
-        exec(ffmpegCommand, (error, stdout, stderr) => {
+        exec(ffmpegCommand, (error) => {
             if (error) {
                 console.error('Error merging media:', error);
                 return res.status(500).send('Error merging media');
@@ -168,6 +157,23 @@ app.post('/merge-media-sequence', async (req, res) => {
     } catch (err) {
         console.error('Error processing merge-media-sequence:', err);
         res.status(500).send('Error processing request');
+    }
+});
+
+// Download endpoint for processed media
+app.get('/download/:filename', (req, res) => {
+    const fileName = req.params.filename;
+    const filePath = path.join(processedDir, fileName);
+
+    if (fs.existsSync(filePath)) {
+        res.download(filePath, (err) => {
+            if (err) {
+                console.error(`Error downloading file: ${fileName}`, err);
+                res.status(500).send('Error downloading file');
+            }
+        });
+    } else {
+        res.status(404).send('File not found');
     }
 });
 
