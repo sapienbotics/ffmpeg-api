@@ -76,12 +76,16 @@ if (validMediaSequence.length > 0) {
 app.post('/merge-media-sequence', async (req, res) => {
     try {
         const mediaSequence = req.body.mediaSequence; // Expecting an array of media paths
+        
+        // Check if mediaSequence is an array
         if (!Array.isArray(mediaSequence)) {
             return res.status(400).json({ error: 'Invalid media sequence format. It should be an array.' });
         }
 
-        let validMediaSequence = []; // Initialize validMediaSequence array
+        // Initialize validMediaSequence as an empty array
+        let validMediaSequence = [];
 
+        // Loop through the media sequence and process each item
         for (const media of mediaSequence) {
             const { type, path, duration } = media; // Assuming media has type, path, and duration properties
 
@@ -98,11 +102,11 @@ app.post('/merge-media-sequence', async (req, res) => {
                 }
             } catch (error) {
                 console.error(`Error processing media: ${path}`, error);
-                // Handle specific media conversion errors, but continue processing others
+                // Continue processing remaining media files even if one fails
             }
         }
 
-        // Ensure validMediaSequence is defined and not empty before proceeding
+        // Check if there are valid media to merge
         if (validMediaSequence.length > 0) {
             console.log('Merging the following media:', validMediaSequence);
             await mergeVideos(validMediaSequence); // Call to merge valid media files
