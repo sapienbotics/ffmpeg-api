@@ -49,7 +49,6 @@ async function trimVideo(inputFilePath, duration) {
                 }
 
                 const videoDuration = data.format.duration;
-                console.log(`Video duration: ${videoDuration}, Requested trim duration: ${duration}`);
 
                 // Ensure we don't try to trim to a duration longer than the video
                 const trimDuration = Math.min(duration, videoDuration);
@@ -57,10 +56,12 @@ async function trimVideo(inputFilePath, duration) {
                 ffmpeg(inputFilePath)
                     .outputOptions([
                         '-t', trimDuration,  // Set duration
+                        '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
                         '-c:v', 'libx264',  // Encode with libx264
                         '-preset', 'fast',  // Faster encoding
                         '-movflags', 'faststart',  // Optimize for playback
-                        '-pix_fmt', 'yuv420p'  // Ensure compatibility
+                        '-pix_fmt', 'yuv420p',  // Ensure compatibility
+                        '-af', 'apad',  // Prevent potential blackouts by padding audio if necessary
                     ])
                     .on('end', () => {
                         console.log(`Trimmed video created: ${outputFilePath}`);
@@ -68,7 +69,6 @@ async function trimVideo(inputFilePath, duration) {
                     })
                     .on('error', (err) => {
                         console.error(`Error trimming video: ${err.message}`);
-                        console.error(`FFmpeg Error: ${err.stderr}`); // Log stderr for more details
                         reject(err);
                     })
                     .save(outputFilePath);
@@ -78,37 +78,33 @@ async function trimVideo(inputFilePath, duration) {
 
 
 
-// Function to convert image to video
-async function convertImageToVideo(imageUrl, duration) {
-    const outputVideoPath = path.join(outputDir, `${Date.now()}_image.mp4`);
 
-    // Check if the image URL is accessible before proceeding
-    if (await checkUrlAccessibility(imageUrl)) {
-        return new Promise((resolve, reject) => {
-            ffmpeg(imageUrl)
-                .inputOptions('-loop', '1')  // Loop the image to fill the duration
-                .outputOptions([
-                    '-t', duration,  // Set the duration for the output video
-                    '-vf', 'scale=640:360',  // Set resolution to avoid issues
-                    '-pix_fmt', 'yuv420p',  // Ensure video compatibility
-                    '-r', '30',  // Set frame rate to 30 fps
-                    '-b:v', '500k'  // Set a reasonable bitrate
-                ])
-                .on('end', () => {
-                    console.log(`Converted ${imageUrl} to video.`);
-                    resolve(outputVideoPath);
-                })
-                .on('error', (err) => {
-                    console.error(`Error converting image to video: ${err.message} for ${imageUrl}`);
-                    reject(err);
-                })
-                .save(outputVideoPath);
-        });
-    } else {
-        console.log(`Skipping inaccessible URL: ${imageUrl}`);
-        throw new Error(`Inaccessible URL: ${imageUrl}`);
-    }
+async function convertImageToVideo(imageUrl, duration) {
+    const outputFilePath = path.join(outputDir, `${path.basename(imageUrl, path.extname(imageUrl))}.mp4`);
+
+    return new Promise((resolve, reject) => {
+        ffmpeg(imageUrl)
+            .outputOptions([
+                '-t', duration,  // Set duration
+                '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
+                '-c:v', 'libx264',  // Encode with libx264
+                '-preset', 'fast',  // Faster encoding
+                '-movflags', 'faststart',  // Optimize for playback
+                '-pix_fmt', 'yuv420p',  // Ensure compatibility
+            ])
+            .on('end', () => {
+                console.log(`Converted ${imageUrl} to video.`);
+                resolve(outputFilePath);
+            })
+            .on('error', (err) => {
+                console.error(`Error converting image to video: ${err.message}`);
+                reject(err);
+            })
+            .save(outputFilePath);
+    });
 }
+
+
 
 
 
