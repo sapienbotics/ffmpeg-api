@@ -45,17 +45,16 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-// Convert image to video with fallback error handling
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         ffmpeg(imagePath)
+            .inputOptions('-f image2')  // Ensure it's treated as an image input
             .loop(duration) // Loop the image for the given duration
             .outputOptions([
-                `-t ${duration}`,        // Set the duration
-                '-c:v libx264',          // Use H.264 encoding
-                '-vf "scale=640:360"',   // Scale the image to 640x360
-                '-pix_fmt yuv420p',      // Use the standard pixel format
-                '-r 30'                  // Frame rate 30fps
+                `-t ${duration}`,      // Set the duration
+                '-c:v libx264',        // Use H.264 encoding
+                '-vf "scale=640:360:force_original_aspect_ratio=increase,crop=640:360"', // Scale dynamically and crop if needed
+                '-pix_fmt yuv420p',    // Use the standard pixel format
             ])
             .on('end', () => {
                 console.log(`Converted image to video: ${outputVideoPath}`);
@@ -63,43 +62,22 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             })
             .on('error', (err) => {
                 console.error(`Error converting image: ${imagePath}`, err);
-
-                // Attempt a fallback with more flexible scaling
-                console.log(`Attempting fallback conversion for image: ${imagePath}`);
-                ffmpeg(imagePath)
-                    .loop(duration)
-                    .outputOptions([
-                        `-t ${duration}`,
-                        '-c:v libx264',
-                        '-vf "scale=640:-2"',  // Scale width to 640, height auto
-                        '-pix_fmt yuv420p',
-                        '-r 30'
-                    ])
-                    .on('end', () => {
-                        console.log(`Fallback conversion succeeded for image: ${outputVideoPath}`);
-                        resolve();
-                    })
-                    .on('error', (fallbackErr) => {
-                        console.error(`Fallback conversion failed for image: ${imagePath}`, fallbackErr);
-                        reject(fallbackErr);
-                    })
-                    .save(outputVideoPath);
+                reject(err);
             })
             .save(outputVideoPath);
     });
 };
+
 
 // Merge media sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
     const { mediaSequence } = req.body;
 
     try {
-        // Ensure media sequence is valid
         if (!mediaSequence || mediaSequence.length === 0) {
             return res.status(400).send('Invalid media sequence');
         }
 
-        // Step 1: Download all media files (both images and videos)
         await Promise.all(mediaSequence.map(async media => {
             const fileName = path.basename(media.url);
             const filePath = path.join(processedDir, fileName);
@@ -112,47 +90,55 @@ app.post('/merge-media-sequence', async (req, res) => {
             }
         }));
 
-        // Step 2: Process each media file (trim videos, convert images to videos)
+        let totalDuration = mediaSequence.reduce((sum, media) => sum + media.duration, 0);
+        let validMediaSequence = [];
+
         await Promise.all(mediaSequence.map(async media => {
             const fileName = path.basename(media.url);
             const filePath = path.join(processedDir, fileName);
             const trimmedFilePath = path.join(processedDir, `trimmed_${fileName}`);
 
-            if (fileName.endsWith('.mp4') || fileName.endsWith('.mov')) {
-                // Trim videos
-                return new Promise((resolve, reject) => {
-                    ffmpeg(filePath)
-                        .setStartTime(0) // Always start at 0
-                        .setDuration(media.duration) // Trim to the specified duration
-                        .outputOptions('-an') // Remove audio
-                        .output(trimmedFilePath)
-                        .on('end', () => {
-                            console.log(`Processed video: ${trimmedFilePath}`);
-                            resolve();
-                        })
-                        .on('error', err => {
-                            console.error(`Error processing video: ${filePath}`, err);
-                            reject(err);
-                        })
-                        .run();
-                });
-            } else if (fileName.endsWith('.jpg') || fileName.endsWith('.png')) {
-                // Convert images to videos
-                return convertImageToVideo(filePath, trimmedFilePath, media.duration);
+            try {
+                if (fileName.endsWith('.mp4') || fileName.endsWith('.mov')) {
+                    await new Promise((resolve, reject) => {
+                        ffmpeg(filePath)
+                            .setStartTime(0)
+                            .setDuration(media.duration)
+                            .outputOptions('-an')
+                            .output(trimmedFilePath)
+                            .on('end', () => {
+                                console.log(`Processed video: ${trimmedFilePath}`);
+                                resolve();
+                            })
+                            .on('error', reject)
+                            .run();
+                    });
+                    validMediaSequence.push({ url: trimmedFilePath, duration: media.duration });
+                } else if (fileName.endsWith('.jpg') || fileName.endsWith('.png')) {
+                    await convertImageToVideo(filePath, trimmedFilePath, media.duration);
+                    validMediaSequence.push({ url: trimmedFilePath, duration: media.duration });
+                }
+            } catch (error) {
+                console.error(`Error processing media: ${fileName}`, error);
             }
-            return Promise.resolve();
         }));
 
-        // Step 3: Create file_list.txt for FFmpeg
-        const fileListPath = createFileList(mediaSequence, processedDir);
+        if (validMediaSequence.length === 0) {
+            return res.status(500).send('All media files failed to process');
+        }
 
-        // Step 4: Run FFmpeg to merge the media
+        const newDuration = totalDuration / validMediaSequence.length;
+        validMediaSequence.forEach(media => {
+            media.duration = newDuration;
+        });
+
+        const fileListPath = createFileList(validMediaSequence, processedDir);
         const mergedVideoPath = path.join(storageDir, `${uuidv4()}_merged_video.mp4`);
         const ffmpegCommand = `ffmpeg -f concat -safe 0 -i ${fileListPath} -c:v libx264 -an -y ${mergedVideoPath}`;
 
         exec(ffmpegCommand, (error, stdout, stderr) => {
             if (error) {
-                console.error('Error processing merge-media-sequence request:', error);
+                console.error('Error merging media:', error);
                 return res.status(500).send('Error merging media');
             }
 
