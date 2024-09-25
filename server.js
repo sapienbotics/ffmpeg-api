@@ -61,18 +61,6 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     });
 };
 
-
-// Check if valid media before merging
-if (validMediaSequence.length > 0) {
-    console.log(`Merging the following media:`, validMediaSequence);
-    // Proceed with merging...
-} else {
-    console.error('No valid media files to merge. Please check previous conversion steps.');
-}
-
-
-
-
 // Function to merge videos
 const mergeVideos = (videoPaths) => {
     return new Promise((resolve, reject) => {
@@ -94,8 +82,6 @@ const mergeVideos = (videoPaths) => {
         });
     });
 };
-
-
 
 // Endpoint to merge media sequences
 app.post('/merge-media-sequence', async (req, res) => {
@@ -166,9 +152,6 @@ app.post('/merge-media-sequence', async (req, res) => {
         res.status(500).json({ error: 'An error occurred during media merging' });
     }
 });
-
-
-
 
 // Download endpoint for processed media
 app.get('/download/:filename', (req, res) => {
