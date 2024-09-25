@@ -143,13 +143,17 @@ async function processMediaSequence(mediaSequence) {
             // Call mergeMediaUsingFile instead of mergeMedia
             const mergeResult = await mergeMediaUsingFile(videoPaths);
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
+            return mergeResult.outputFileUrl; // Return the merged video URL
         } catch (error) {
             console.error(`Error merging videos: ${error.message}`);
+            throw error; // Rethrow error for the endpoint to catch
         }
     } else {
         console.error('No valid media found for merging.');
+        throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 // Function to determine media type based on URL extension
@@ -170,7 +174,6 @@ function generateOutputPath(url) {
     return outputPath;
 }
 
-// merge-media-sequence endpoint
 app.post('/merge-media-sequence', async (req, res) => {
     const { mediaSequence } = req.body;
 
@@ -180,12 +183,16 @@ app.post('/merge-media-sequence', async (req, res) => {
 
     try {
         const mergedVideoUrl = await processMediaSequence(mediaSequence);
-        res.json({ message: 'Media merged successfully', mergedVideoUrl });
+        res.json({
+            message: 'Media merged successfully',
+            mergedVideoUrl,  // Include the merged video URL in the response
+        });
     } catch (error) {
         console.error(`Error in merge-media-sequence endpoint: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
+
 
 
 
