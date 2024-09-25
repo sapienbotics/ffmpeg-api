@@ -46,7 +46,6 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-// Function to convert an image to a video
 const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
     return new Promise((resolve, reject) => {
         console.log(`Starting conversion for image: ${imagePath}`);
@@ -78,6 +77,7 @@ const convertImageToVideo = (imagePath, outputVideoPath, duration) => {
             .save(outputVideoPath);
     });
 };
+
 
 
 // Merge media sequence endpoint
