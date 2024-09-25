@@ -42,25 +42,39 @@ async function trimVideo(inputFilePath, duration) {
 
     return new Promise((resolve, reject) => {
         ffmpeg(inputFilePath)
-            .outputOptions([
-                '-t', duration,  // Set duration
-                '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
-                '-c:v', 'libx264',  // Encode with libx264
-                '-preset', 'fast',  // Faster encoding
-                '-movflags', 'faststart',  // Optimize for playback
-                '-pix_fmt', 'yuv420p'  // Ensure compatibility
-            ])
-            .on('end', () => {
-                console.log(`Trimmed video created: ${outputFilePath}`);
-                resolve(outputFilePath);
-            })
-            .on('error', (err) => {
-                console.error(`Error trimming video: ${err.message}`);
-                reject(err);
-            })
-            .save(outputFilePath);
+            .ffprobe((err, data) => {
+                if (err) {
+                    console.error(`Error getting video info: ${err.message}`);
+                    return reject(err);
+                }
+
+                const videoDuration = data.format.duration;
+
+                // Ensure we don't try to trim to a duration longer than the video
+                const trimDuration = Math.min(duration, videoDuration);
+
+                ffmpeg(inputFilePath)
+                    .outputOptions([
+                        '-t', trimDuration,  // Set duration
+                        '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
+                        '-c:v', 'libx264',  // Encode with libx264
+                        '-preset', 'fast',  // Faster encoding
+                        '-movflags', 'faststart',  // Optimize for playback
+                        '-pix_fmt', 'yuv420p'  // Ensure compatibility
+                    ])
+                    .on('end', () => {
+                        console.log(`Trimmed video created: ${outputFilePath}`);
+                        resolve(outputFilePath);
+                    })
+                    .on('error', (err) => {
+                        console.error(`Error trimming video: ${err.message}`);
+                        reject(err);
+                    })
+                    .save(outputFilePath);
+            });
     });
 }
+
 
 
 
@@ -108,11 +122,6 @@ async function convertImageToVideo(imageUrl, duration) {
 }
 
 
-
-
-
-
-
 const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
     const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4'));
 
@@ -130,7 +139,7 @@ const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c', 'copy')
+            .outputOptions(['-c', 'copy', '-movflags', 'faststart'])  // Faststart for smooth playback
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
@@ -146,6 +155,7 @@ const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
             .save(outputFilePath);
     });
 };
+
 
 
 
