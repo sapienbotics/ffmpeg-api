@@ -37,6 +37,26 @@ const downloadFile = async (url, outputPath) => {
     });
 };
 
+async function trimVideo(videoUrl, duration) {
+    const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_trimmed.mp4`);
+
+    return new Promise((resolve, reject) => {
+        ffmpeg()
+            .input(videoUrl)
+            .outputOptions([`-t ${duration}`]) // Trim to the specified duration
+            .on('end', () => {
+                console.log(`Trimmed video created: ${outputFilePath}`);
+                resolve(outputFilePath);
+            })
+            .on('error', (err) => {
+                console.error(`Error trimming video: ${err.message}`);
+                reject(err);
+            })
+            .save(outputFilePath);
+    });
+}
+
+
 // Helper function to create file_list.txt for FFmpeg
 const createFileList = (mediaSequence, outputDir) => {
     const fileListContent = mediaSequence.map(media => {
@@ -111,10 +131,6 @@ const mergeMediaUsingFile = async (mediaArray) => {
 
 
 
-
-
-
-
 // Function to process media sequence
 async function processMediaSequence(mediaSequence) {
     const videoPaths = [];
@@ -128,7 +144,10 @@ async function processMediaSequence(mediaSequence) {
             // Download video file locally before adding to the paths
             const localVideoPath = path.join(outputDir, path.basename(url)); // Local file path
             await downloadFile(url, localVideoPath); // Download the video
-            videoPaths.push(localVideoPath); // Add local video path to paths
+
+            // Trim the video to the specified duration
+            const trimmedVideoPath = await trimVideo(localVideoPath, duration);
+            videoPaths.push(trimmedVideoPath); // Add trimmed video path to paths
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
             try {
@@ -155,6 +174,11 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
+
+
+
+
+
 
 
 
