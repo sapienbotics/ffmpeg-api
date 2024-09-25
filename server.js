@@ -74,26 +74,28 @@ const convertImageToVideo = async (imageUrl, duration) => {
 
 
 const mergeMedia = async (mediaArray) => {
-    const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4')); // Ensure media is defined before checking extension
+    const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4')); // Ensure valid media
+
     if (validMedia.length === 0) {
         throw new Error('No valid media to merge.');
     }
 
     return new Promise((resolve, reject) => {
         const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
-        
+
         // Create ffmpeg instance
         const ffmpegCmd = ffmpeg();
 
         validMedia.forEach(media => {
-            // Add re-encoding and resolution standardization
+            // Standardize each input by re-encoding, forcing same format and stripping audio
             ffmpegCmd.input(media)
                      .outputOptions([
-                         '-vf scale=960:540', // Standardize the resolution to 960x540 (adjust if necessary)
-                         '-c:v libx264',      // Standardize video codec to H.264
-                         '-preset veryfast',  // Set encoding speed to fast
-                         '-crf 23',           // Set constant rate factor for quality (lower value = higher quality)
-                         '-pix_fmt yuv420p'   // Standard pixel format
+                         '-vf scale=960:540', // Standard resolution
+                         '-c:v libx264',      // Standard video codec
+                         '-preset veryfast',  // Fast encoding preset
+                         '-crf 23',           // Quality setting
+                         '-pix_fmt yuv420p',  // Standard pixel format
+                         '-an'                // Remove audio from all inputs
                      ]);
         });
 
@@ -102,7 +104,7 @@ const mergeMedia = async (mediaArray) => {
                 console.log('Merging finished.');
                 resolve({
                     status: 'success',
-                    outputFileUrl: `https://yourdomain.com/path/to/${path.basename(outputFilePath)}`, // Update this URL to your hosting
+                    outputFileUrl: `https://yourdomain.com/path/to/${path.basename(outputFilePath)}`, // Update with your hosting
                 });
             })
             .on('error', (err) => {
@@ -112,6 +114,7 @@ const mergeMedia = async (mediaArray) => {
             .mergeToFile(outputFilePath);
     });
 };
+
 
 
 // Function to process media sequence
