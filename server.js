@@ -37,25 +37,27 @@ const downloadFile = async (url, outputPath) => {
     });
 };
 
-async function trimVideo(inputPath, duration) {
-    const outputVideoPath = path.join(outputDir, `${path.basename(inputPath, path.extname(inputPath))}_trimmed.mp4`);
+async function trimVideo(inputFilePath, duration) {
+    const outputFilePath = path.join(outputDir, `${path.basename(inputFilePath, path.extname(inputFilePath))}_trimmed.mp4`);
 
     return new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
+        ffmpeg(inputFilePath)
             .outputOptions([
-                `-t ${duration}`,  // Set the duration explicitly
-                '-c:v copy',       // Copy the video codec for efficiency
-                '-c:a copy'        // Copy audio codec
+                '-t', duration,  // Set duration
+                '-c:v', 'libx264',  // Encode using libx264
+                '-preset', 'fast',  // Faster encoding
+                '-movflags', 'faststart',  // Ensure proper video playback
+                '-vf', 'fps=25',  // Ensure frame rate consistency
             ])
             .on('end', () => {
-                console.log(`Trimmed video created: ${outputVideoPath}`);
-                resolve(outputVideoPath);
+                console.log(`Trimmed video created: ${outputFilePath}`);
+                resolve(outputFilePath);
             })
             .on('error', (err) => {
                 console.error(`Error trimming video: ${err.message}`);
                 reject(err);
             })
-            .save(outputVideoPath);
+            .save(outputFilePath);
     });
 }
 
@@ -88,9 +90,9 @@ async function convertImageToVideo(imageUrl, duration) {
             .inputOptions('-loop', '1')  // Loop the image to fill the duration
             .outputOptions([
                 '-t', duration,  // Set duration
-                '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease',  // Scale to 1280x720, maintain aspect ratio
+                '-vf', 'scale=1280:720:force_original_aspect_ratio=increase,pad=1280:720:(ow-iw)/2:(oh-ih)/2',  // Scale and pad to maintain aspect ratio
                 '-pix_fmt', 'yuv420p',  // Ensure video compatibility
-                '-r', '25',  // Set frame rate (adjust to match other videos)
+                '-r', '25',  // Match frame rate to other videos
             ])
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
