@@ -79,38 +79,25 @@ async function trimVideo(inputFilePath, duration) {
 
 
 
+
 // Function to convert image to video
 async function convertImageToVideo(imageUrl, duration) {
+    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
+    
     return new Promise((resolve, reject) => {
-        const outputPath = path.join(outputDir, `${path.basename(imageUrl, path.extname(imageUrl))}.mp4`);
-        
         ffmpeg()
             .input(imageUrl)
-            .loop(1)  // Loop the image
-            .outputOptions([
-                `-c:v libx264`,  // Set video codec
-                `-t ${duration}`,  // Set total duration
-                '-pix_fmt yuv420p', // Ensure compatibility
-                '-vf "scale=640:360"' // Optional: scale to a specific resolution
-            ])
-            .save(outputPath)
+            .loop(duration)  // Set the duration of the image video
+            .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
-                
-                // Check the output video size
-                const stats = fs.statSync(outputPath);
-                if (stats.size < 1000) { // Check if the output video is too small
-                    console.error(`Generated video for ${imageUrl} is too small, skipping.`);
-                    fs.unlinkSync(outputPath); // Delete the empty file
-                    return resolve(null); // Return null to skip adding to paths
-                }
-                
-                resolve(outputPath); // Return valid output path
+                resolve(outputFilePath);
             })
-            .on('error', (error) => {
-                console.error(`Error converting image ${imageUrl}: ${error.message}`);
-                reject(error);
-            });
+            .on('error', (err) => {
+                console.error(`Error converting image to video: ${err.message}`);
+                reject(err);
+            })
+            .save(outputFilePath);
     });
 }
 
@@ -235,9 +222,7 @@ async function processMediaSequence(mediaSequence) {
 
             try {
                 const videoPath = await convertImageToVideo(url, duration);
-                if (videoPath) { // Only add valid video paths
-                    videoPaths.push(videoPath);  // Add the converted video path to paths
-                }
+                videoPaths.push(videoPath);  // Add the converted video path to paths
             } catch (error) {
                 console.error(`Error processing media ${url}: ${error.message}`);
                 continue;  // Skip to the next media
@@ -259,6 +244,7 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
