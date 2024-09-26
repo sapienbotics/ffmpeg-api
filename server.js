@@ -30,6 +30,8 @@ const downloadFile = async (url, outputPath) => {
             method: 'GET',
             responseType: 'stream',
         });
+console.log(`Response Status: ${response.status}`);
+console.log(`Response Headers:`, response.headers);
 
         return new Promise((resolve, reject) => {
             const writer = fs.createWriteStream(outputPath);
