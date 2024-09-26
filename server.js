@@ -249,13 +249,14 @@ app.post('/merge-audio-free-videos', async (req, res) => {
     const { videoUrls } = req.body;
 
     // Validate input
-    if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length === 0) {
+    if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length === 0 || 
+        !videoUrls.every(video => video.url)) { // Check if each video object has a url key
         return res.status(400).json({ error: 'Invalid or empty video URLs provided.' });
     }
 
     try {
         // Step 1: Remove audio from each video
-        const audioFreeVideos = await Promise.all(videoUrls.map(url => removeAudio(url)));
+        const audioFreeVideos = await Promise.all(videoUrls.map(video => removeAudio(video.url)));
 
         // Step 2: Merge the audio-free videos into one final video
         const mergeResult = await mergeMediaUsingFile(audioFreeVideos);
@@ -270,6 +271,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while merging videos.' });
     }
 });
+
 
 
 
