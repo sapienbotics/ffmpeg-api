@@ -37,6 +37,27 @@ const downloadFile = async (url, outputPath) => {
     });
 };
 
+// Helper function to remove audio from a video
+async function removeAudio(videoUrl) {
+    const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_no_audio.mp4`);
+
+    return new Promise((resolve, reject) => {
+        ffmpeg()
+            .input(videoUrl)
+            .noAudio() // Removes audio track
+            .on('end', () => {
+                console.log(`Audio removed from video: ${outputFilePath}`);
+                resolve(outputFilePath);
+            })
+            .on('error', (err) => {
+                console.error(`Error removing audio: ${err.message}`);
+                reject(err);
+            })
+            .save(outputFilePath);
+    });
+}
+
+
 async function trimVideo(videoUrl, duration) {
     const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_trimmed.mp4`);
 
@@ -140,8 +161,6 @@ const mergeMediaUsingFile = async (mediaArray) => {
 
 
 
-
-
 // Function to process media sequence
 async function processMediaSequence(mediaSequence) {
     const videoPaths = [];
@@ -189,11 +208,6 @@ async function processMediaSequence(mediaSequence) {
 
 
 
-
-
-
-
-
 // Function to determine media type based on URL extension
 const getMediaType = (url) => {
     const extension = path.extname(url).toLowerCase();
@@ -230,6 +244,34 @@ app.post('/merge-media-sequence', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+app.post('/merge-audio-free-videos', async (req, res) => {
+    const { videoUrls } = req.body;
+
+    // Validate input
+    if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length === 0) {
+        return res.status(400).json({ error: 'Invalid or empty video URLs provided.' });
+    }
+
+    try {
+        // Step 1: Remove audio from each video
+        const audioFreeVideos = await Promise.all(videoUrls.map(url => removeAudio(url)));
+
+        // Step 2: Merge the audio-free videos into one final video
+        const mergeResult = await mergeMediaUsingFile(audioFreeVideos);
+
+        // Respond with the direct downloadable link
+        res.json({
+            message: 'Videos merged successfully without audio.',
+            mergedVideoUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(mergeResult.outputFileUrl)}`, // Direct download link
+        });
+    } catch (error) {
+        console.error(`Error in merge-audio-free-videos endpoint: ${error.message}`);
+        res.status(500).json({ error: 'An error occurred while merging videos.' });
+    }
+});
+
+
 
 
 
