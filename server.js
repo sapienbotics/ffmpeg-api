@@ -21,21 +21,32 @@ if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
 
+
 // Helper function to download files
 const downloadFile = async (url, outputPath) => {
-    const response = await axios({
-        url,
-        method: 'GET',
-        responseType: 'stream',
-    });
+    try {
+        const response = await axios({
+            url,
+            method: 'GET',
+            responseType: 'stream',
+        });
 
-    return new Promise((resolve, reject) => {
-        const writer = fs.createWriteStream(outputPath);
-        response.data.pipe(writer);
-        writer.on('finish', resolve);
-        writer.on('error', reject);
-    });
+        return new Promise((resolve, reject) => {
+            const writer = fs.createWriteStream(outputPath);
+            response.data.pipe(writer);
+            writer.on('finish', resolve);
+            writer.on('error', (err) => {
+                fs.unlinkSync(outputPath); // Remove the file if there was an error
+                reject(err);
+            });
+        });
+    } catch (error) {
+        console.error(`Error downloading file from ${url}:`, error.message);
+        throw error; // Re-throw error for handling in the calling function
+    }
 };
+
+
 
 // Helper function to remove audio from a video
 async function removeAudio(videoUrl) {
