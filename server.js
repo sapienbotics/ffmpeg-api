@@ -46,6 +46,20 @@ const downloadFile = async (url, outputPath) => {
     }
 };
 
+// Function to cleanup files
+const cleanupFiles = async (filePaths) => {
+    for (const filePath of filePaths) {
+        try {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                console.log(`Cleaned up file: ${filePath}`);
+            }
+        } catch (err) {
+            console.error(`Error cleaning up file ${filePath}: ${err.message}`);
+        }
+    }
+};
+
 
 
 // Helper function to remove audio from a video
