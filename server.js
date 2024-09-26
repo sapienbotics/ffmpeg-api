@@ -43,7 +43,14 @@ async function trimVideo(videoUrl, duration) {
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(videoUrl)
-            .outputOptions([`-t ${duration}`]) // Trim to the specified duration
+            .outputOptions([
+                `-t ${duration}`, // Trim to the specified duration
+                '-vf scale=960:540',  // Scale to 960x540 resolution
+                '-r 30',  // Set frame rate to 30 fps
+                '-c:v libx264',  // Re-encode to H.264
+                '-preset veryfast',
+                '-crf 22'
+            ])
             .on('end', () => {
                 console.log(`Trimmed video created: ${outputFilePath}`);
                 resolve(outputFilePath);
@@ -55,6 +62,7 @@ async function trimVideo(videoUrl, duration) {
             .save(outputFilePath);
     });
 }
+
 
 
 // Helper function to create file_list.txt for FFmpeg
@@ -78,6 +86,8 @@ async function convertImageToVideo(imageUrl, duration) {
             .input(imageUrl)
             .loop(duration)  // Set the duration of the image video
             .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
+            .outputOptions('-r', '30')  // Set frame rate to 30 fps
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22')  // Re-encode using H.264
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
@@ -112,12 +122,12 @@ const mergeMediaUsingFile = async (mediaArray) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c', 'copy')
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22') // Re-encode video to ensure compatibility
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
                     status: 'success',
-                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`, // Updated to your domain
+                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`,
                 });
             })
             .on('error', (err) => {
@@ -127,6 +137,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
             .save(outputFilePath);
     });
 };
+
 
 
 
