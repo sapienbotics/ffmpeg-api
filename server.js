@@ -346,6 +346,19 @@ app.post('/merge-audio-free-videos', async (req, res) => {
     const outputFilePath = '/path/to/output/merged_output.mp4'; // Change this path accordingly
     const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${videoUrls.length}:v=1:a=0[out]" -map "[out]" "${outputFilePath}"`;
 
+    // Function to execute FFmpeg commands
+    const executeFFmpegCommand = (command) => {
+        return new Promise((resolve, reject) => {
+            exec(command, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('Error executing FFmpeg command:', stderr);
+                    return reject(error);
+                }
+                resolve(stdout);
+            });
+        });
+    };
+
     try {
         // Execute the FFmpeg command
         const output = await executeFFmpegCommand(ffmpegCommand);
@@ -358,6 +371,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         res.status(500).json({ error: 'Error merging videos', details: error.message });
     }
 });
+
 
 
 
