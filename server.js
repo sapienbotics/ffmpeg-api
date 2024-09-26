@@ -334,32 +334,41 @@ const fileExists = (filePath) => {
 
 
 app.post('/merge-audio-free-videos', async (req, res) => {
-    const { videoUrls } = req.body;
+    const { videoUrls } = req.body; // Input should be an array of URLs
 
-    // Validate input
-    if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length === 0 || 
-        !videoUrls.every(video => video.url)) {
-        return res.status(400).json({ error: 'Invalid or empty video URLs provided.' });
+    // Ensure the input is valid
+    if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length === 0) {
+        return res.status(400).json({ error: 'Invalid input. Please provide an array of video URLs.' });
     }
 
+    // Function to execute FFmpeg commands
+    const executeFFmpegCommand = (command) => {
+        return new Promise((resolve, reject) => {
+            exec(command, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('Error executing FFmpeg command:', stderr);
+                    return reject(error);
+                }
+                resolve(stdout);
+            });
+        });
+    };
+
     try {
-        // Step 1: Check if all video files exist
-        console.log('Checking if all video files exist...');
-        const fileChecks = await Promise.all(videoUrls.map(async (video) => {
-            const filePath = path.join(outputDir, path.basename(video.url)); // Assuming files are saved in outputDir
-            const exists = await fileExists(filePath);
-            console.log(`File ${filePath} exists: ${exists}`);
-            return exists;
-        }));
+        // Construct FFmpeg command to merge videos directly from URLs
+        const inputFiles = videoUrls.map(v => `-i "${v.url}"`).join(' ');
+        const outputFilePath = '/path/to/output/merged_output.mp4'; // Specify your desired output path
 
-        if (fileChecks.includes(false)) {
-            return res.status(404).json({ error: 'One or more video files not found.' });
-        }
+        const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${videoUrls.length}:v=1:a=0[out]" -map "[out]" "${outputFilePath}"`;
 
-        // Proceed with merging the videos if all files exist...
+        // Execute FFmpeg command
+        await executeFFmpegCommand(ffmpegCommand);
+
+        // Send response
+        res.json({ message: 'Videos merged successfully', outputUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilePath.split('/').pop()}` });
     } catch (error) {
-        console.error(`Error in merge-audio-free-videos endpoint: ${error.message}`);
-        res.status(500).json({ error: error.message });
+        console.error('Error merging videos:', error);
+        res.status(500).json({ error: 'Failed to merge videos.' });
     }
 });
 
