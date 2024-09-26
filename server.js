@@ -67,6 +67,7 @@ async function removeAudio(videoUrl) {
     const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_no_audio.mp4`);
 
     return new Promise((resolve, reject) => {
+        console.log(`Removing audio from video: ${videoUrl}`);
         ffmpeg()
             .input(videoUrl)
             .noAudio() // Removes audio track
@@ -75,7 +76,7 @@ async function removeAudio(videoUrl) {
                 resolve(outputFilePath);
             })
             .on('error', (err) => {
-                console.error(`Error removing audio: ${err.message}`);
+                console.error(`Error removing audio from ${videoUrl}: ${err.message}`);
                 reject(err);
             })
             .save(outputFilePath);
@@ -343,17 +344,24 @@ app.post('/merge-audio-free-videos', async (req, res) => {
 
     try {
         // Step 1: Check if all video files exist
+        console.log('Checking if all video files exist...');
         const fileChecks = await Promise.all(videoUrls.map(video => fileExists(video.url)));
         
         if (!fileChecks.every(Boolean)) {
+            console.error('One or more video files not found.');
             return res.status(404).json({ error: 'One or more video files not found.' });
         }
+        console.log('All video files are valid and exist.');
 
         // Step 2: Remove audio from each video
+        console.log('Removing audio from videos...');
         const audioFreeVideos = await Promise.all(videoUrls.map(video => removeAudio(video.url)));
+        console.log('Audio removed from videos successfully:', audioFreeVideos);
 
         // Step 3: Merge the audio-free videos into one final video
+        console.log('Merging audio-free videos...');
         const mergeResult = await mergeMediaUsingFile(audioFreeVideos);
+        console.log('Merged video created:', mergeResult.outputFileUrl);
 
         // Respond with the direct downloadable link
         res.json({
