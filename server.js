@@ -307,6 +307,17 @@ app.post('/merge-media-sequence', async (req, res) => {
     }
 });
 
+// Helper function to check if a file exists
+const fileExists = (filePath) => {
+    return new Promise((resolve) => {
+        fs.access(filePath, fs.constants.F_OK, (err) => {
+            resolve(!err);
+        });
+    });
+};
+
+
+
 app.post('/merge-audio-free-videos', async (req, res) => {
     const { videoUrls } = req.body;
 
@@ -317,10 +328,17 @@ app.post('/merge-audio-free-videos', async (req, res) => {
     }
 
     try {
-        // Step 1: Remove audio from each video
+        // Step 1: Check if all video files exist
+        const fileChecks = await Promise.all(videoUrls.map(video => fileExists(video.url)));
+        
+        if (!fileChecks.every(Boolean)) {
+            return res.status(404).json({ error: 'One or more video files not found.' });
+        }
+
+        // Step 2: Remove audio from each video
         const audioFreeVideos = await Promise.all(videoUrls.map(video => removeAudio(video.url)));
 
-        // Step 2: Merge the audio-free videos into one final video
+        // Step 3: Merge the audio-free videos into one final video
         const mergeResult = await mergeMediaUsingFile(audioFreeVideos);
 
         // Respond with the direct downloadable link
