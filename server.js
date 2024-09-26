@@ -30,8 +30,6 @@ const downloadFile = async (url, outputPath) => {
             method: 'GET',
             responseType: 'stream',
         });
-console.log(`Response Status: ${response.status}`);
-console.log(`Response Headers:`, response.headers);
 
         return new Promise((resolve, reject) => {
             const writer = fs.createWriteStream(outputPath);
@@ -340,41 +338,31 @@ app.post('/merge-audio-free-videos', async (req, res) => {
 
     // Validate input
     if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length === 0 || 
-        !videoUrls.every(video => video.url)) { // Check if each video object has a url key
+        !videoUrls.every(video => video.url)) {
         return res.status(400).json({ error: 'Invalid or empty video URLs provided.' });
     }
 
     try {
         // Step 1: Check if all video files exist
         console.log('Checking if all video files exist...');
-        const fileChecks = await Promise.all(videoUrls.map(video => fileExists(video.url)));
-        
-        if (!fileChecks.every(Boolean)) {
-            console.error('One or more video files not found.');
+        const fileChecks = await Promise.all(videoUrls.map(async (video) => {
+            const filePath = path.join(outputDir, path.basename(video.url)); // Assuming files are saved in outputDir
+            const exists = await fileExists(filePath);
+            console.log(`File ${filePath} exists: ${exists}`);
+            return exists;
+        }));
+
+        if (fileChecks.includes(false)) {
             return res.status(404).json({ error: 'One or more video files not found.' });
         }
-        console.log('All video files are valid and exist.');
 
-        // Step 2: Remove audio from each video
-        console.log('Removing audio from videos...');
-        const audioFreeVideos = await Promise.all(videoUrls.map(video => removeAudio(video.url)));
-        console.log('Audio removed from videos successfully:', audioFreeVideos);
-
-        // Step 3: Merge the audio-free videos into one final video
-        console.log('Merging audio-free videos...');
-        const mergeResult = await mergeMediaUsingFile(audioFreeVideos);
-        console.log('Merged video created:', mergeResult.outputFileUrl);
-
-        // Respond with the direct downloadable link
-        res.json({
-            message: 'Videos merged successfully without audio.',
-            mergedVideoUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(mergeResult.outputFileUrl)}`, // Direct download link
-        });
+        // Proceed with merging the videos if all files exist...
     } catch (error) {
         console.error(`Error in merge-audio-free-videos endpoint: ${error.message}`);
-        res.status(500).json({ error: 'An error occurred while merging videos.' });
+        res.status(500).json({ error: error.message });
     }
 });
+
 
 
 
