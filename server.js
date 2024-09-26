@@ -37,73 +37,24 @@ const downloadFile = async (url, outputPath) => {
     });
 };
 
-async function trimVideo(inputFilePath, duration) {
-    const outputFilePath = path.join(outputDir, `${path.basename(inputFilePath, path.extname(inputFilePath))}_trimmed.mp4`);
-
-    return new Promise((resolve, reject) => {
-        ffmpeg(inputFilePath)
-            .ffprobe((err, data) => {
-                if (err) {
-                    console.error(`Error getting video info: ${err.message}`);
-                    return reject(err);
-                }
-
-                const videoDuration = data.format.duration;
-
-                // Ensure we don't try to trim to a duration longer than the video
-                const trimDuration = Math.min(duration, videoDuration);
-
-                ffmpeg(inputFilePath)
-                    .outputOptions([
-                        '-t', trimDuration,  // Set duration
-                        '-vf', 'fps=25',  // Set frame rate to 25 fps for consistency
-                        '-c:v', 'libx264',  // Encode with libx264
-                        '-preset', 'fast',  // Faster encoding
-                        '-movflags', 'faststart',  // Optimize for playback
-                        '-pix_fmt', 'yuv420p',  // Ensure compatibility
-                        '-af', 'apad',  // Prevent potential blackouts by padding audio if necessary
-                    ])
-                    .on('end', () => {
-                        console.log(`Trimmed video created: ${outputFilePath}`);
-                        resolve(outputFilePath);
-                    })
-                    .on('error', (err) => {
-                        console.error(`Error trimming video: ${err.message}`);
-                        reject(err);
-                    })
-                    .save(outputFilePath);
-            });
-    });
-}
-
-
-
-
-// Function to convert image to video
-async function convertImageToVideo(imageUrl, duration) {
-    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
+async function trimVideo(videoUrl, duration) {
+    const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_trimmed.mp4`);
 
     return new Promise((resolve, reject) => {
         ffmpeg()
-            .input(imageUrl)
-            .outputOptions([
-                `-t ${duration}`,  // Explicitly set the output duration
-                '-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2'
-            ])
+            .input(videoUrl)
+            .outputOptions([`-t ${duration}`]) // Trim to the specified duration
             .on('end', () => {
-                console.log(`Converted ${imageUrl} to video: ${outputFilePath}.`);
+                console.log(`Trimmed video created: ${outputFilePath}`);
                 resolve(outputFilePath);
             })
             .on('error', (err) => {
-                console.error(`Error converting image to video: ${err.message}`);
+                console.error(`Error trimming video: ${err.message}`);
                 reject(err);
             })
             .save(outputFilePath);
     });
 }
-
-
-
 
 
 // Helper function to create file_list.txt for FFmpeg
@@ -119,21 +70,14 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-
 async function convertImageToVideo(imageUrl, duration) {
-    const outputFilePath = path.join(outputDir, `${path.basename(imageUrl, path.extname(imageUrl))}.mp4`);
-
+    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
+    
     return new Promise((resolve, reject) => {
-        ffmpeg(imageUrl)
-            .outputOptions([
-                '-t', duration,
-                '-s', '640x360',
-                '-vf', 'fps=25',
-                '-c:v', 'libx264',
-                '-preset', 'fast',
-                '-movflags', 'faststart',
-                '-pix_fmt', 'yuv420p',
-            ])
+        ffmpeg()
+            .input(imageUrl)
+            .loop(duration)  // Set the duration of the image video
+            .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
@@ -146,32 +90,21 @@ async function convertImageToVideo(imageUrl, duration) {
     });
 }
 
-// Function to get the duration of a video
-async function getVideoDuration(videoPath) {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(videoPath, (err, metadata) => {
-            if (err) {
-                return reject(err);
-            }
-            const duration = metadata.format.duration;
-            resolve(duration);
-        });
-    });
-}
 
 
-
-
-const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
+const mergeMediaUsingFile = async (mediaArray) => {
     const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4'));
 
     if (validMedia.length === 0) {
         throw new Error('No valid media to merge.');
     }
 
+    // Create a concat file
     const concatFilePath = path.join(outputDir, `concat_list_${Date.now()}.txt`);
     const concatFileContent = validMedia.map(media => `file '${media}'`).join('\n');
     fs.writeFileSync(concatFilePath, concatFileContent);
+
+    console.log(`Contents of concat file: ${concatFileContent}`);
 
     const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
 
@@ -179,13 +112,12 @@ const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions(['-c', 'copy', '-movflags', 'faststart', '-shortest'])  // Faststart for smooth playback
+            .outputOptions('-c', 'copy')
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
                     status: 'success',
-                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`,
-                    duration: totalDuration
+                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`, // Updated to your domain
                 });
             })
             .on('error', (err) => {
@@ -197,67 +129,56 @@ const mergeMediaUsingFile = async (mediaArray, totalDuration) => {
 };
 
 
-async function checkUrlAccessibility(url) {
-    try {
-        const response = await axios.head(url);
-        return response.status === 200;
-    } catch (error) {
-        console.error(`Error accessing URL: ${url} - ${error.message}`);
-        return false;
-    }
-}
-
-
 
 
 // Function to process media sequence
 async function processMediaSequence(mediaSequence) {
     const videoPaths = [];
-    let totalDuration = 0;
 
     for (const media of mediaSequence) {
         const { url, duration } = media;
         const fileType = path.extname(url).toLowerCase();
 
-        // Track total expected duration
-        totalDuration += duration;
-
         if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
             console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-            const localVideoPath = path.join(outputDir, path.basename(url));
-            await downloadFile(url, localVideoPath);
+            // Download video file locally before adding to the paths
+            const localVideoPath = path.join(outputDir, path.basename(url)); // Local file path
+            await downloadFile(url, localVideoPath); // Download the video
 
-            const trimmedVideoPath = await trimVideo(localVideoPath, duration);  // Trim the video to the required duration
-            videoPaths.push(trimmedVideoPath);  // Add trimmed video to paths
+            // Trim the video to the specified duration
+            const trimmedVideoPath = await trimVideo(localVideoPath, duration);
+            videoPaths.push(trimmedVideoPath); // Add trimmed video path to paths
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
-
             try {
                 const videoPath = await convertImageToVideo(url, duration);
-                const actualDuration = await getVideoDuration(videoPath);  // Get the duration of the created video
-                console.log(`Image video created at ${videoPath} with duration: ${actualDuration} seconds.`);
-                videoPaths.push(videoPath);  // Add the converted video path to paths
+                videoPaths.push(videoPath); // Add the converted video path to paths
             } catch (error) {
-                console.error(`Error processing media ${url}: ${error.message}`);
-                continue;  // Skip to the next media
+                console.error(`Error converting image to video: ${error.message}`);
+                continue; // Skip to next media item
             }
         }
     }
 
     if (videoPaths.length > 0) {
         try {
-            const mergeResult = await mergeMediaUsingFile(videoPaths, totalDuration);  // Pass total expected duration
+            const mergeResult = await mergeMediaUsingFile(videoPaths);
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
-            return mergeResult.outputFileUrl;  // Return the merged video URL
+            return mergeResult.outputFileUrl; // Return the merged video URL
         } catch (error) {
             console.error(`Error merging videos: ${error.message}`);
-            throw error;
+            throw error; // Rethrow error for the endpoint to catch
         }
     } else {
         console.error('No valid media found for merging.');
         throw new Error('No valid media found for merging.');
     }
 }
+
+
+
+
+
 
 
 
