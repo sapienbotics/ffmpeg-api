@@ -433,14 +433,18 @@ app.post('/merge-audio-free-videos', async (req, res) => {
 
     // Validate the input
     if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
+        console.error('Invalid input: At least two valid video URLs are required.');
         return res.status(400).json({ error: 'At least two valid video URLs are required.' });
     }
+
+    console.log(`Starting to merge videos: ${videoUrls.length} video(s) to merge.`);
 
     try {
         // Download videos to temporary files
         const downloadedFiles = await Promise.all(videoUrls.map(async (obj, index) => {
             const videoUrl = obj.url;
             const tempPath = path.join(outputDir, `temp_video_${index}_${Date.now()}.mp4`);
+            console.log(`Downloading video from URL: ${videoUrl} to ${tempPath}`);
 
             // Download the file using Axios
             const response = await axios({
@@ -459,21 +463,24 @@ app.post('/merge-audio-free-videos', async (req, res) => {
                 writer.on('error', reject);
             });
 
+            console.log(`Downloaded video: ${tempPath}`);
             return tempPath;
         }));
+
+        console.log(`All videos downloaded successfully. Preparing to merge...`);
 
         // Prepare FFmpeg inputs
         const inputs = downloadedFiles.map(file => `-i "${file}"`).join(' ');
         const filterComplex = `concat=n=${downloadedFiles.length}:v=1:a=0`;
         
-        // Added -preset option for encoding performance
-        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -preset fast -y "${outputPath}"`; // Change here
+        // Added -preset fast option to specify encoding speed
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -preset fast -pix_fmt yuv420p -y "${outputPath}"`;
 
-        console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
+        console.log(`Running FFmpeg command: ${ffmpegCommand}`); // Log command for debugging
 
         exec(ffmpegCommand, async (error, stdout, stderr) => {
             if (error) {
-                console.error(`Error: ${stderr}`);
+                console.error(`FFmpeg Error: ${stderr}`);
                 return res.status(500).json({ error: 'Error merging videos', details: stderr });
             }
 
@@ -482,6 +489,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
             // Cleanup temporary files
             for (const file of downloadedFiles) {
                 fs.unlinkSync(file);
+                console.log(`Deleted temporary file: ${file}`);
             }
 
             // Return download link in the desired format
@@ -493,6 +501,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error', details: err.message });
     }
 });
+
 
 
 
