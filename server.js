@@ -375,37 +375,30 @@ const fileExists = (filePath) => {
 
 
 app.post('/merge-audio-free-videos', async (req, res) => {
-    const { videoUrls } = req.body; // Ensure the input structure contains videoUrls
-    const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
+    const { videoUrls } = req.body;
 
     // Validate the input
     if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
-        return res.status(400).json({ error: 'At least two video URLs are required.' });
-    }
-
-    // Extract and validate the video URLs
-    const validUrls = videoUrls.map(url => {
-        if (typeof url === 'string') {
-            return url.trim(); // Ensure it's a string and trim whitespace
-        }
-        return null; // Return null for invalid entries
-    }).filter(Boolean); // Remove nulls from the array
-
-    // Check if we have at least two valid URLs
-    if (validUrls.length < 2) {
         return res.status(400).json({ error: 'At least two valid video URLs are required.' });
     }
 
-    // Prepare the FFmpeg command
-    const inputs = validUrls.map(url => `-i "${url}"`).join(' ');
-    const filterComplex = `concat=n=${validUrls.length}:v=1:a=0`;
+    // Extract the URLs from the objects
+    const urls = videoUrls.map(obj => obj.url).filter(Boolean); // Ensure URLs are valid
+
+    // Check if there are at least two valid URLs after extraction
+    if (urls.length < 2) {
+        return res.status(400).json({ error: 'At least two valid video URLs are required.' });
+    }
+
+    const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
+    const inputs = urls.map(url => `-i "${url}"`).join(' ');
+    const filterComplex = `concat=n=${urls.length}:v=1:a=0`;
 
     const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -y "${outputPath}"`;
 
     console.log(`Running command: ${ffmpegCommand}`); // Log the command for debugging
 
     try {
-        // Execute FFmpeg command
         const { exec } = require('child_process');
         exec(ffmpegCommand, (error, stdout, stderr) => {
             if (error) {
