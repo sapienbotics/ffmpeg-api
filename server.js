@@ -81,7 +81,7 @@ async function normalizeVideo(inputPath) {
             .audioCodec('aac')  // Ensures audio codec is AAC
             .outputOptions([
                 '-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2',
-                '-preset', 'ultrafast',  // Speed up encoding
+                '-preset', 'fast',  // Speed up encoding
                 '-crf', '23'  // Control output quality
             ])
             .on('start', (commandLine) => {
@@ -189,7 +189,7 @@ async function convertImageToVideo(imageUrl, duration) {
                 '-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2',
                 '-r', '30',
                 '-c:v', 'libx264',
-                '-preset', 'ultrafast',  // Speed up encoding
+                '-preset', 'fast',  // Speed up encoding
                 '-crf', '22'
             ])
             .on('start', (commandLine) => {
@@ -297,7 +297,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22')
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '22')
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
