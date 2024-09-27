@@ -77,6 +77,7 @@ async function removeAudio(videoUrl) {
         ffmpeg()
             .input(videoUrl)
             .noAudio() // Removes audio track
+            .outputOptions('-c:v copy') // Copy the video codec
             .on('end', () => {
                 console.log(`Audio removed from video: ${outputFilePath}`);
                 resolve(outputFilePath);
@@ -88,6 +89,7 @@ async function removeAudio(videoUrl) {
             .save(outputFilePath);
     });
 }
+
 
 
 async function trimVideo(videoUrl, duration) {
@@ -169,55 +171,55 @@ const getAudioDuration = async (audioPath) => {
 };
 
 
-// Function to apply audio to video with fallbacks
 const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
-  try {
-    let backgroundAudioExists = true;
+    try {
+        let backgroundAudioExists = true;
 
-    // Check if background audio is missing or has issues
-    if (!fs.existsSync(backgroundAudioPath)) {
-      console.log('Background audio file is missing or not downloaded');
-      backgroundAudioExists = false;
-    } else {
-      // Validate background audio format (e.g., .mp3, .wav)
-      const backgroundAudioExtension = path.extname(backgroundAudioPath).toLowerCase();
-      const validFormats = ['.mp3', '.wav'];
-      if (!validFormats.includes(backgroundAudioExtension)) {
-        console.log('Background audio format is not valid:', backgroundAudioExtension);
-        backgroundAudioExists = false;
-      }
+        // Check if background audio is missing or has issues
+        if (!fs.existsSync(backgroundAudioPath)) {
+            console.log('Background audio file is missing or not downloaded');
+            backgroundAudioExists = false;
+        } else {
+            // Validate background audio format (e.g., .mp3, .wav)
+            const backgroundAudioExtension = path.extname(backgroundAudioPath).toLowerCase();
+            const validFormats = ['.mp3', '.wav'];
+            if (!validFormats.includes(backgroundAudioExtension)) {
+                console.log('Background audio format is not valid:', backgroundAudioExtension);
+                backgroundAudioExists = false;
+            }
+        }
+
+        // Base command to merge video with content audio
+        let command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
+
+        if (backgroundAudioExists) {
+            // Get durations of content audio and background audio
+            const contentAudioDuration = await getAudioDuration(contentAudioPath);
+            const backgroundAudioDuration = await getAudioDuration(backgroundAudioPath);
+
+            if (backgroundAudioDuration < contentAudioDuration) {
+                // Loop background audio if it is shorter than content audio
+                command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
+                    "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
+                    -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
+            } else {
+                // No looping needed, merge normally
+                command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
+                    "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
+                    -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
+            }
+        }
+
+        // Execute FFmpeg command to merge audio and video
+        console.log('Executing FFmpeg command to add audio to video:', command);
+        await execPromise(command);
+        console.log('Audio added to video successfully');
+    } catch (error) {
+        console.error('Error adding audio to video:', error);
+        throw error;
     }
-
-    // Base command to merge video with content audio
-    let command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
-
-    if (backgroundAudioExists) {
-      // Get durations of content audio and background audio
-      const contentAudioDuration = await getAudioDuration(contentAudioPath);
-      const backgroundAudioDuration = await getAudioDuration(backgroundAudioPath);
-
-      if (backgroundAudioDuration < contentAudioDuration) {
-        // Loop background audio if it is shorter than content audio
-        command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
-          "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
-          -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
-      } else {
-        // No looping needed, merge normally
-        command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
-          "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
-          -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
-      }
-    }
-
-    // Execute FFmpeg command to merge audio and video
-    console.log('Executing FFmpeg command to add audio to video:', command);
-    await execPromise(command);
-    console.log('Audio added to video successfully');
-  } catch (error) {
-    console.error('Error adding audio to video:', error);
-    throw error;
-  }
 };
+
 
 
 
