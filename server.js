@@ -345,32 +345,45 @@ function generateOutputPath(url) {
 }
 
 app.post('/merge-media-sequence', async (req, res) => {
-    const { mediaSequence } = req.body;
-
-    if (!mediaSequence || !Array.isArray(mediaSequence) || mediaSequence.length === 0) {
-        return res.status(400).json({ error: 'Invalid or empty media sequence provided.' });
-    }
+    const mediaSequence = req.body.mediaSequence; // Expecting an array of media URLs
+    const outputFilename = `merged_output_${Date.now()}.mp4`;
+    const outputPath = path.join(outputDir, outputFilename);
 
     try {
-        const mergedVideoUrl = await processMediaSequence(mediaSequence);
-        res.json({
-            message: 'Media merged successfully',
-            mergedVideoUrl,  // Include the merged video URL in the response
-        });
+        // Concurrently download all media files
+        const downloadedFiles = await Promise.all(
+            mediaSequence.map(async (media) => {
+                const { url } = media; // Assuming media is an object with a 'url' key
+                const tempFilePath = path.join(storageDir, path.basename(url));
+                await downloadFile(url, tempFilePath); // Using your existing downloadFile function
+                return tempFilePath;
+            })
+        );
+
+        // Build FFmpeg command
+        const ffmpegCommand = ffmpeg();
+        downloadedFiles.forEach(file => ffmpegCommand.input(file));
+        ffmpegCommand
+            .on('end', () => {
+                console.log('Merging finished successfully.');
+                res.json({ link: `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilename}` });
+                // Clean up downloaded files
+                downloadedFiles.forEach(file => fs.unlinkSync(file));
+            })
+            .on('error', (err) => {
+                console.error('Error during merging:', err);
+                res.status(500).send('Error during video merging.');
+                // Clean up downloaded files on error
+                downloadedFiles.forEach(file => fs.unlinkSync(file));
+            })
+            .outputOptions('-preset ultrafast') // Using ultrafast preset
+            .mergeToFile(outputPath);
     } catch (error) {
-        console.error(`Error in merge-media-sequence endpoint: ${error.message}`);
-        res.status(500).json({ error: error.message });
+        console.error('Error in merge-media-sequence:', error);
+        res.status(500).send('Error during video merging.');
     }
 });
 
-// Helper function to check if a file exists
-const fileExists = (filePath) => {
-    return new Promise((resolve) => {
-        fs.access(filePath, fs.constants.F_OK, (err) => {
-            resolve(!err);
-        });
-    });
-};
 
 
 
