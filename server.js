@@ -72,34 +72,6 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
     }
 };
 
-// Function to normalize video resolution and codecs
-async function normalizeVideo(inputPath) {
-    const outputPath = inputPath.replace('.mp4', '_normalized.mp4');
-    return new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
-            .videoCodec('libx264')  // Ensures video codec is H.264
-            .audioCodec('aac')  // Ensures audio codec is AAC
-            .outputOptions([
-                '-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2',
-                '-preset', 'fast',  // Speed up encoding
-                '-crf', '23'  // Control output quality
-            ])
-            .on('start', (commandLine) => {
-                console.log(`Started normalizing video with command: ${commandLine}`);
-            })
-            .on('end', () => {
-                console.log(`Video normalization completed: ${outputPath}`);
-                resolve(outputPath);
-            })
-            .on('error', (err) => {
-                console.error(`Error normalizing video: ${err.message} for input ${inputPath}`);
-                reject(err);
-            })
-            .save(outputPath);
-    });
-}
-
-
 
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
@@ -137,29 +109,31 @@ async function removeAudio(videoUrl) {
 
 
 
-async function trimVideo(inputPath, duration) {
-    const outputPath = inputPath.replace('.mp4', '_trimmed.mp4');
+async function trimVideo(videoUrl, duration) {
+    const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_trimmed.mp4`);
+
     return new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
-            .setStartTime(0)
-            .setDuration(duration)
-            .output(outputPath)
-            .on('start', (commandLine) => {
-                console.log(`Started trimming video with command: ${commandLine}`);
-            })
+        ffmpeg()
+            .input(videoUrl)
+            .outputOptions([
+                `-t ${duration}`, // Trim to the specified duration
+                '-vf scale=960:540',  // Scale to 960x540 resolution
+                '-r 30',  // Set frame rate to 30 fps
+                '-c:v libx264',  // Re-encode to H.264
+                '-preset veryfast',
+                '-crf 22'
+            ])
             .on('end', () => {
-                console.log(`Trimmed video created: ${outputPath}`);
-                resolve(outputPath);
+                console.log(`Trimmed video created: ${outputFilePath}`);
+                resolve(outputFilePath);
             })
             .on('error', (err) => {
-                console.error(`Error trimming video: ${err.message} for input ${inputPath}`);
+                console.error(`Error trimming video: ${err.message}`);
                 reject(err);
             })
-            .run();
+            .save(outputFilePath);
     });
 }
-
-
 
 
 
@@ -176,25 +150,16 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-
-
 async function convertImageToVideo(imageUrl, duration) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(imageUrl)
-            .loop(duration)
-            .outputOptions([
-                '-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2',
-                '-r', '30',
-                '-c:v', 'libx264',
-                '-preset', 'fast',  // Speed up encoding
-                '-crf', '22'
-            ])
-            .on('start', (commandLine) => {
-                console.log(`Started converting image to video with command: ${commandLine}`);
-            })
+            .loop(duration)  // Set the duration of the image video
+            .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
+            .outputOptions('-r', '30')  // Set frame rate to 30 fps
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22')  // Re-encode using H.264
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
@@ -206,8 +171,6 @@ async function convertImageToVideo(imageUrl, duration) {
             .save(outputFilePath);
     });
 }
-
-
 
 // Function to get audio duration using ffmpeg
 const getAudioDuration = async (audioPath) => {
@@ -285,6 +248,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
         throw new Error('No valid media to merge.');
     }
 
+    // Create a concat file
     const concatFilePath = path.join(outputDir, `concat_list_${Date.now()}.txt`);
     const concatFileContent = validMedia.map(media => `file '${media}'`).join('\n');
     fs.writeFileSync(concatFilePath, concatFileContent);
@@ -297,7 +261,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '22')
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22') // Re-encode video to ensure compatibility
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
@@ -319,56 +283,45 @@ const mergeMediaUsingFile = async (mediaArray) => {
 async function processMediaSequence(mediaSequence) {
     const videoPaths = [];
 
-    // Create an array of promises for batch processing
-    const processPromises = mediaSequence.map(async (media) => {
+    for (const media of mediaSequence) {
         const { url, duration } = media;
         const fileType = path.extname(url).toLowerCase();
 
         if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
             console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-            const localVideoPath = path.join(outputDir, path.basename(url));
-            await downloadFileWithRetry(url, localVideoPath);
+            // Download video file locally before adding to the paths
+            const localVideoPath = path.join(outputDir, path.basename(url)); // Local file path
+            await downloadFile(url, localVideoPath); // Download the video
 
-            // Log video processing start
-            console.log(`Downloading video from URL: ${url}`);
-
+            // Trim the video to the specified duration
             const trimmedVideoPath = await trimVideo(localVideoPath, duration);
-            console.log(`Trimming video completed: ${trimmedVideoPath}`);
-
-            // Ensure resolution and codecs match before adding for merging
-            const normalizedVideoPath = await normalizeVideo(trimmedVideoPath);
-            videoPaths.push(normalizedVideoPath);
-            console.log(`Video normalized to common resolution: ${normalizedVideoPath}`);
-
+            videoPaths.push(trimmedVideoPath); // Add trimmed video path to paths
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
             try {
                 const videoPath = await convertImageToVideo(url, duration);
-                videoPaths.push(videoPath);
+                videoPaths.push(videoPath); // Add the converted video path to paths
             } catch (error) {
                 console.error(`Error converting image to video: ${error.message}`);
+                continue; // Skip to next media item
             }
         }
-    });
-
-    // Wait for all promises to resolve
-    await Promise.all(processPromises);
+    }
 
     if (videoPaths.length > 0) {
         try {
             const mergeResult = await mergeMediaUsingFile(videoPaths);
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
-            return mergeResult.outputFileUrl;
+            return mergeResult.outputFileUrl; // Return the merged video URL
         } catch (error) {
             console.error(`Error merging videos: ${error.message}`);
-            throw error;
+            throw error; // Rethrow error for the endpoint to catch
         }
     } else {
         console.error('No valid media found for merging.');
         throw new Error('No valid media found for merging.');
     }
 }
-
 
 
 
@@ -390,7 +343,6 @@ function generateOutputPath(url) {
     const outputPath = path.join(outputDir, `${baseName}_${Date.now()}.mp4`); // Unique filename
     return outputPath;
 }
-
 
 app.post('/merge-media-sequence', async (req, res) => {
     const { mediaSequence } = req.body;
@@ -422,10 +374,6 @@ const fileExists = (filePath) => {
 
 
 
-
-
-
-
 app.post('/merge-audio-free-videos', async (req, res) => {
     const { videoUrls } = req.body;
     const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
@@ -433,18 +381,14 @@ app.post('/merge-audio-free-videos', async (req, res) => {
 
     // Validate the input
     if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
-        console.error('Invalid input: At least two valid video URLs are required.');
         return res.status(400).json({ error: 'At least two valid video URLs are required.' });
     }
-
-    console.log(`Starting to merge videos: ${videoUrls.length} video(s) to merge.`);
 
     try {
         // Download videos to temporary files
         const downloadedFiles = await Promise.all(videoUrls.map(async (obj, index) => {
             const videoUrl = obj.url;
             const tempPath = path.join(outputDir, `temp_video_${index}_${Date.now()}.mp4`);
-            console.log(`Downloading video from URL: ${videoUrl} to ${tempPath}`);
 
             // Download the file using Axios
             const response = await axios({
@@ -463,24 +407,19 @@ app.post('/merge-audio-free-videos', async (req, res) => {
                 writer.on('error', reject);
             });
 
-            console.log(`Downloaded video: ${tempPath}`);
             return tempPath;
         }));
-
-        console.log(`All videos downloaded successfully. Preparing to merge...`);
 
         // Prepare FFmpeg inputs
         const inputs = downloadedFiles.map(file => `-i "${file}"`).join(' ');
         const filterComplex = `concat=n=${downloadedFiles.length}:v=1:a=0`;
-        
-        // Added -preset fast option to specify encoding speed
-        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -preset fast -pix_fmt yuv420p -y "${outputPath}"`;
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -y "${outputPath}"`;
 
-        console.log(`Running FFmpeg command: ${ffmpegCommand}`); // Log command for debugging
+        console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
 
         exec(ffmpegCommand, async (error, stdout, stderr) => {
             if (error) {
-                console.error(`FFmpeg Error: ${stderr}`);
+                console.error(`Error: ${stderr}`);
                 return res.status(500).json({ error: 'Error merging videos', details: stderr });
             }
 
@@ -489,7 +428,6 @@ app.post('/merge-audio-free-videos', async (req, res) => {
             // Cleanup temporary files
             for (const file of downloadedFiles) {
                 fs.unlinkSync(file);
-                console.log(`Deleted temporary file: ${file}`);
             }
 
             // Return download link in the desired format
@@ -501,6 +439,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error', details: err.message });
     }
 });
+
 
 
 
