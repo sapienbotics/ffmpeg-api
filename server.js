@@ -310,7 +310,7 @@ app.post('/merge-media-sequence', async (req, res) => {
         return res.status(400).json({ error: 'Invalid or empty media sequence provided.' });
     }
 
-    try {
+    try {mer
         const mergedVideoUrl = await processMediaSequence(mediaSequence);
         res.json({
             message: 'Media merged successfully',
@@ -343,8 +343,8 @@ app.post('/merge-audio-free-videos', async (req, res) => {
 
     // Prepare the FFmpeg command
     const inputFiles = videoUrls.map(video => `-i "${video.url}"`).join(' ');
-    const outputFilePath = '/path/to/output/merged_output.mp4'; // Change this path accordingly
-    const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${videoUrls.length}:v=1:a=0[out]" -map "[out]" "${outputFilePath}"`;
+    const outputPath = path.join(outputDir, 'merged_output.mp4'); // Use the outputDir defined earlier
+    const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${videoUrls.length}:v=1:a=0[out]" -map "[out]" "${outputPath}"`;
 
     // Function to execute FFmpeg commands
     const executeFFmpegCommand = (command) => {
@@ -371,6 +371,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         res.status(500).json({ error: 'Error merging videos', details: error.message });
     }
 });
+
 
 
 
