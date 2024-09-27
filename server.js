@@ -18,6 +18,8 @@ const execPromise = util.promisify(exec);
 const storageDir = path.join(__dirname, 'storage', 'processed');
 const processedDir = path.join(storageDir, 'media');
 const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
+app.use('/output', express.static(outputDir));
+
 
 // Ensure processed and output directories exist
 if (!fs.existsSync(processedDir)) {
@@ -456,7 +458,7 @@ app.post('/add-audio', async (req, res) => {
     const videoPath = path.join(storageDir, `${uuidv4()}_input_video.mp4`);
     const contentAudioPath = path.join(storageDir, `${uuidv4()}_content_audio.mp3`);
     const backgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
-    const outputFilePath = path.join(storageDir, `${uuidv4()}_final_output.mp4`);
+    const outputFilePath = path.join(outputDir, `${uuidv4()}_final_output.mp4`); // Store final output in outputDir
 
     // Download the video and audio files
     await downloadFile(videoUrl, videoPath);
@@ -476,7 +478,7 @@ app.post('/add-audio', async (req, res) => {
     }
 
     // Generate the final HTTPS output URL
-    const outputUrl = `https://ffmpeg-api-production.up.railway.app/processed/${path.basename(outputFilePath)}`;
+    const outputUrl = `https://ffmpeg-api-production.up.railway.app/output/${path.basename(outputFilePath)}`;
 
     // Return the HTTPS link to the final video
     res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputUrl });
@@ -485,6 +487,7 @@ app.post('/add-audio', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
   }
 });
+
 
 
 
