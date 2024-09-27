@@ -147,6 +147,22 @@ async function convertImageToVideo(imageUrl, duration) {
     });
 }
 
+// Function to get audio duration using ffmpeg
+const getAudioDuration = async (audioPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(audioPath, (err, metadata) => {
+      if (err) {
+        console.error('Error fetching audio metadata:', err);
+        reject(err);
+      } else {
+        const duration = metadata.format.duration;
+        resolve(duration);
+      }
+    });
+  });
+};
+
+
 // Function to apply audio to video with fallbacks
 const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
   try {
