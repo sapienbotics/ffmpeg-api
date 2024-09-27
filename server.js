@@ -72,6 +72,34 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
     }
 };
 
+// Function to normalize video resolution and codecs
+async function normalizeVideo(inputPath) {
+    const outputPath = inputPath.replace('.mp4', '_normalized.mp4');
+    return new Promise((resolve, reject) => {
+        ffmpeg(inputPath)
+            .videoCodec('libx264')  // Ensures video codec is H.264
+            .audioCodec('aac')  // Ensures audio codec is AAC
+            .outputOptions([
+                '-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2',
+                '-preset', 'ultrafast',  // Speed up encoding
+                '-crf', '23'  // Control output quality
+            ])
+            .on('start', (commandLine) => {
+                console.log(`Started normalizing video with command: ${commandLine}`);
+            })
+            .on('end', () => {
+                console.log(`Video normalization completed: ${outputPath}`);
+                resolve(outputPath);
+            })
+            .on('error', (err) => {
+                console.error(`Error normalizing video: ${err.message} for input ${inputPath}`);
+                reject(err);
+            })
+            .save(outputPath);
+    });
+}
+
+
 
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
@@ -109,15 +137,16 @@ async function removeAudio(videoUrl) {
 
 
 
-// Improved trimVideo function with -preset ultrafast
 async function trimVideo(inputPath, duration) {
     const outputPath = inputPath.replace('.mp4', '_trimmed.mp4');
     return new Promise((resolve, reject) => {
         ffmpeg(inputPath)
             .setStartTime(0)
             .setDuration(duration)
-            .outputOptions('-preset ultrafast')  // Use ultrafast preset for faster processing
             .output(outputPath)
+            .on('start', (commandLine) => {
+                console.log(`Started trimming video with command: ${commandLine}`);
+            })
             .on('end', () => {
                 console.log(`Trimmed video created: ${outputPath}`);
                 resolve(outputPath);
@@ -147,17 +176,25 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-// Improved convertImageToVideo with -preset ultrafast
+
+
 async function convertImageToVideo(imageUrl, duration) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(imageUrl)
-            .loop(duration)  // Set the duration of the image video
-            .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
-            .outputOptions('-r', '30')  // Set frame rate to 30 fps
-            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22')  // Re-encode using H.264, ultrafast preset
+            .loop(duration)
+            .outputOptions([
+                '-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2',
+                '-r', '30',
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',  // Speed up encoding
+                '-crf', '22'
+            ])
+            .on('start', (commandLine) => {
+                console.log(`Started converting image to video with command: ${commandLine}`);
+            })
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
@@ -169,6 +206,7 @@ async function convertImageToVideo(imageUrl, duration) {
             .save(outputFilePath);
     });
 }
+
 
 
 // Function to get audio duration using ffmpeg
@@ -277,8 +315,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
 
 
 
-
-/// Function to process media sequence
+// Function to process media sequence
 async function processMediaSequence(mediaSequence) {
     const videoPaths = [];
 
@@ -292,8 +329,17 @@ async function processMediaSequence(mediaSequence) {
             const localVideoPath = path.join(outputDir, path.basename(url));
             await downloadFileWithRetry(url, localVideoPath);
 
+            // Log video processing start
+            console.log(`Downloading video from URL: ${url}`);
+
             const trimmedVideoPath = await trimVideo(localVideoPath, duration);
-            videoPaths.push(trimmedVideoPath);
+            console.log(`Trimming video completed: ${trimmedVideoPath}`);
+
+            // Ensure resolution and codecs match before adding for merging
+            const normalizedVideoPath = await normalizeVideo(trimmedVideoPath);
+            videoPaths.push(normalizedVideoPath);
+            console.log(`Video normalized to common resolution: ${normalizedVideoPath}`);
+
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
             try {
