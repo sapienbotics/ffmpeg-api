@@ -508,7 +508,7 @@ app.post('/add-audio', async (req, res) => {
     }
 
     // Generate the final HTTPS output URL
-    const outputUrl = `https://ffmpeg-api-production.up.railway.app/output/${path.basename(outputFilePath)}`;
+    const outputUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`;
 
     // Return the HTTPS link to the final video
     res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputUrl });
