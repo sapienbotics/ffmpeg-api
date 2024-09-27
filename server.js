@@ -384,31 +384,18 @@ app.post('/merge-audio-free-videos', async (req, res) => {
             return res.status(400).json({ error: 'Invalid input: videoUrls must be a non-empty array.' });
         }
 
-        // Remove audio from each video
-        const noAudioVideos = await Promise.all(videoUrls.map(async video => {
-            try {
-                return await removeAudio(video.url);
-            } catch (error) {
-                console.error(`Error removing audio from ${video.url}:`, error);
-                throw error;
-            }
-        }));
-
         // Prepare FFmpeg input arguments for the no audio videos
-        const inputFiles = noAudioVideos.map(video => `-i ${video}`).join(' ');
+        const inputFiles = videoUrls.map((url, index) => `-i ${url}`).join(' ');
 
         // Generate a unique output filename
         const outputFileName = `merged_output_${Date.now()}.mp4`;
         const outputFilePath = path.join(outputDir, outputFileName);
 
         // Construct the FFmpeg command
-        const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${noAudioVideos.length}:v=1:a=0" "${outputFilePath}"`;
+        const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${videoUrls.length}:v=1:a=0" "${outputFilePath}"`;
 
         // Execute the FFmpeg command
-        await execPromise(ffmpegCommand).catch((error) => {
-            console.error('FFmpeg error:', error);
-            throw error;
-        });
+        await execPromise(ffmpegCommand);  // Await the exec promise
 
         // Return the output file URL
         const outputFileUrl = `https://ffmpeg-api-production.up.railway.app/output/${outputFileName}`;
@@ -421,6 +408,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         }
     }
 });
+
 
 
 
