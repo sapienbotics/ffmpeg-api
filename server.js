@@ -383,9 +383,22 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         return res.status(400).json({ error: 'At least two video URLs are required.' });
     }
 
+    // Extract and validate the video URLs
+    const validUrls = videoUrls.map(url => {
+        if (typeof url === 'string') {
+            return url.trim(); // Ensure it's a string and trim whitespace
+        }
+        return null; // Return null for invalid entries
+    }).filter(Boolean); // Remove nulls from the array
+
+    // Check if we have at least two valid URLs
+    if (validUrls.length < 2) {
+        return res.status(400).json({ error: 'At least two valid video URLs are required.' });
+    }
+
     // Prepare the FFmpeg command
-    const inputs = videoUrls.map(url => `-i "${url}"`).join(' ');
-    const filterComplex = `concat=n=${videoUrls.length}:v=1:a=0`;
+    const inputs = validUrls.map(url => `-i "${url}"`).join(' ');
+    const filterComplex = `concat=n=${validUrls.length}:v=1:a=0`;
 
     const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -y "${outputPath}"`;
 
@@ -408,6 +421,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 
 
 
