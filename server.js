@@ -377,6 +377,7 @@ const fileExists = (filePath) => {
 app.post('/merge-audio-free-videos', async (req, res) => {
     const { videoUrls } = req.body;
     const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
+    const outputFilename = path.basename(outputPath); // Extracting just the filename for the response URL
 
     // Validate the input
     if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
@@ -429,7 +430,9 @@ app.post('/merge-audio-free-videos', async (req, res) => {
                 fs.unlinkSync(file);
             }
 
-            return res.status(200).json({ message: 'Videos merged successfully', output: outputPath });
+            // Return download link in the desired format
+            const downloadUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilename}`;
+            return res.status(200).json({ message: 'Videos merged successfully', output: downloadUrl });
         });
     } catch (err) {
         console.error('Error processing videos:', err);
