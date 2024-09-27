@@ -399,22 +399,19 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${noAudioVideos.length}:v=1:a=0" "${outputFilePath}"`;
 
         // Execute the FFmpeg command
-        exec(ffmpegCommand, (error, stdout, stderr) => {
-            if (error) {
-                console.error('Error merging videos:', error);
-                return res.status(500).json({ error: 'Error merging videos', details: stderr });
-            }
+        await execPromise(ffmpegCommand);  // Await the exec promise
 
-            // Return the output file URL
-            const outputFileUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFileName}`;
-            res.json({ message: 'Videos merged successfully', outputUrl: outputFileUrl });
-        });
+        // Return the output file URL
+        const outputFileUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFileName}`;
+        return res.json({ message: 'Videos merged successfully', outputUrl: outputFileUrl });
+
     } catch (err) {
         console.error('Error in merge-audio-free-videos:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        if (!res.headersSent) {
+            return res.status(500).json({ error: 'Internal server error' });
+        }
     }
 });
-
 
 
 
