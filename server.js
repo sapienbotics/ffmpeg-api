@@ -376,44 +376,50 @@ const fileExists = (filePath) => {
 
 app.post('/merge-audio-free-videos', async (req, res) => {
     const { videoUrls } = req.body;
+    const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
 
     // Validate the input
     if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
         return res.status(400).json({ error: 'At least two valid video URLs are required.' });
     }
 
-    // Extract the URLs from the objects
-    const urls = videoUrls.map(obj => obj.url).filter(Boolean); // Ensure URLs are valid
-
-    // Check if there are at least two valid URLs after extraction
-    if (urls.length < 2) {
-        return res.status(400).json({ error: 'At least two valid video URLs are required.' });
-    }
-
-    const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
+    // Extract URLs from videoUrls array
+    const urls = videoUrls.map((obj) => obj.url);
+    
+    // Prepare FFmpeg inputs
     const inputs = urls.map(url => `-i "${url}"`).join(' ');
+
+    // Create FFmpeg filter to concatenate videos without audio
     const filterComplex = `concat=n=${urls.length}:v=1:a=0`;
 
     const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -y "${outputPath}"`;
 
-    console.log(`Running command: ${ffmpegCommand}`); // Log the command for debugging
+    console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
 
     try {
+        // Execute FFmpeg command
         const { exec } = require('child_process');
         exec(ffmpegCommand, (error, stdout, stderr) => {
             if (error) {
                 console.error(`Error: ${stderr}`);
-                return res.status(500).json({ error: 'Error merging videos', details: stderr });
+                if (!res.headersSent) { // Check if headers have already been sent
+                    return res.status(500).json({ error: 'Error merging videos', details: stderr });
+                }
+            } else {
+                console.log(`Merged video created at: ${outputPath}`);
+                if (!res.headersSent) {
+                    return res.status(200).json({ message: 'Videos merged successfully', output: outputPath });
+                }
             }
-
-            console.log(`Merged video created at: ${outputPath}`);
-            return res.status(200).json({ message: 'Videos merged successfully', output: outputPath });
         });
     } catch (err) {
         console.error('Error executing FFmpeg command:', err);
-        return res.status(500).json({ error: 'Internal server error' });
+        if (!res.headersSent) {
+            return res.status(500).json({ error: 'Internal server error' });
+        }
     }
 });
+
 
 
 
