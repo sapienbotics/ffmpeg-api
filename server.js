@@ -467,13 +467,17 @@ app.post('/add-audio', async (req, res) => {
       fs.unlinkSync(backgroundAudioPath);
     }
 
-    // Return the path to the final video
-    res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputFilePath });
+    // Generate the final HTTPS output URL
+    const outputUrl = `https://ffmpeg-api-production.up.railway.app/processed/${path.basename(outputFilePath)}`;
+
+    // Return the HTTPS link to the final video
+    res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputUrl });
   } catch (error) {
     console.error('Error processing add-audio request:', error.message);
     res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
   }
 });
+
 
 
 // Download endpoint for processed media
