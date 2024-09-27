@@ -374,41 +374,38 @@ const fileExists = (filePath) => {
 
 
 
-// Endpoint to merge audio-free videos
 app.post('/merge-audio-free-videos', async (req, res) => {
+    const { videoUrls } = req.body; // Ensure the input structure contains videoUrls
+    const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
+
+    // Validate the input
+    if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
+        return res.status(400).json({ error: 'At least two video URLs are required.' });
+    }
+
+    // Prepare the FFmpeg command
+    const inputs = videoUrls.map(url => `-i ${url}`).join(' ');
+    const filterComplex = `concat=n=${videoUrls.length}:v=1:a=0`;
+
+    const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" "${outputPath}"`;
+
     try {
-        const videoUrls = req.body.videoUrls;
+        // Execute FFmpeg command
+        const { exec } = require('child_process');
+        exec(ffmpegCommand, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error: ${stderr}`);
+                return res.status(500).json({ error: 'Error merging videos', details: stderr });
+            }
 
-        // Validate input
-        if (!Array.isArray(videoUrls) || videoUrls.length === 0) {
-            return res.status(400).json({ error: 'Invalid input: videoUrls must be a non-empty array.' });
-        }
-
-        // Prepare FFmpeg input arguments for the no audio videos
-        const inputFiles = videoUrls.map((url, index) => `-i ${url}`).join(' ');
-
-        // Generate a unique output filename
-        const outputFileName = `merged_output_${Date.now()}.mp4`;
-        const outputFilePath = path.join(outputDir, outputFileName);
-
-        // Construct the FFmpeg command
-        const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${videoUrls.length}:v=1:a=0" "${outputFilePath}"`;
-
-        // Execute the FFmpeg command
-        await execPromise(ffmpegCommand);  // Await the exec promise
-
-        // Return the output file URL
-        const outputFileUrl = `https://ffmpeg-api-production.up.railway.app/output/${outputFileName}`;
-        return res.json({ message: 'Videos merged successfully', outputUrl: outputFileUrl });
-
+            console.log(`Merged video created at: ${outputPath}`);
+            return res.status(200).json({ message: 'Videos merged successfully', output: outputPath });
+        });
     } catch (err) {
-        console.error('Error in merge-audio-free-videos:', err);
-        if (!res.headersSent) {
-            return res.status(500).json({ error: 'Internal server error' });
-        }
+        console.error('Error executing FFmpeg command:', err);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 });
-
 
 
 
