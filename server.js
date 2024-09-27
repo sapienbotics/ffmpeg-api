@@ -360,21 +360,38 @@ app.post('/merge-media-sequence', async (req, res) => {
             })
         );
 
+        console.log('Downloaded files:', downloadedFiles);
+
         // Build FFmpeg command
         const ffmpegCommand = ffmpeg();
         downloadedFiles.forEach(file => ffmpegCommand.input(file));
+
         ffmpegCommand
             .on('end', () => {
                 console.log('Merging finished successfully.');
                 res.json({ link: `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilename}` });
+                
                 // Clean up downloaded files
-                downloadedFiles.forEach(file => fs.unlinkSync(file));
+                downloadedFiles.forEach(file => {
+                    if (fs.existsSync(file)) {
+                        fs.unlinkSync(file);
+                    } else {
+                        console.warn(`File not found for cleanup: ${file}`);
+                    }
+                });
             })
             .on('error', (err) => {
                 console.error('Error during merging:', err);
                 res.status(500).send('Error during video merging.');
+                
                 // Clean up downloaded files on error
-                downloadedFiles.forEach(file => fs.unlinkSync(file));
+                downloadedFiles.forEach(file => {
+                    if (fs.existsSync(file)) {
+                        fs.unlinkSync(file);
+                    } else {
+                        console.warn(`File not found for cleanup: ${file}`);
+                    }
+                });
             })
             .outputOptions('-preset ultrafast') // Using ultrafast preset
             .mergeToFile(outputPath);
@@ -383,6 +400,7 @@ app.post('/merge-media-sequence', async (req, res) => {
         res.status(500).send('Error during video merging.');
     }
 });
+
 
 
 
