@@ -379,6 +379,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
 
 
 
+
 // Endpoint to get audio duration
 app.post('/get-audio-duration', async (req, res) => {
   try {
