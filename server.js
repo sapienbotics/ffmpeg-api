@@ -109,31 +109,28 @@ async function removeAudio(videoUrl) {
 
 
 
-async function trimVideo(videoUrl, duration) {
-    const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_trimmed.mp4`);
-
+// Improved trimVideo function with -preset ultrafast
+async function trimVideo(inputPath, duration) {
+    const outputPath = inputPath.replace('.mp4', '_trimmed.mp4');
     return new Promise((resolve, reject) => {
-        ffmpeg()
-            .input(videoUrl)
-            .outputOptions([
-                `-t ${duration}`, // Trim to the specified duration
-                '-vf scale=960:540',  // Scale to 960x540 resolution
-                '-r 30',  // Set frame rate to 30 fps
-                '-c:v libx264',  // Re-encode to H.264
-                '-preset veryfast',
-                '-crf 22'
-            ])
+        ffmpeg(inputPath)
+            .setStartTime(0)
+            .setDuration(duration)
+            .outputOptions('-preset ultrafast')  // Use ultrafast preset for faster processing
+            .output(outputPath)
             .on('end', () => {
-                console.log(`Trimmed video created: ${outputFilePath}`);
-                resolve(outputFilePath);
+                console.log(`Trimmed video created: ${outputPath}`);
+                resolve(outputPath);
             })
             .on('error', (err) => {
-                console.error(`Error trimming video: ${err.message}`);
+                console.error(`Error trimming video: ${err.message} for input ${inputPath}`);
                 reject(err);
             })
-            .save(outputFilePath);
+            .run();
     });
 }
+
+
 
 
 
@@ -150,6 +147,7 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
+// Improved convertImageToVideo with -preset ultrafast
 async function convertImageToVideo(imageUrl, duration) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     
@@ -159,7 +157,7 @@ async function convertImageToVideo(imageUrl, duration) {
             .loop(duration)  // Set the duration of the image video
             .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
             .outputOptions('-r', '30')  // Set frame rate to 30 fps
-            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22')  // Re-encode using H.264
+            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22')  // Re-encode using H.264, ultrafast preset
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
@@ -171,6 +169,7 @@ async function convertImageToVideo(imageUrl, duration) {
             .save(outputFilePath);
     });
 }
+
 
 // Function to get audio duration using ffmpeg
 const getAudioDuration = async (audioPath) => {
@@ -279,7 +278,7 @@ const mergeMediaUsingFile = async (mediaArray) => {
 
 
 
-// Function to process media sequence
+/// Function to process media sequence
 async function processMediaSequence(mediaSequence) {
     const videoPaths = [];
 
@@ -323,6 +322,7 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
