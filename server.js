@@ -349,13 +349,18 @@ app.post('/merge-media-sequence', async (req, res) => {
     const outputFilename = `merged_output_${Date.now()}.mp4`;
     const outputPath = path.join(outputDir, outputFilename);
 
+    console.log('Received media sequence for merging:', mediaSequence);
+
     try {
         // Concurrently download all media files
+        console.log('Starting to download media files...');
         const downloadedFiles = await Promise.all(
-            mediaSequence.map(async (media) => {
+            mediaSequence.map(async (media, index) => {
                 const { url } = media; // Assuming media is an object with a 'url' key
                 const tempFilePath = path.join(storageDir, path.basename(url));
+                console.log(`Downloading file ${index + 1}/${mediaSequence.length}: ${url}`);
                 await downloadFile(url, tempFilePath); // Using your existing downloadFile function
+                console.log(`Successfully downloaded: ${tempFilePath}`);
                 return tempFilePath;
             })
         );
@@ -364,17 +369,23 @@ app.post('/merge-media-sequence', async (req, res) => {
 
         // Build FFmpeg command
         const ffmpegCommand = ffmpeg();
-        downloadedFiles.forEach(file => ffmpegCommand.input(file));
+        downloadedFiles.forEach(file => {
+            console.log(`Adding file to FFmpeg command: ${file}`);
+            ffmpegCommand.input(file);
+        });
 
+        console.log('Starting the merging process with FFmpeg...');
         ffmpegCommand
             .on('end', () => {
                 console.log('Merging finished successfully.');
+                console.log(`Output file generated at: ${outputPath}`);
                 res.json({ link: `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilename}` });
                 
                 // Clean up downloaded files
                 downloadedFiles.forEach(file => {
                     if (fs.existsSync(file)) {
                         fs.unlinkSync(file);
+                        console.log(`Cleaned up file: ${file}`);
                     } else {
                         console.warn(`File not found for cleanup: ${file}`);
                     }
@@ -388,6 +399,7 @@ app.post('/merge-media-sequence', async (req, res) => {
                 downloadedFiles.forEach(file => {
                     if (fs.existsSync(file)) {
                         fs.unlinkSync(file);
+                        console.log(`Cleaned up file due to error: ${file}`);
                     } else {
                         console.warn(`File not found for cleanup: ${file}`);
                     }
@@ -400,6 +412,7 @@ app.post('/merge-media-sequence', async (req, res) => {
         res.status(500).send('Error during video merging.');
     }
 });
+
 
 
 
