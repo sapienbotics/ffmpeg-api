@@ -310,7 +310,7 @@ app.post('/merge-media-sequence', async (req, res) => {
         return res.status(400).json({ error: 'Invalid or empty media sequence provided.' });
     }
 
-    try {mer
+    try {
         const mergedVideoUrl = await processMediaSequence(mediaSequence);
         res.json({
             message: 'Media merged successfully',
