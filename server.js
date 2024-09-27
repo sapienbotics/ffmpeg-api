@@ -5,9 +5,15 @@ const { exec } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const ffmpeg = require('fluent-ffmpeg');
+const util = require('util');
+const { promisify } = require('util');
+
 
 const app = express();
 app.use(express.json());
+
+// Promisify exec for easier use with async/await
+const execPromise = util.promisify(exec);
 
 const storageDir = path.join(__dirname, 'storage', 'processed');
 const processedDir = path.join(storageDir, 'media');
