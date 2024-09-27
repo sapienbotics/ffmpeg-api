@@ -28,13 +28,14 @@ if (!fs.existsSync(outputDir)) {
 }
 
 
-// Helper function to download files
-const downloadFile = async (url, outputPath) => {
+// Helper function to download files with timeout and retry logic
+const downloadFile = async (url, outputPath, timeout = 10000) => {
     try {
         const response = await axios({
             url,
             method: 'GET',
             responseType: 'stream',
+            timeout, // Timeout added here
         });
 
         return new Promise((resolve, reject) => {
@@ -51,6 +52,24 @@ const downloadFile = async (url, outputPath) => {
         throw error; // Re-throw error for handling in the calling function
     }
 };
+
+// Helper function to retry downloading files if they fail
+const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 10000) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            await downloadFile(url, outputPath, timeout);
+            return; // Exit if successful
+        } catch (error) {
+            if (i < retries - 1) {
+                console.log(`Retrying download... (${i + 1}/${retries})`);
+            } else {
+                console.error(`Failed after ${retries} attempts to download: ${url}`);
+                throw error; // Throw error after all retries are exhausted
+            }
+        }
+    }
+};
+
 
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
@@ -358,50 +377,53 @@ const fileExists = (filePath) => {
 
 
 app.post('/merge-audio-free-videos', async (req, res) => {
+  try {
     const { videoUrls } = req.body;
 
-    // Check if videoUrls is provided
     if (!videoUrls || !Array.isArray(videoUrls) || videoUrls.length === 0) {
-        return res.status(400).json({ error: 'No video URLs provided' });
+      return res.status(400).json({ error: 'No video URLs provided.' });
     }
 
-    // Prepare the FFmpeg command
-    const inputFiles = videoUrls.map(video => `-i "${video.url}"`).join(' ');
-    const outputPath = path.join(outputDir, 'merged_output.mp4'); // Use the outputDir defined earlier
+    const outputFilePath = path.join(storageDir, `${uuidv4()}_merged_output.mp4`);
 
-    // Updated FFmpeg command to ignore audio streams
-    const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${videoUrls.length}:v=1:a=0[out]" -map "[out]" -y "${outputPath}"`;
+    // Download all videos first to ensure successful download
+    const downloadedFiles = [];
+    for (const videoUrl of videoUrls) {
+      const tempFilePath = path.join(storageDir, `${uuidv4()}_temp_video.mp4`);
+      try {
+        await downloadFile(videoUrl, tempFilePath);
+        downloadedFiles.push(tempFilePath);
+      } catch (error) {
+        console.error(`Error downloading file: ${tempFilePath}`, error);
+        return res.status(500).json({ error: 'Error downloading one or more video files.' });
+      }
+    }
 
-    // Function to execute FFmpeg commands
-    const executeFFmpegCommand = (command) => {
-        return new Promise((resolve, reject) => {
-            exec(command, (error, stdout, stderr) => {
-                if (error) {
-                    console.error('Error executing FFmpeg command:', stderr);
-                    return reject(error);
-                }
-                resolve(stdout);
-            });
-        });
-    };
-
+    // Call FFmpeg to merge the videos
     try {
-        // Execute the FFmpeg command
-        const output = await executeFFmpegCommand(ffmpegCommand);
-        console.log('FFmpeg output:', output);
-
-        // Respond with the output file URL
-        res.json({ message: 'Videos merged successfully', outputUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/merged_output.mp4` });
+      await mergeVideos(downloadedFiles, outputFilePath);  // Assuming mergeVideos handles merging
     } catch (error) {
-        console.error('Error merging videos:', error);
-        res.status(500).json({ error: 'Error merging videos', details: error.message });
+      console.error('Error during video merging:', error);
+      return res.status(500).json({ error: 'Error merging videos.' });
     }
+
+    // Clean up temporary files
+    for (const tempFilePath of downloadedFiles) {
+      fs.unlinkSync(tempFilePath);
+    }
+
+    // Generate output URL for the merged file
+    const outputUrl = `https://ffmpeg-api-production.up.railway.app/processed/${path.basename(outputFilePath)}`;
+
+    // Send success response only once
+    res.status(200).json({ message: 'Videos merged successfully', outputUrl: outputUrl });
+  } catch (error) {
+    console.error('Error processing merge-audio-free-videos request:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'An error occurred while merging videos.' });
+    }
+  }
 });
-
-
-
-
-
 
 
 
