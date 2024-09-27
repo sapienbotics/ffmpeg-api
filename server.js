@@ -93,18 +93,15 @@ async function removeAudio(videoUrl) {
 
     return new Promise((resolve, reject) => {
         console.log(`Removing audio from video: ${videoUrl}`);
-        ffmpeg(videoUrl)
-            .noAudio() // Removes audio track
-            .outputOptions('-c:v copy') // Copy the video codec without re-encoding
-            .on('end', () => {
+        execPromise(`ffmpeg -i ${videoUrl} -c:v copy -an "${outputFilePath}"`) // Using execPromise
+            .then(() => {
                 console.log(`Audio removed from video: ${outputFilePath}`);
                 resolve(outputFilePath);
             })
-            .on('error', (err) => {
+            .catch(err => {
                 console.error(`Error removing audio from ${videoUrl}: ${err.message}`);
                 reject(err);
-            })
-            .save(outputFilePath);
+            });
     });
 }
 
@@ -399,7 +396,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${noAudioVideos.length}:v=1:a=0" "${outputFilePath}"`;
 
         // Execute the FFmpeg command
-        await execPromise(ffmpegCommand);  // Await the exec promise
+        await execPromise(ffmpegCommand);  // Using the promisified exec
 
         // Return the output file URL
         const outputFileUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFileName}`;
