@@ -383,43 +383,59 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         return res.status(400).json({ error: 'At least two valid video URLs are required.' });
     }
 
-    // Extract URLs from videoUrls array
-    const urls = videoUrls.map((obj) => obj.url);
-    
-    // Prepare FFmpeg inputs
-    const inputs = urls.map(url => `-i "${url}"`).join(' ');
-
-    // Create FFmpeg filter to concatenate videos without audio
-    const filterComplex = `concat=n=${urls.length}:v=1:a=0`;
-
-    const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -y "${outputPath}"`;
-
-    console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
-
     try {
-        // Execute FFmpeg command
-        const { exec } = require('child_process');
-        exec(ffmpegCommand, (error, stdout, stderr) => {
+        // Download videos to temporary files
+        const downloadedFiles = await Promise.all(videoUrls.map(async (obj, index) => {
+            const videoUrl = obj.url;
+            const tempPath = path.join(outputDir, `temp_video_${index}_${Date.now()}.mp4`);
+
+            // Download the file using Axios
+            const response = await axios({
+                method: 'get',
+                url: videoUrl,
+                responseType: 'stream',
+            });
+
+            // Write the stream to a file
+            const writer = fs.createWriteStream(tempPath);
+            response.data.pipe(writer);
+
+            // Wait for the file to finish downloading
+            await new Promise((resolve, reject) => {
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+            });
+
+            return tempPath;
+        }));
+
+        // Prepare FFmpeg inputs
+        const inputs = downloadedFiles.map(file => `-i "${file}"`).join(' ');
+        const filterComplex = `concat=n=${downloadedFiles.length}:v=1:a=0`;
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -y "${outputPath}"`;
+
+        console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
+
+        exec(ffmpegCommand, async (error, stdout, stderr) => {
             if (error) {
                 console.error(`Error: ${stderr}`);
-                if (!res.headersSent) { // Check if headers have already been sent
-                    return res.status(500).json({ error: 'Error merging videos', details: stderr });
-                }
-            } else {
-                console.log(`Merged video created at: ${outputPath}`);
-                if (!res.headersSent) {
-                    return res.status(200).json({ message: 'Videos merged successfully', output: outputPath });
-                }
+                return res.status(500).json({ error: 'Error merging videos', details: stderr });
             }
+
+            console.log(`Merged video created at: ${outputPath}`);
+
+            // Cleanup temporary files
+            for (const file of downloadedFiles) {
+                fs.unlinkSync(file);
+            }
+
+            return res.status(200).json({ message: 'Videos merged successfully', output: outputPath });
         });
     } catch (err) {
-        console.error('Error executing FFmpeg command:', err);
-        if (!res.headersSent) {
-            return res.status(500).json({ error: 'Internal server error' });
-        }
+        console.error('Error processing videos:', err);
+        return res.status(500).json({ error: 'Internal server error', details: err.message });
     }
 });
-
 
 
 
