@@ -413,7 +413,9 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Prepare FFmpeg inputs
         const inputs = downloadedFiles.map(file => `-i "${file}"`).join(' ');
         const filterComplex = `concat=n=${downloadedFiles.length}:v=1:a=0`;
-        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -y "${outputPath}"`;
+        
+        // Added -pix_fmt option to specify the pixel format
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -y "${outputPath}"`;
 
         console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
 
