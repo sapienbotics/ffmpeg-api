@@ -384,10 +384,12 @@ app.post('/merge-audio-free-videos', async (req, res) => {
     }
 
     // Prepare the FFmpeg command
-    const inputs = videoUrls.map(url => `-i ${url}`).join(' ');
+    const inputs = videoUrls.map(url => `-i "${url}"`).join(' ');
     const filterComplex = `concat=n=${videoUrls.length}:v=1:a=0`;
 
-    const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" "${outputPath}"`;
+    const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -y "${outputPath}"`;
+
+    console.log(`Running command: ${ffmpegCommand}`); // Log the command for debugging
 
     try {
         // Execute FFmpeg command
