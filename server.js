@@ -385,6 +385,9 @@ app.post('/merge-audio-free-videos', async (req, res) => {
             return res.status(400).json({ error: 'No video URLs provided.' });
         }
 
+        // Log the video URLs to check their format
+        console.log('Video URLs:', videoUrls);
+
         // Construct a unique output file name and path
         const outputFileName = `${uuidv4()}_merged_output.mp4`;
         const outputFilePath = path.join(outputDir, outputFileName);
@@ -393,6 +396,8 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Ensure we use the correct FFmpeg command to handle URL input
         const inputFiles = videoUrls.map(url => `-i "${url}"`).join(' '); // Prepare input files for FFmpeg
         const ffmpegCommand = `ffmpeg ${inputFiles} -filter_complex "concat=n=${videoUrls.length}:v=1:a=0" "${outputFilePath}"`;
+
+        console.log('FFmpeg Command:', ffmpegCommand); // Log the command for debugging
 
         // Execute the FFmpeg command
         await execPromise(ffmpegCommand);
@@ -411,6 +416,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // If you need to manage temporary files, add cleanup logic here.
     }
 });
+
 
 
 
