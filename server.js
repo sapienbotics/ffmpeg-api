@@ -157,9 +157,9 @@ async function convertImageToVideo(imageUrl, duration) {
         ffmpeg()
             .input(imageUrl)
             .loop(duration)  // Set the duration of the image video
-            .outputOptions('-vf', 'scale=960:540:force_original_aspect_ratio=decrease,pad=960:540:(ow-iw)/2:(oh-ih)/2')
+            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2') // Updated resolution
             .outputOptions('-r', '30')  // Set frame rate to 30 fps
-            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22')  // Re-encode using H.264
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')  // Updated CRF
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
@@ -169,6 +169,29 @@ async function convertImageToVideo(imageUrl, duration) {
                 reject(err);
             })
             .save(outputFilePath);
+    });
+}
+
+
+
+// Function to convert video to a standard format and resolution
+async function convertVideoToStandardFormat(inputVideoPath, duration) {
+    const outputVideoPath = path.join(outputDir, `${Date.now()}_converted.mp4`);
+    
+    return new Promise((resolve, reject) => {
+        ffmpeg()
+            .input(inputVideoPath)
+            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2') // Updated resolution
+            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23') // Updated CRF
+            .on('end', () => {
+                console.log(`Converted video to standard format: ${outputVideoPath}`);
+                resolve(outputVideoPath);
+            })
+            .on('error', (err) => {
+                console.error(`Error converting video: ${err.message}`);
+                reject(err);
+            })
+            .save(outputVideoPath);
     });
 }
 
@@ -186,6 +209,9 @@ const getAudioDuration = async (audioPath) => {
     });
   });
 };
+
+
+
 
 
 const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume = 1.0, backgroundVolume = 1.0) => {
@@ -293,9 +319,9 @@ async function processMediaSequence(mediaSequence) {
             const localVideoPath = path.join(outputDir, path.basename(url)); // Local file path
             await downloadFile(url, localVideoPath); // Download the video
 
-            // Trim the video to the specified duration
-            const trimmedVideoPath = await trimVideo(localVideoPath, duration);
-            videoPaths.push(trimmedVideoPath); // Add trimmed video path to paths
+            // Convert to a common format and resolution
+            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration);
+            videoPaths.push(convertedVideoPath); // Add converted video path to paths
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
             try {
@@ -343,6 +369,7 @@ function generateOutputPath(url) {
     const outputPath = path.join(outputDir, `${baseName}_${Date.now()}.mp4`); // Unique filename
     return outputPath;
 }
+
 
 app.post('/merge-media-sequence', async (req, res) => {
     const { mediaSequence } = req.body;
