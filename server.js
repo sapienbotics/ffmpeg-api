@@ -476,11 +476,14 @@ app.post('/get-audio-duration', async (req, res) => {
 });
 
 
-// Modified endpoint to add audio to video
 app.post('/add-audio', async (req, res) => {
   const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume = 1, backgroundVolume = 0.5 } = req.body;
 
   try {
+    // Generate dynamic file name for output
+    const outputFilename = `output_${Date.now()}.mp4`;
+    const outputFilePath = path.join(outputDir, outputFilename);
+
     // Download video and content audio
     const videoFilePath = await downloadFile(videoUrl, 'video.mp4');
     const contentAudioFilePath = await downloadFile(contentAudioUrl, 'contentAudio.mp3');
@@ -498,25 +501,29 @@ app.post('/add-audio', async (req, res) => {
       }
     }
 
-    // Prepare command to merge audio with video
-    let ffmpegCommand = `ffmpeg -i ${videoFilePath} -i ${contentAudioFilePath} -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest output.mp4`;
+    // Prepare ffmpeg command to merge video and audio
+    let ffmpegCommand = `ffmpeg -i ${videoFilePath} -i ${contentAudioFilePath} -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest ${outputFilePath}`;
 
     // If background audio exists, include it in the command
     if (backgroundAudioExists) {
-      ffmpegCommand = `ffmpeg -i ${videoFilePath} -i ${contentAudioFilePath} -i ${backgroundAudioFilePath} -filter_complex "[0:a][1:a][2:a]amix=inputs=3:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest output.mp4`;
+      ffmpegCommand = `ffmpeg -i ${videoFilePath} -i ${contentAudioFilePath} -i ${backgroundAudioFilePath} -filter_complex "[0:a][1:a][2:a]amix=inputs=3:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest ${outputFilePath}`;
     }
 
-    // Run ffmpeg command
+    // Execute ffmpeg command
     await exec(ffmpegCommand);
 
-    // Send response with output URL
+    // Return dynamic download link for the output file
+    const downloadUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilename}`;
+
+    // Send response with dynamic output URL
     res.json({
       message: "Audio added to video successfully",
-      outputUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/output.mp4`
+      outputUrl: downloadUrl
     });
+
   } catch (error) {
     console.error('Error adding audio:', error.message);
-    res.status(500).json({ message: 'Error adding audio to video' });
+    res.status(500).json({ message: 'Error adding audio to video', details: error.message });
   }
 });
 
