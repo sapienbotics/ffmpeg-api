@@ -485,8 +485,8 @@ app.post('/add-audio', async (req, res) => {
     const outputFilePath = path.join(outputDir, outputFilename);
 
     // Download video and content audio
-    const videoFilePath = await downloadFile(videoUrl, 'video.mp4');
-    const contentAudioFilePath = await downloadFile(contentAudioUrl, 'contentAudio.mp3');
+    const videoFilePath = await downloadFile(videoUrl, path.join(outputDir, 'video.mp4'));
+    const contentAudioFilePath = await downloadFile(contentAudioUrl, path.join(outputDir, 'contentAudio.mp3'));
 
     let backgroundAudioFilePath;
     let backgroundAudioExists = false;
@@ -494,7 +494,7 @@ app.post('/add-audio', async (req, res) => {
     // Attempt to download background audio if URL is provided
     if (backgroundAudioUrl) {
       try {
-        backgroundAudioFilePath = await downloadFile(backgroundAudioUrl, 'backgroundAudio.mp3');
+        backgroundAudioFilePath = await downloadFile(backgroundAudioUrl, path.join(outputDir, 'backgroundAudio.mp3'));
         backgroundAudioExists = true;
       } catch (error) {
         console.error('Background audio not downloadable:', error.message);
@@ -502,15 +502,25 @@ app.post('/add-audio', async (req, res) => {
     }
 
     // Prepare ffmpeg command to merge video and audio
-    let ffmpegCommand = `ffmpeg -i ${videoFilePath} -i ${contentAudioFilePath} -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest ${outputFilePath}`;
+    let ffmpegCommand = `ffmpeg -i "${videoFilePath}" -i "${contentAudioFilePath}" -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
 
     // If background audio exists, include it in the command
     if (backgroundAudioExists) {
-      ffmpegCommand = `ffmpeg -i ${videoFilePath} -i ${contentAudioFilePath} -i ${backgroundAudioFilePath} -filter_complex "[0:a][1:a][2:a]amix=inputs=3:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest ${outputFilePath}`;
+      ffmpegCommand = `ffmpeg -i "${videoFilePath}" -i "${contentAudioFilePath}" -i "${backgroundAudioFilePath}" -filter_complex "[0:a][1:a][2:a]amix=inputs=3:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
     }
 
     // Execute ffmpeg command
-    await exec(ffmpegCommand);
+    try {
+        await execPromise(ffmpegCommand);
+    } catch (error) {
+        console.error('FFmpeg error:', error.stderr);
+        throw new Error('Error during FFmpeg execution.');
+    }
+
+    // Check if the output file exists
+    if (!fs.existsSync(outputFilePath)) {
+        throw new Error('Output file not created.');
+    }
 
     // Return dynamic download link for the output file
     const downloadUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilename}`;
@@ -526,6 +536,7 @@ app.post('/add-audio', async (req, res) => {
     res.status(500).json({ message: 'Error adding audio to video', details: error.message });
   }
 });
+
 
 
 
