@@ -414,8 +414,8 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         const inputs = downloadedFiles.map(file => `-i "${file}"`).join(' ');
         const filterComplex = `concat=n=${downloadedFiles.length}:v=1:a=0`;
 
-        // Add pixel format and color range settings for PC and mobile
-        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -y "${outputPath}"`;
+        // Add pixel format and color range settings for PC and mobile, and include verbose logging
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -loglevel verbose -y "${outputPath}"`;
 
         console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
 
