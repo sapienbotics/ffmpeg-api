@@ -400,7 +400,6 @@ const fileExists = (filePath) => {
 };
 
 
-
 app.post('/merge-audio-free-videos', async (req, res) => {
     const { videoUrls } = req.body;
     const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
@@ -437,11 +436,11 @@ app.post('/merge-audio-free-videos', async (req, res) => {
             return tempPath;
         }));
 
-        // Normalize input videos to ensure they have the same format
+        // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -c:a aac -strict experimental -y "${normalizedPath}"`;
-            
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 30 -vf "scale=640:360" -c:a aac -strict experimental -y "${normalizedPath}"`;
+
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
                     if (error) {
