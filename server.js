@@ -410,9 +410,29 @@ app.post('/merge-audio-free-videos', async (req, res) => {
             return tempPath;
         }));
 
+        // Normalize input videos to ensure they have the same format
+        const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
+            const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -c:a aac -strict experimental -y "${normalizedPath}"`;
+            
+            await new Promise((resolve, reject) => {
+                exec(normalizeCommand, (error, stdout, stderr) => {
+                    if (error) {
+                        console.error(`Error normalizing video: ${stderr}`);
+                        return reject(new Error(`Error normalizing video: ${stderr}`));
+                    }
+                    resolve(normalizedPath);
+                });
+            });
+
+            // Cleanup the original file
+            fs.unlinkSync(inputFile);
+            return normalizedPath;
+        }));
+
         // Prepare FFmpeg inputs
-        const inputs = downloadedFiles.map(file => `-i "${file}"`).join(' ');
-        const filterComplex = `concat=n=${downloadedFiles.length}:v=1:a=0`;
+        const inputs = normalizedFiles.map(file => `-i "${file}"`).join(' ');
+        const filterComplex = `concat=n=${normalizedFiles.length}:v=1:a=0`;
 
         // Add pixel format and color range settings for PC and mobile, and include verbose logging
         const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -loglevel verbose -y "${outputPath}"`;
@@ -427,8 +447,8 @@ app.post('/merge-audio-free-videos', async (req, res) => {
 
             console.log(`Merged video created at: ${outputPath}`);
 
-            // Cleanup temporary files
-            for (const file of downloadedFiles) {
+            // Cleanup normalized files
+            for (const file of normalizedFiles) {
                 fs.unlinkSync(file);
             }
 
@@ -441,6 +461,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error', details: err.message });
     }
 });
+
 
 
 
