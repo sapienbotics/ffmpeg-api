@@ -478,47 +478,48 @@ app.post('/get-audio-duration', async (req, res) => {
 
 // Modified endpoint to add audio to video
 app.post('/add-audio', async (req, res) => {
+  const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume = 1, backgroundVolume = 0.5 } = req.body;
+
   try {
-    const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume, backgroundVolume } = req.body;
+    // Download video and content audio
+    const videoFilePath = await downloadFile(videoUrl, 'video.mp4');
+    const contentAudioFilePath = await downloadFile(contentAudioUrl, 'contentAudio.mp3');
 
-    // Validate inputs
-    if (!videoUrl || !contentAudioUrl) {
-      return res.status(400).json({ error: 'Missing video URL or content audio URL.' });
-    }
+    let backgroundAudioFilePath;
+    let backgroundAudioExists = false;
 
-    // Define paths for video, content audio, background audio, and output
-    const videoPath = path.join(storageDir, `${uuidv4()}_input_video.mp4`);
-    const contentAudioPath = path.join(storageDir, `${uuidv4()}_content_audio.mp3`);
-    const backgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
-    const outputFilePath = path.join(outputDir, `${uuidv4()}_final_output.mp4`); // Store final output in outputDir
-
-    // Download the video and audio files
-    await downloadFile(videoUrl, videoPath);
-    await downloadFile(contentAudioUrl, contentAudioPath);
+    // Attempt to download background audio if URL is provided
     if (backgroundAudioUrl) {
-      await downloadFile(backgroundAudioUrl, backgroundAudioPath);
+      try {
+        backgroundAudioFilePath = await downloadFile(backgroundAudioUrl, 'backgroundAudio.mp3');
+        backgroundAudioExists = true;
+      } catch (error) {
+        console.error('Background audio not downloadable:', error.message);
+      }
     }
 
-    // Call function to add audio to video with fallback for background audio issues
-    await addAudioToVideoWithFallback(videoPath, contentAudioPath, backgroundAudioPath, outputFilePath, contentVolume, backgroundVolume);
+    // Prepare command to merge audio with video
+    let ffmpegCommand = `ffmpeg -i ${videoFilePath} -i ${contentAudioFilePath} -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest output.mp4`;
 
-    // Clean up temporary files (optional)
-    fs.unlinkSync(videoPath);
-    fs.unlinkSync(contentAudioPath);
-    if (fs.existsSync(backgroundAudioPath)) {
-      fs.unlinkSync(backgroundAudioPath);
+    // If background audio exists, include it in the command
+    if (backgroundAudioExists) {
+      ffmpegCommand = `ffmpeg -i ${videoFilePath} -i ${contentAudioFilePath} -i ${backgroundAudioFilePath} -filter_complex "[0:a][1:a][2:a]amix=inputs=3:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest output.mp4`;
     }
 
-    // Generate the final HTTPS output URL
-    const outputUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`;
+    // Run ffmpeg command
+    await exec(ffmpegCommand);
 
-    // Return the HTTPS link to the final video
-    res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputUrl });
+    // Send response with output URL
+    res.json({
+      message: "Audio added to video successfully",
+      outputUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/output.mp4`
+    });
   } catch (error) {
-    console.error('Error processing add-audio request:', error.message);
-    res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
+    console.error('Error adding audio:', error.message);
+    res.status(500).json({ message: 'Error adding audio to video' });
   }
 });
+
 
 
 
