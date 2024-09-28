@@ -111,15 +111,15 @@ async function removeAudio(videoUrl) {
 
 async function trimVideo(videoUrl, duration) {
     const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_trimmed.mp4`);
-
+    
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(videoUrl)
             .outputOptions([
-                `-t ${duration}`, // Trim to the specified duration
-                '-vf scale=960:540',  // Scale to 960x540 resolution
-                '-r 30',  // Set frame rate to 30 fps
-                '-c:v libx264',  // Re-encode to H.264
+                `-t ${duration}`, 
+                '-vf scale=960:540,setsar=1/1',  // Added setsar=1/1
+                '-r 30', 
+                '-c:v libx264', 
                 '-preset veryfast',
                 '-crf 22'
             ])
@@ -134,6 +134,7 @@ async function trimVideo(videoUrl, duration) {
             .save(outputFilePath);
     });
 }
+
 
 
 
@@ -156,10 +157,10 @@ async function convertImageToVideo(imageUrl, duration) {
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(imageUrl)
-            .loop(duration)  // Set the duration of the image video
-            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2') // Updated resolution
-            .outputOptions('-r', '30')  // Set frame rate to 30 fps
-            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')  // Updated CRF
+            .loop(duration)
+            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1/1') // Added setsar=1/1
+            .outputOptions('-r', '30')
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
@@ -174,15 +175,17 @@ async function convertImageToVideo(imageUrl, duration) {
 
 
 
+
 // Function to convert video to a standard format and resolution
+
 async function convertVideoToStandardFormat(inputVideoPath, duration) {
     const outputVideoPath = path.join(outputDir, `${Date.now()}_converted.mp4`);
     
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(inputVideoPath)
-            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2') // Updated resolution
-            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23') // Updated CRF
+            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1/1') // Added setsar=1/1
+            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
             .on('end', () => {
                 console.log(`Converted video to standard format: ${outputVideoPath}`);
                 resolve(outputVideoPath);
@@ -194,6 +197,7 @@ async function convertVideoToStandardFormat(inputVideoPath, duration) {
             .save(outputVideoPath);
     });
 }
+
 
 // Function to get audio duration using ffmpeg
 const getAudioDuration = async (audioPath) => {
