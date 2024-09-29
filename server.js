@@ -154,16 +154,26 @@ const createFileList = (mediaSequence, outputDir) => {
 
 async function convertImageToVideo(imageUrl, duration) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    
+    const startTime = Date.now(); // Start time for the entire function
+
     return new Promise((resolve, reject) => {
+        console.log(`Starting conversion for image: ${imageUrl}`);
+
+        // Log timing for each ffmpeg step
+        const timeLogger = (step) => {
+            console.log(`${step} took ${Date.now() - startTime} ms`);
+        };
+
         ffmpeg()
             .input(imageUrl)
-            .loop(duration)
-            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1/1')
-            .outputOptions('-r', '30')
-            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')
-            .outputOptions('-threads', '6')  // Allocate 6 threads for the process
+            .on('start', () => {
+                console.log('FFmpeg process started.');
+            })
+            .on('progress', (progress) => {
+                console.log(`Processing: ${progress.frames} frames done at ${progress.currentFps} fps`);
+            })
             .on('end', () => {
+                timeLogger('Total Conversion');
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
             })
@@ -171,9 +181,30 @@ async function convertImageToVideo(imageUrl, duration) {
                 console.error(`Error converting image to video: ${err.message}`);
                 reject(err);
             })
-            .save(outputFilePath);
+            // Log loop duration
+            .loop(duration)
+            .on('codecData', () => {
+                timeLogger('Looping');
+            })
+
+            // Video filter options with timing
+            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1/1')
+            .on('codecData', () => {
+                timeLogger('Resolution and Padding');
+            })
+
+            // Frame rate and encoding settings
+            .outputOptions('-r', '30')
+            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
+            .outputOptions('-threads', '4')  // Use 4 threads for the process
+            .on('codecData', () => {
+                timeLogger('Encoding Settings');
+            })
+
+            .save(outputFilePath); // Output the video
     });
 }
+
 
 
 
