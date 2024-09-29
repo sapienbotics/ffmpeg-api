@@ -117,7 +117,7 @@ async function trimVideo(videoUrl, duration) {
             .input(videoUrl)
             .outputOptions([
                 `-t ${duration}`, 
-                '-r 30', 
+                '-r 15', 
                 '-c:v libx264', 
                 '-preset veryfast',
                 '-crf 22',
@@ -194,7 +194,7 @@ async function convertImageToVideo(imageUrl, duration) {
             })
 
             // Frame rate and encoding settings
-            .outputOptions('-r', '30')
+            .outputOptions('-r', '15')
             .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
             .outputOptions('-threads', '4')  // Use 4 threads for the process
             .on('codecData', () => {
@@ -480,7 +480,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 30 -vf "scale=640:360" -c:a aac -strict experimental -y "${normalizedPath}"`;
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 15 -vf "scale=640:360" -c:a aac -strict experimental -y "${normalizedPath}"`;
 
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
