@@ -640,6 +640,18 @@ app.post('/add-audio', async (req, res) => {
 });
 
 
+// Function to download background audio
+async function downloadBackgroundAudio(url) {
+  try {
+    const tempAudioPath = path.join(outputDir, 'backgroundAudio.mp3');
+    await downloadFile(url, tempAudioPath);
+    return tempAudioPath;
+  } catch (error) {
+    console.error('Error downloading background audio:', error.message);
+    return null; // Return null if downloading fails
+  }
+}
+
 
 
 
