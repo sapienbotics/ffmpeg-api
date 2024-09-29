@@ -196,7 +196,7 @@ async function convertImageToVideo(imageUrl, duration) {
             // Frame rate and encoding settings
             .outputOptions('-r', '15')
             .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
-            .outputOptions('-threads', '4')  // Use 4 threads for the process
+            .outputOptions('-threads', '6')  // Use 6 threads for the process
             .on('codecData', () => {
                 timeLogger('Encoding Settings');
             })
@@ -581,11 +581,11 @@ app.post('/add-audio', async (req, res) => {
 
     // Attempt to download background audio if URL is provided
     if (backgroundAudioUrl) {
-      try {
-        backgroundAudioFilePath = await downloadFile(backgroundAudioUrl, path.join(outputDir, 'backgroundAudio.mp3'));
+      backgroundAudioFilePath = await downloadBackgroundAudio(backgroundAudioUrl);
+      if (backgroundAudioFilePath) {
         backgroundAudioExists = true;
-      } catch (error) {
-        console.error('Background audio not downloadable:', error.message);
+      } else {
+        console.error('Background audio not downloadable from the provided URL');
       }
     }
 
@@ -599,15 +599,15 @@ app.post('/add-audio', async (req, res) => {
 
     // Execute ffmpeg command
     try {
-        await execPromise(ffmpegCommand);
+      await execPromise(ffmpegCommand);
     } catch (error) {
-        console.error('FFmpeg error:', error.stderr);
-        throw new Error('Error during FFmpeg execution.');
+      console.error('FFmpeg error:', error.stderr);
+      throw new Error('Error during FFmpeg execution.');
     }
 
     // Check if the output file exists
     if (!fs.existsSync(outputFilePath)) {
-        throw new Error('Output file not created.');
+      throw new Error('Output file not created.');
     }
 
     // Return dynamic download link for the output file
@@ -624,6 +624,19 @@ app.post('/add-audio', async (req, res) => {
     res.status(500).json({ message: 'Error adding audio to video', details: error.message });
   }
 });
+
+// Function to download background audio
+async function downloadBackgroundAudio(url) {
+  try {
+    const tempAudioPath = path.join(outputDir, 'backgroundAudio.mp3');
+    await downloadFile(url, tempAudioPath);
+    return tempAudioPath;
+  } catch (error) {
+    console.error('Error downloading background audio:', error.message);
+    return null; // Return null if downloading fails
+  }
+}
+
 
 
 
