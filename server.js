@@ -111,17 +111,17 @@ async function removeAudio(videoUrl) {
 
 async function trimVideo(videoUrl, duration) {
     const outputFilePath = path.join(outputDir, `${path.basename(videoUrl, path.extname(videoUrl))}_trimmed.mp4`);
-    
+
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(videoUrl)
             .outputOptions([
                 `-t ${duration}`, 
-                '-vf scale=960:540,setsar=1/1',  // Added setsar=1/1
                 '-r 30', 
                 '-c:v libx264', 
                 '-preset veryfast',
-                '-crf 22'
+                '-crf 22',
+                '-vf setsar=1/1' // Ensure the SAR is set, but no scaling is applied
             ])
             .on('end', () => {
                 console.log(`Trimmed video created: ${outputFilePath}`);
@@ -134,6 +134,7 @@ async function trimVideo(videoUrl, duration) {
             .save(outputFilePath);
     });
 }
+
 
 
 
@@ -158,9 +159,10 @@ async function convertImageToVideo(imageUrl, duration) {
         ffmpeg()
             .input(imageUrl)
             .loop(duration)
-            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1/1') // Added setsar=1/1
+            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1/1')
             .outputOptions('-r', '30')
             .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')
+            .outputOptions('-threads', '6')  // Allocate 6 threads for the process
             .on('end', () => {
                 console.log(`Converted ${imageUrl} to video.`);
                 resolve(outputFilePath);
@@ -325,7 +327,10 @@ async function processMediaSequence(mediaSequence) {
 
             // Convert to a common format and resolution
             const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration);
-            videoPaths.push(convertedVideoPath); // Add converted video path to paths
+            
+            // Trim the video after conversion
+            const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);
+            videoPaths.push(trimmedVideoPath); // Add trimmed video path to paths
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
             try {
@@ -352,6 +357,7 @@ async function processMediaSequence(mediaSequence) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
