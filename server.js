@@ -568,6 +568,11 @@ app.post('/add-audio', async (req, res) => {
   const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume = 1, backgroundVolume = 0.5 } = req.body;
 
   try {
+    // Ensure output directory exists
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir);
+    }
+
     // Generate dynamic file name for output
     const outputFilename = `output_${Date.now()}.mp4`;
     const outputFilePath = path.join(outputDir, outputFilename);
@@ -589,6 +594,13 @@ app.post('/add-audio', async (req, res) => {
       }
     }
 
+    // Logging file paths for debugging
+    console.log("Video File Path:", videoFilePath);
+    console.log("Content Audio File Path:", contentAudioFilePath);
+    if (backgroundAudioExists) {
+      console.log("Background Audio File Path:", backgroundAudioFilePath);
+    }
+
     // Prepare ffmpeg command to merge video and audio
     let ffmpegCommand = `ffmpeg -i "${videoFilePath}" -i "${contentAudioFilePath}" -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=3[a]" -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
 
@@ -599,7 +611,9 @@ app.post('/add-audio', async (req, res) => {
 
     // Execute ffmpeg command
     try {
-      await execPromise(ffmpegCommand);
+      const { stdout, stderr } = await execPromise(ffmpegCommand);
+      console.log("FFmpeg Output:", stdout);
+      console.error("FFmpeg Error Output:", stderr);
     } catch (error) {
       console.error('FFmpeg error:', error.stderr);
       throw new Error('Error during FFmpeg execution.');
@@ -624,18 +638,6 @@ app.post('/add-audio', async (req, res) => {
     res.status(500).json({ message: 'Error adding audio to video', details: error.message });
   }
 });
-
-// Function to download background audio
-async function downloadBackgroundAudio(url) {
-  try {
-    const tempAudioPath = path.join(outputDir, 'backgroundAudio.mp3');
-    await downloadFile(url, tempAudioPath);
-    return tempAudioPath;
-  } catch (error) {
-    console.error('Error downloading background audio:', error.message);
-    return null; // Return null if downloading fails
-  }
-}
 
 
 
