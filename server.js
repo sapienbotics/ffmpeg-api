@@ -7,7 +7,7 @@ const axios = require('axios');
 const ffmpeg = require('fluent-ffmpeg');
 const util = require('util');
 const { promisify } = require('util');
-const Vibrant = require('node-vibrant');
+
 
 
 const app = express();
@@ -73,12 +73,6 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
     }
 };
 
-// Function to get the dominant color from an image
-async function getDominantColor(imageUrl) {
-    const palette = await Vibrant.from(imageUrl).getPalette();
-    const dominantColor = palette.Vibrant.hex; // You can choose different swatches
-    return dominantColor;
-}
 
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
@@ -160,18 +154,15 @@ const createFileList = (mediaSequence, outputDir) => {
 };
 
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
-    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
+    const outputFilePath = path.join(outputDir, ${Date.now()}_image.mp4);
     const startTime = Date.now(); // Start time for the entire function
 
-    // Get the dominant color
-    const dominantColor = await getDominantColor(imageUrl);
-
     return new Promise((resolve, reject) => {
-        console.log(`Starting conversion for image: ${imageUrl}`);
+        console.log(Starting conversion for image: ${imageUrl});
 
         // Log timing for each ffmpeg step
         const timeLogger = (step) => {
-            console.log(`${step} took ${Date.now() - startTime} ms`);
+            console.log(${step} took ${Date.now() - startTime} ms);
         };
 
         const [width, height] = resolution.split(':').map(Number);
@@ -179,11 +170,11 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
 
         // Determine padding based on orientation
         if (orientation === 'portrait') {
-            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+            scaleOptions = scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1;
         } else if (orientation === 'landscape') {
-            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+            scaleOptions = scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1;
         } else if (orientation === 'square') {
-            scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+            scaleOptions = scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2,setsar=1/1;
         } else {
             reject(new Error('Invalid orientation specified.'));
         }
@@ -194,29 +185,34 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 console.log('FFmpeg process started.');
             })
             .on('progress', (progress) => {
-                console.log(`Processing: ${progress.frames} frames done at ${progress.currentFps} fps`);
+                console.log(Processing: ${progress.frames} frames done at ${progress.currentFps} fps);
             })
             .on('end', () => {
                 timeLogger('Total Conversion');
-                console.log(`Converted ${imageUrl} to video.`);
+                console.log(Converted ${imageUrl} to video.);
                 resolve(outputFilePath);
             })
             .on('error', (err) => {
-                console.error(`Error converting image to video: ${err.message}`);
+                console.error(Error converting image to video: ${err.message});
                 reject(err);
             })
             .loop(duration)
-            .outputOptions('-vf', `${scaleOptions},color=${dominantColor}:color=black`) // Use dynamic scaling based on orientation
+            .on('codecData', () => {
+                timeLogger('Looping');
+            })
+            .outputOptions('-vf', scaleOptions)  // Use dynamic scaling based on orientation
             .on('codecData', () => {
                 timeLogger('Resolution and Padding');
             })
             .outputOptions('-r', '15')
             .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
             .outputOptions('-threads', '6')
+            .on('codecData', () => {
+                timeLogger('Encoding Settings');
+            })
             .save(outputFilePath);
     });
 }
-
 
 
 
