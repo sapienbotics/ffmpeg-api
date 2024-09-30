@@ -152,7 +152,7 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-async function convertImageToVideo(imageUrl, duration) {
+async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     const startTime = Date.now(); // Start time for the entire function
 
@@ -163,6 +163,20 @@ async function convertImageToVideo(imageUrl, duration) {
         const timeLogger = (step) => {
             console.log(`${step} took ${Date.now() - startTime} ms`);
         };
+
+        const [width, height] = resolution.split(':').map(Number);
+        let scaleOptions;
+
+        // Determine padding based on orientation
+        if (orientation === 'portrait') {
+            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+        } else if (orientation === 'landscape') {
+            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+        } else if (orientation === 'square') {
+            scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+        } else {
+            reject(new Error('Invalid orientation specified.'));
+        }
 
         ffmpeg()
             .input(imageUrl)
@@ -181,27 +195,21 @@ async function convertImageToVideo(imageUrl, duration) {
                 console.error(`Error converting image to video: ${err.message}`);
                 reject(err);
             })
-            // Log loop duration
             .loop(duration)
             .on('codecData', () => {
                 timeLogger('Looping');
             })
-
-            // Video filter options with timing
-            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1/1')
+            .outputOptions('-vf', scaleOptions)  // Use dynamic scaling based on orientation
             .on('codecData', () => {
                 timeLogger('Resolution and Padding');
             })
-
-            // Frame rate and encoding settings
             .outputOptions('-r', '15')
             .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
-            .outputOptions('-threads', '6')  // Use 6 threads for the process
+            .outputOptions('-threads', '6')
             .on('codecData', () => {
                 timeLogger('Encoding Settings');
             })
-
-            .save(outputFilePath); // Output the video
+            .save(outputFilePath);
     });
 }
 
@@ -209,27 +217,8 @@ async function convertImageToVideo(imageUrl, duration) {
 
 
 
-// Function to convert video to a standard format and resolution
 
-async function convertVideoToStandardFormat(inputVideoPath, duration) {
-    const outputVideoPath = path.join(outputDir, `${Date.now()}_converted.mp4`);
-    
-    return new Promise((resolve, reject) => {
-        ffmpeg()
-            .input(inputVideoPath)
-            .outputOptions('-vf', 'scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1/1') // Added setsar=1/1
-            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
-            .on('end', () => {
-                console.log(`Converted video to standard format: ${outputVideoPath}`);
-                resolve(outputVideoPath);
-            })
-            .on('error', (err) => {
-                console.error(`Error converting video: ${err.message}`);
-                reject(err);
-            })
-            .save(outputVideoPath);
-    });
-}
+
 
 
 // Function to get audio duration using ffmpeg
@@ -304,7 +293,7 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
 
 
 
-const mergeMediaUsingFile = async (mediaArray) => {
+const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
     const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4'));
 
     if (validMedia.length === 0) {
@@ -320,11 +309,16 @@ const mergeMediaUsingFile = async (mediaArray) => {
 
     const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
 
+    // Parse the resolution (e.g., "640:360" -> width: 640, height: 360)
+    const [width, height] = resolution.split(':');
+
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22') // Re-encode video to ensure compatibility
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22')
+            // Apply orientation-specific scaling and padding
+            .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
@@ -342,8 +336,9 @@ const mergeMediaUsingFile = async (mediaArray) => {
 
 
 
+
 // Function to process media sequence
-async function processMediaSequence(mediaSequence) {
+async function processMediaSequence(mediaSequence, resolution, orientation) {
     const videoPaths = [];
 
     for (const media of mediaSequence) {
@@ -352,42 +347,76 @@ async function processMediaSequence(mediaSequence) {
 
         if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
             console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-            // Download video file locally before adding to the paths
-            const localVideoPath = path.join(outputDir, path.basename(url)); // Local file path
-            await downloadFile(url, localVideoPath); // Download the video
+            const localVideoPath = path.join(outputDir, path.basename(url));
+            await downloadFile(url, localVideoPath);  // Download the video
 
-            // Convert to a common format and resolution
-            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration);
-            
-            // Trim the video after conversion
+            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution); // Pass resolution
             const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);
-            videoPaths.push(trimmedVideoPath); // Add trimmed video path to paths
+            videoPaths.push(trimmedVideoPath);
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
             try {
-                const videoPath = await convertImageToVideo(url, duration);
-                videoPaths.push(videoPath); // Add the converted video path to paths
+                const videoPath = await convertImageToVideo(url, duration, resolution);  // Pass resolution
+                videoPaths.push(videoPath);
             } catch (error) {
                 console.error(`Error converting image to video: ${error.message}`);
-                continue; // Skip to next media item
+                continue;
             }
         }
     }
 
     if (videoPaths.length > 0) {
         try {
-            const mergeResult = await mergeMediaUsingFile(videoPaths);
+            const mergeResult = await mergeMediaUsingFile(videoPaths, resolution, orientation); // Pass resolution and orientation
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
-            return mergeResult.outputFileUrl; // Return the merged video URL
+            return mergeResult.outputFileUrl;
         } catch (error) {
             console.error(`Error merging videos: ${error.message}`);
-            throw error; // Rethrow error for the endpoint to catch
+            throw error;
         }
     } else {
         console.error('No valid media found for merging.');
         throw new Error('No valid media found for merging.');
     }
 }
+
+
+// Function to convert video to a standard format and resolution
+async function convertVideoToStandardFormat(inputVideoPath, duration, resolution, orientation) {
+    const outputVideoPath = path.join(outputDir, `${Date.now()}_converted.mp4`);
+    
+    const [width, height] = resolution.split(':').map(Number);
+    let scaleOptions;
+
+    // Determine padding based on orientation
+    if (orientation === 'portrait') {
+        scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+    } else if (orientation === 'landscape') {
+        scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+    } else if (orientation === 'square') {
+        scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+    } else {
+        throw new Error('Invalid orientation specified.');
+    }
+
+    return new Promise((resolve, reject) => {
+        ffmpeg()
+            .input(inputVideoPath)
+            .outputOptions('-vf', scaleOptions)
+            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
+            .on('end', () => {
+                console.log(`Converted video to standard format: ${outputVideoPath}`);
+                resolve(outputVideoPath);
+            })
+            .on('error', (err) => {
+                console.error(`Error converting video: ${err.message}`);
+                reject(err);
+            })
+            .save(outputVideoPath);
+    });
+}
+
+
 
 
 
@@ -413,14 +442,18 @@ function generateOutputPath(url) {
 
 
 app.post('/merge-media-sequence', async (req, res) => {
-    const { mediaSequence } = req.body;
+    const { mediaSequence, orientation, resolution } = req.body;
 
     if (!mediaSequence || !Array.isArray(mediaSequence) || mediaSequence.length === 0) {
         return res.status(400).json({ error: 'Invalid or empty media sequence provided.' });
     }
 
+    if (!orientation || !resolution) {
+        return res.status(400).json({ error: 'Orientation and resolution must be provided.' });
+    }
+
     try {
-        const mergedVideoUrl = await processMediaSequence(mediaSequence);
+        const mergedVideoUrl = await processMediaSequence(mediaSequence, orientation, resolution);
         res.json({
             message: 'Media merged successfully',
             mergedVideoUrl,  // Include the merged video URL in the response
@@ -431,14 +464,6 @@ app.post('/merge-media-sequence', async (req, res) => {
     }
 });
 
-// Helper function to check if a file exists
-const fileExists = (filePath) => {
-    return new Promise((resolve) => {
-        fs.access(filePath, fs.constants.F_OK, (err) => {
-            resolve(!err);
-        });
-    });
-};
 
 
 app.post('/merge-audio-free-videos', async (req, res) => {
@@ -648,15 +673,6 @@ const getVideoInfo = async (videoPath) => {
     throw new Error('Could not get video info');
   }
 };
-
-
-
-
-
-
-
-
-
 
 
 
