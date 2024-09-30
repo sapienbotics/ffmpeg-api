@@ -639,10 +639,16 @@ app.post('/add-audio', async (req, res) => {
 
 
 const getVideoInfo = async (videoPath) => {
-  const { stdout } = await execPromise(`ffmpeg -i "${videoPath}" -hide_banner`);
-  const hasAudioStream = stdout.includes('Audio:');
-  return { hasAudioStream };
+  try {
+    const { stdout } = await execPromise(`ffmpeg -i "${videoPath}" -hide_banner`);
+    const hasAudioStream = stdout.includes('Audio:');
+    return { hasAudioStream };
+  } catch (error) {
+    console.error('Error fetching video info:', error.message);
+    throw new Error('Could not get video info');
+  }
 };
+
 
 
 
