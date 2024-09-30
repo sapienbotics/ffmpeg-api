@@ -563,7 +563,6 @@ app.post('/get-audio-duration', async (req, res) => {
   }
 });
 
-
 app.post('/add-audio', async (req, res) => {
   try {
     const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume = 1, backgroundVolume = 0.5 } = req.body;
@@ -577,17 +576,13 @@ app.post('/add-audio', async (req, res) => {
     const videoPath = path.join(storageDir, `${uuidv4()}_input_video.mp4`);
     const contentAudioPath = path.join(storageDir, `${uuidv4()}_content_audio.mp3`);
     const backgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
-    const outputFilePath = path.join(outputDir, `${uuidv4()}_final_output.mp4`); // Store final output in outputDir
+    const outputFilePath = path.join(outputDir, `${uuidv4()}_final_output.mp4`);
 
     // Download the video and audio files
-    console.log("Downloading video...");
     await downloadFile(videoUrl, videoPath);
-    console.log("Downloading content audio...");
     await downloadFile(contentAudioUrl, contentAudioPath);
-
     let backgroundAudioExists = false;
     if (backgroundAudioUrl) {
-      console.log("Downloading background audio...");
       try {
         await downloadFile(backgroundAudioUrl, backgroundAudioPath);
         backgroundAudioExists = true;
@@ -596,21 +591,30 @@ app.post('/add-audio', async (req, res) => {
       }
     }
 
-    // Prepare the FFmpeg command based on the availability of background audio
+    // Check if the video has an audio stream
+    const videoInfo = await getVideoInfo(videoPath);
+    const hasVideoAudio = videoInfo.hasAudioStream;
+
+    // Prepare the FFmpeg command based on the availability of video audio and background audio
     let ffmpegCommand;
-    if (backgroundAudioExists) {
-      // Command with background audio
+    if (hasVideoAudio && backgroundAudioExists) {
+      // Command with video, content, and background audio
       ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=first:dropout_transition=3[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
-    } else {
-      // Command without background audio
+    } else if (hasVideoAudio) {
+      // Command with video and content audio only
       ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=first:dropout_transition=3[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
+    } else if (backgroundAudioExists) {
+      // Command with content and background audio only (no audio in video)
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=first:dropout_transition=3[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
+    } else {
+      // Command with content audio only (no audio in video or background)
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest "${outputFilePath}"`;
     }
 
     // Execute the FFmpeg command
-    console.log("Merging video and audio...");
     await execPromise(ffmpegCommand);
 
-    // Clean up temporary files (optional)
+    // Clean up temporary files
     fs.unlinkSync(videoPath);
     fs.unlinkSync(contentAudioPath);
     if (backgroundAudioExists) {
@@ -632,6 +636,15 @@ app.post('/add-audio', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
   }
 });
+
+
+const getVideoInfo = async (videoPath) => {
+  const { stdout } = await execPromise(`ffmpeg -i "${videoPath}" -hide_banner`);
+  const hasAudioStream = stdout.includes('Audio:');
+  return { hasAudioStream };
+};
+
+
 
 
 
