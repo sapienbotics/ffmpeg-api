@@ -598,17 +598,17 @@ app.post('/add-audio', async (req, res) => {
     // Prepare the FFmpeg command based on the availability of video audio and background audio
     let ffmpegCommand;
     if (hasVideoAudio && backgroundAudioExists) {
-      // Command with video, content, and background audio
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest:dropout_transition=2[a];[a]aresample=async=1" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
+      // Video, content, and background audio
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest:dropout_transition=2,aresample=async=1[aout]" -map 0:v -map "[aout]" -c:v copy -shortest "${outputFilePath}"`;
     } else if (hasVideoAudio) {
-      // Command with video and content audio only
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest:dropout_transition=2[a];[a]aresample=async=1" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
+      // Video and content audio only
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest:dropout_transition=2,aresample=async=1[aout]" -map 0:v -map "[aout]" -c:v copy -shortest "${outputFilePath}"`;
     } else if (backgroundAudioExists) {
-      // Command with content and background audio only (no audio in video)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest:dropout_transition=2[a];[a]aresample=async=1" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
+      // Content and background audio only (no audio in video)
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest:dropout_transition=2,aresample=async=1[aout]" -map 0:v -map "[aout]" -c:v copy -shortest "${outputFilePath}"`;
     } else {
-      // Command with content audio only (no audio in video or background)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1" -map 0:v -map "[content]" -c:v copy -shortest "${outputFilePath}"`;
+      // Content audio only (no audio in video or background)
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1[aout]" -map 0:v -map "[aout]" -c:v copy -shortest "${outputFilePath}"`;
     }
 
     // Execute the FFmpeg command
@@ -648,6 +648,7 @@ const getVideoInfo = async (videoPath) => {
     throw new Error('Could not get video info');
   }
 };
+
 
 
 
