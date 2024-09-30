@@ -599,13 +599,13 @@ app.post('/add-audio', async (req, res) => {
     let ffmpegCommand;
     if (hasVideoAudio && backgroundAudioExists) {
       // Command with video, content, and background audio
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=first:dropout_transition=3[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
     } else if (hasVideoAudio) {
       // Command with video and content audio only
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=first:dropout_transition=3[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
     } else if (backgroundAudioExists) {
       // Command with content and background audio only (no audio in video)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=first:dropout_transition=3[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest:dropout_transition=2[a]" -map 0:v -map "[a]" -c:v copy -shortest "${outputFilePath}"`;
     } else {
       // Command with content audio only (no audio in video or background)
       ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest "${outputFilePath}"`;
@@ -637,7 +637,7 @@ app.post('/add-audio', async (req, res) => {
   }
 });
 
-
+// Function to get video info and check if an audio stream exists
 const getVideoInfo = async (videoPath) => {
   try {
     const { stdout, stderr } = await execPromise(`ffmpeg -i "${videoPath}" -f null -`);
@@ -648,6 +648,7 @@ const getVideoInfo = async (videoPath) => {
     throw new Error('Could not get video info');
   }
 };
+
 
 
 
