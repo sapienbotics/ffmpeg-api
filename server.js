@@ -10,6 +10,7 @@ const { promisify } = require('util');
 const Vibrant = require('node-vibrant');
 
 
+
 const app = express();
 app.use(express.json());
 
@@ -159,11 +160,12 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
+
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     const startTime = Date.now(); // Start time for the entire function
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         console.log(`Starting conversion for image: ${imageUrl}`);
 
         // Log timing for each ffmpeg step
@@ -182,7 +184,18 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         } else if (orientation === 'square') {
             scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
         } else {
-            reject(new Error('Invalid orientation specified.'));
+            return reject(new Error('Invalid orientation specified.'));
+        }
+
+        // Get the dominant color from the image
+        let dominantColor;
+        try {
+            const palette = await Vibrant.from(imageUrl).getPalette();
+            dominantColor = palette.Vibrant.hex; // Extract the dominant color
+            console.log(`Dominant Color: ${dominantColor}`);
+        } catch (error) {
+            console.error(`Error extracting dominant color: ${error.message}`);
+            return reject(error);
         }
 
         ffmpeg()
@@ -206,7 +219,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             .on('codecData', () => {
                 timeLogger('Looping');
             })
-            .outputOptions('-vf', scaleOptions)  // Use dynamic scaling based on orientation
+            .outputOptions('-vf', `${scaleOptions},pad=${width}:${height}:${dominantColor}`) // Use dynamic scaling and dominant color padding
             .on('codecData', () => {
                 timeLogger('Resolution and Padding');
             })
