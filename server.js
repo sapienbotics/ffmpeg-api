@@ -338,8 +338,12 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
 
 
 // Function to process media sequence
-async function processMediaSequence(mediaSequence, resolution, orientation) {
+async function processMediaSequence(mediaSequence, orientation, resolution) {
     const videoPaths = [];
+
+    // Parse resolution
+    const [width, height] = resolution.split(':').map(Number);
+    console.log(`Parsed resolution: width=${width}, height=${height}`); // Add logging
 
     for (const media of mediaSequence) {
         const { url, duration } = media;
@@ -350,13 +354,13 @@ async function processMediaSequence(mediaSequence, resolution, orientation) {
             const localVideoPath = path.join(outputDir, path.basename(url));
             await downloadFile(url, localVideoPath);  // Download the video
 
-            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution); // Pass resolution
+            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation); // Pass resolution
             const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);
             videoPaths.push(trimmedVideoPath);
         } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
             console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
             try {
-                const videoPath = await convertImageToVideo(url, duration, resolution);  // Pass resolution
+                const videoPath = await convertImageToVideo(url, duration, resolution, orientation);  // Pass resolution
                 videoPaths.push(videoPath);
             } catch (error) {
                 console.error(`Error converting image to video: ${error.message}`);
@@ -379,6 +383,7 @@ async function processMediaSequence(mediaSequence, resolution, orientation) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 // Function to convert video to a standard format and resolution
