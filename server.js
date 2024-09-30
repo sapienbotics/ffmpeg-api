@@ -74,12 +74,7 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
     }
 };
 
-// Function to get the dominant color from an image
-async function getDominantColor(imageUrl) {
-    const palette = await Vibrant.from(imageUrl).getPalette();
-    const dominantColor = palette.Vibrant.hex; // You can choose different swatches
-    return dominantColor;
-}
+
 
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
@@ -161,6 +156,13 @@ const createFileList = (mediaSequence, outputDir) => {
 };
 
 
+
+// Function to extract dominant color from an image
+const extractDominantColor = async (imagePath) => {
+    const palette = await Vibrant.from(imagePath).getPalette();
+    return palette.Vibrant.hex; // Get the hex value of the dominant color
+};
+
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     const startTime = Date.now(); // Start time for the entire function
@@ -173,33 +175,27 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             console.log(`${step} took ${Date.now() - startTime} ms`);
         };
 
+        const outputPath = './downloaded_image.jpg'; // Specify your output path for downloading
+        await downloadFile(imageUrl, outputPath); // Download the image
+        const dominantColor = await extractDominantColor(outputPath); // Extract the dominant color
+
         const [width, height] = resolution.split(':').map(Number);
         let scaleOptions;
 
         // Determine padding based on orientation
         if (orientation === 'portrait') {
-            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
         } else if (orientation === 'landscape') {
-            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
         } else if (orientation === 'square') {
-            scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`;
+            scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
         } else {
-            return reject(new Error('Invalid orientation specified.'));
-        }
-
-        // Get the dominant color from the image
-        let dominantColor;
-        try {
-            const palette = await Vibrant.from(imageUrl).getPalette();
-            dominantColor = palette.Vibrant.hex; // Extract the dominant color
-            console.log(`Dominant Color: ${dominantColor}`);
-        } catch (error) {
-            console.error(`Error extracting dominant color: ${error.message}`);
-            return reject(error);
+            reject(new Error('Invalid orientation specified.'));
+            return; // Early exit on error
         }
 
         ffmpeg()
-            .input(imageUrl)
+            .input(outputPath) // Use the downloaded image
             .on('start', () => {
                 console.log('FFmpeg process started.');
             })
@@ -219,7 +215,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             .on('codecData', () => {
                 timeLogger('Looping');
             })
-            .outputOptions('-vf', `${scaleOptions},pad=${width}:${height}:${dominantColor}`) // Use dynamic scaling and dominant color padding
+            .outputOptions('-vf', scaleOptions)  // Use dynamic scaling based on orientation
             .on('codecData', () => {
                 timeLogger('Resolution and Padding');
             })
@@ -232,6 +228,8 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             .save(outputFilePath);
     });
 }
+
+
 
 
 
