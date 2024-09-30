@@ -122,7 +122,7 @@ async function trimVideo(videoUrl, duration) {
                 `-t ${duration}`, 
                 '-r 15', 
                 '-c:v libx264', 
-                '-preset veryfast',
+                '-preset fast',
                 '-crf 22',
                 '-vf setsar=1/1' // Ensure the SAR is set, but no scaling is applied
             ])
@@ -220,7 +220,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 timeLogger('Resolution and Padding');
             })
             .outputOptions('-r', '15')
-            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
             .outputOptions('-threads', '6')
             .on('codecData', () => {
                 timeLogger('Encoding Settings');
@@ -334,7 +334,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22')
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '22')
             // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
@@ -426,7 +426,7 @@ async function convertVideoToStandardFormat(inputVideoPath, duration, resolution
         ffmpeg()
             .input(inputVideoPath)
             .outputOptions('-vf', scaleOptions)
-            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
             .on('end', () => {
                 console.log(`Converted video to standard format: ${outputVideoPath}`);
                 resolve(outputVideoPath);
