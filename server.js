@@ -220,7 +220,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 timeLogger('Resolution and Padding');
             })
             .outputOptions('-r', '15')
-            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')
             .outputOptions('-threads', '6')
             .on('codecData', () => {
                 timeLogger('Encoding Settings');
@@ -426,7 +426,7 @@ async function convertVideoToStandardFormat(inputVideoPath, duration, resolution
         ffmpeg()
             .input(inputVideoPath)
             .outputOptions('-vf', scaleOptions)
-            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
+            .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23')
             .on('end', () => {
                 console.log(`Converted video to standard format: ${outputVideoPath}`);
                 resolve(outputVideoPath);
