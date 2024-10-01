@@ -52,10 +52,15 @@ const downloadFile = async (url, outputPath, timeout = 30000) => {
             });
         });
     } catch (error) {
-        console.error(`Error downloading file from ${url}:`, error.message);
+        if (error.response && error.response.status === 403) {
+            console.error(`Error 403: Forbidden access to URL ${url}`);
+        } else {
+            console.error(`Error downloading file from ${url}: ${error.message}`);
+        }
         throw error; // Re-throw error for handling in the calling function
     }
 };
+
 
 // Helper function to retry downloading files if they fail
 const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 10000) => {
@@ -423,10 +428,12 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 const additionalTimePerMedia = totalFailedDuration / validMediaCount;
                 console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
                 
-                // Adjust the duration for each media
+                // Adjust the duration for each valid media
                 for (let i = 0; i < mediaSequence.length; i++) {
-                    mediaSequence[i].duration += additionalTimePerMedia;
-                    console.log(`Adjusted duration for media ${i + 1}: ${mediaSequence[i].duration}`);
+                    if (mediaSequence[i].url && !videoPaths.includes(mediaSequence[i].url)) {
+                        mediaSequence[i].duration += additionalTimePerMedia;
+                        console.log(`Adjusted duration for media ${i + 1}: ${mediaSequence[i].duration}`);
+                    }
                 }
             }
 
