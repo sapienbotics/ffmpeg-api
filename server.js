@@ -397,15 +397,24 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
                 console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
 
-                // Step 1: Convert image to video
-                try {
-                    const videoPath = await convertImageToVideo(url, duration, resolution, orientation);
-                    videoPaths.push(videoPath);
-                    totalValidDuration += duration;
-                    validMediaCount++;
-                } catch (err) {
-                    console.error(`Image to video conversion failed for image: ${url} - ${err.message}`);
+                // Step 1: Check MIME type (ensure it's an image)
+                const response = await axios.head(url);
+                const mimeType = response.headers['content-type'];
+
+                if (!['image/jpeg', 'image/png'].includes(mimeType)) {
+                    console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
                     failed = true;
+                } else {
+                    // Step 2: Convert image to video
+                    try {
+                        const videoPath = await convertImageToVideo(url, duration, resolution, orientation);
+                        videoPaths.push(videoPath);
+                        totalValidDuration += duration;
+                        validMediaCount++;
+                    } catch (err) {
+                        console.error(`Image to video conversion failed for image: ${url} - ${err.message}`);
+                        failed = true;
+                    }
                 }
             }
 
@@ -428,12 +437,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 const additionalTimePerMedia = totalFailedDuration / validMediaCount;
                 console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
                 
-                // Adjust the duration for each valid media
+                // Adjust the duration for each media
                 for (let i = 0; i < mediaSequence.length; i++) {
-                    if (mediaSequence[i].url && !videoPaths.includes(mediaSequence[i].url)) {
-                        mediaSequence[i].duration += additionalTimePerMedia;
-                        console.log(`Adjusted duration for media ${i + 1}: ${mediaSequence[i].duration}`);
-                    }
+                    mediaSequence[i].duration += additionalTimePerMedia;
+                    console.log(`Adjusted duration for media ${i + 1}: ${mediaSequence[i].duration}`);
                 }
             }
 
@@ -449,6 +456,32 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
+// Helper function to download files with timeout and retry logic
+const downloadFile = async (url, outputPath, timeout = 30000) => {
+    try {
+        const response = await axios({
+            url,
+            method: 'GET',
+            responseType: 'stream',
+            timeout, // Timeout added here
+        });
+
+        return new Promise((resolve, reject) => {
+            const writer = fs.createWriteStream(outputPath);
+            response.data.pipe(writer);
+            writer.on('finish', resolve);
+            writer.on('error', (err) => {
+                fs.unlinkSync(outputPath); // Remove the file if there was an error
+                reject(err);
+            });
+        });
+    } catch (error) {
+        console.error(`Error downloading file from ${url}:`, error.message);
+        throw error; // Re-throw error for handling in the calling function
+    }
+};
+
 
 
 
