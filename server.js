@@ -463,7 +463,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
 
 
-
 // Function to convert video to a standard format and resolution
 async function convertVideoToStandardFormat(inputVideoPath, duration, resolution, orientation) {
     const outputVideoPath = path.join(outputDir, `${Date.now()}_converted.mp4`);
