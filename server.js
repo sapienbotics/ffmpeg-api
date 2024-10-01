@@ -231,14 +231,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
 
 
 
-
-
-
-
-
-
-
-
 // Function to get audio duration using ffmpeg
 const getAudioDuration = async (audioPath) => {
   return new Promise((resolve, reject) => {
@@ -253,7 +245,6 @@ const getAudioDuration = async (audioPath) => {
     });
   });
 };
-
 
 
 
@@ -645,18 +636,20 @@ app.post('/add-audio', async (req, res) => {
 
     // Prepare the FFmpeg command based on the availability of video audio and background audio
     let ffmpegCommand;
+    const commonSettings = `-ar 44100 -bufsize 1000k -threads 2`;
+
     if (hasVideoAudio && backgroundAudioExists) {
       // Video, content, and background audio
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy -ar 44100 -shortest "${outputFilePath}"`;
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
     } else if (hasVideoAudio) {
       // Video and content audio only
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy -ar 44100 -shortest "${outputFilePath}"`;
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
     } else if (backgroundAudioExists) {
       // Content and background audio only (no audio in video)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy -ar 44100 -shortest "${outputFilePath}"`;
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
     } else {
       // Content audio only (no audio in video or background)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy -ar 44100 -shortest "${outputFilePath}"`;
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
     }
 
     // Execute the FFmpeg command
@@ -685,18 +678,6 @@ app.post('/add-audio', async (req, res) => {
   }
 });
 
-
-// Function to get video info and check if an audio stream exists
-const getVideoInfo = async (videoPath) => {
-  try {
-    const { stdout, stderr } = await execPromise(`ffmpeg -i "${videoPath}" -f null -`);
-    const hasAudioStream = stderr.includes('Audio:');
-    return { hasAudioStream };
-  } catch (error) {
-    console.error('Error fetching video info:', error.message);
-    throw new Error('Could not get video info');
-  }
-};
 
 
 
