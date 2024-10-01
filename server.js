@@ -419,7 +419,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             // Step 3: Handle failure
             if (failed) {
                 console.log(`Media processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
-                totalFailedDuration += duration;
+                totalFailedDuration += duration;  // Add failed duration
             }
 
         } catch (error) {
@@ -437,8 +437,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 
                 // Adjust the duration for each media
                 for (let i = 0; i < mediaSequence.length; i++) {
-                    mediaSequence[i].duration += additionalTimePerMedia;
-                    console.log(`Adjusted duration for media ${i + 1}: ${mediaSequence[i].duration}`);
+                    if (videoPaths.includes(mediaSequence[i])) {
+                        mediaSequence[i].duration += additionalTimePerMedia;
+                        console.log(`Adjusted duration for media ${i + 1}: ${mediaSequence[i].duration}`);
+                    }
                 }
             }
 
