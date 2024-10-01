@@ -488,9 +488,17 @@ async function convertVideoToStandardFormat(inputVideoPath, duration, resolution
     });
 }
 
-
-
-
+// Function to get video info and check if an audio stream exists
+const getVideoInfo = async (videoPath) => {
+  try {
+    const { stdout, stderr } = await execPromise(`ffmpeg -i "${videoPath}" -f null -`);
+    const hasAudioStream = stderr.includes('Audio:');
+    return { hasAudioStream };
+  } catch (error) {
+    console.error('Error fetching video info:', error.message);
+    throw new Error('Could not get video info');
+  }
+};
 
 
 
