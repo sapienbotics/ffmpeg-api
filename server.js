@@ -145,8 +145,6 @@ async function trimVideo(videoUrl, duration) {
 
 
 
-
-
 // Helper function to create file_list.txt for FFmpeg
 const createFileList = (mediaSequence, outputDir) => {
     const fileListContent = mediaSequence.map(media => {
@@ -456,32 +454,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
-
-// Helper function to download files with timeout and retry logic
-const downloadFile = async (url, outputPath, timeout = 30000) => {
-    try {
-        const response = await axios({
-            url,
-            method: 'GET',
-            responseType: 'stream',
-            timeout, // Timeout added here
-        });
-
-        return new Promise((resolve, reject) => {
-            const writer = fs.createWriteStream(outputPath);
-            response.data.pipe(writer);
-            writer.on('finish', resolve);
-            writer.on('error', (err) => {
-                fs.unlinkSync(outputPath); // Remove the file if there was an error
-                reject(err);
-            });
-        });
-    } catch (error) {
-        console.error(`Error downloading file from ${url}:`, error.message);
-        throw error; // Re-throw error for handling in the calling function
-    }
-};
-
 
 
 
