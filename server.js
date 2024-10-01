@@ -435,14 +435,15 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 const additionalTimePerMedia = totalFailedDuration / validMediaCount;
                 console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
                 
-                // Adjust the duration for each media
-                for (const media of mediaSequence) {
-                    // Only adjust for valid media
-                    if (!videoPaths.includes(media.url)) {
-                        media.duration += additionalTimePerMedia;
+                // Adjust the duration for each valid media
+                videoPaths.forEach((videoPath) => {
+                    // Find the corresponding media in the original sequence
+                    const media = mediaSequence.find(m => videoPath.includes(m.url));
+                    if (media) {
+                        media.duration += additionalTimePerMedia; // Adjust the duration
                         console.log(`Adjusted duration for media ${media.url}: ${media.duration}`);
                     }
-                }
+                });
             }
 
             const mergeResult = await mergeMediaUsingFile(videoPaths, resolution, orientation);
@@ -457,6 +458,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
