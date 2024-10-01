@@ -33,7 +33,7 @@ if (!fs.existsSync(outputDir)) {
 
 
 // Helper function to download files with timeout and retry logic
-const downloadFile = async (url, outputPath, timeout = 10000) => {
+const downloadFile = async (url, outputPath, timeout = 30000) => {
     try {
         const response = await axios({
             url,
@@ -346,41 +346,91 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
 
 
 
-// Function to process media sequence
+// Function to process media sequence with failure handling at each step
 async function processMediaSequence(mediaSequence, orientation, resolution) {
     const videoPaths = [];
+    let totalValidDuration = 0;
+    let totalFailedDuration = 0;
+    let validMediaCount = 0;
 
     // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
-    console.log(`Parsed resolution: width=${width}, height=${height}`); // Add logging
+    console.log(`Parsed resolution: width=${width}, height=${height}`);
 
     for (const media of mediaSequence) {
         const { url, duration } = media;
         const fileType = path.extname(url).toLowerCase();
+        let failed = false;
 
-        if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
-            console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-            const localVideoPath = path.join(outputDir, path.basename(url));
-            await downloadFile(url, localVideoPath);  // Download the video
+        // Handle each media step separately to ensure failures are caught
+        try {
+            if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
+                console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
 
-            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation); // Pass resolution
-            const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);
-            videoPaths.push(trimmedVideoPath);
-        } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
-            console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
-            try {
-                const videoPath = await convertImageToVideo(url, duration, resolution, orientation);  // Pass resolution
-                videoPaths.push(videoPath);
-            } catch (error) {
-                console.error(`Error converting image to video: ${error.message}`);
-                continue;
+                // Step 1: Download video
+                const localVideoPath = path.join(outputDir, path.basename(url));
+                try {
+                    await downloadFile(url, localVideoPath);
+                } catch (err) {
+                    console.error(`Download failed for video: ${url} - ${err.message}`);
+                    failed = true;
+                }
+
+                // Step 2: Convert video (if download successful)
+                if (!failed) {
+                    try {
+                        const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
+                        const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);
+                        videoPaths.push(trimmedVideoPath);
+                        totalValidDuration += duration;
+                        validMediaCount++;
+                    } catch (err) {
+                        console.error(`Conversion/Trimming failed for video: ${url} - ${err.message}`);
+                        failed = true;
+                    }
+                }
+            } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
+                console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
+
+                // Step 1: Convert image to video
+                try {
+                    const videoPath = await convertImageToVideo(url, duration, resolution, orientation);
+                    videoPaths.push(videoPath);
+                    totalValidDuration += duration;
+                    validMediaCount++;
+                } catch (err) {
+                    console.error(`Image to video conversion failed for image: ${url} - ${err.message}`);
+                    failed = true;
+                }
             }
+
+            // Step 3: Handle failure
+            if (failed) {
+                console.log(`Media processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
+                totalFailedDuration += duration;
+            }
+
+        } catch (error) {
+            console.error(`Unexpected error processing media (${url}): ${error.message}`);
+            totalFailedDuration += duration;  // Add the media duration to failed if unexpected error occurs
         }
     }
 
     if (videoPaths.length > 0) {
         try {
-            const mergeResult = await mergeMediaUsingFile(videoPaths, resolution, orientation); // Pass resolution and orientation
+            // Redistribute failed media duration across remaining valid media
+            if (totalFailedDuration > 0 && validMediaCount > 0) {
+                const additionalTimePerMedia = totalFailedDuration / validMediaCount;
+                console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
+                
+                // Adjust the duration for each media
+                for (let i = 0; i < mediaSequence.length; i++) {
+                    mediaSequence[i].duration += additionalTimePerMedia;
+                    console.log(`Adjusted duration for media ${i + 1}: ${mediaSequence[i].duration}`);
+                }
+            }
+
+            const mergeResult = await mergeMediaUsingFile(videoPaths, resolution, orientation);
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
             return mergeResult.outputFileUrl;
         } catch (error) {
@@ -392,6 +442,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
