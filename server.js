@@ -424,9 +424,9 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 if (!failed) {
                     try {
                         const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
-                        const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration); // Trim based on redistributed time
+                        const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration || duration); // Ensure newDuration is valid
                         videoPaths.push(trimmedVideoPath);
-                        totalValidDuration += newDuration;
+                        totalValidDuration += newDuration || duration;
                         validMediaCount++;
                     } catch (err) {
                         console.error(`Conversion/Trimming failed for video: ${url} - ${err.message}`);
@@ -445,9 +445,9 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     failed = true;
                 } else {
                     try {
-                        const videoPath = await convertImageToVideo(url, newDuration, resolution, orientation); // Reprocess the original image with updated duration
+                        const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation); // Reprocess original image with updated duration
                         videoPaths.push(videoPath);
-                        totalValidDuration += newDuration;
+                        totalValidDuration += newDuration || duration;
                         validMediaCount++;
                     } catch (err) {
                         console.error(`Image to video conversion failed for image: ${url} - ${err.message}`);
@@ -459,13 +459,13 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             if (!failed) {
                 validMedia.push(media);  // Keep track of valid media
             } else {
-                console.log(`Media processing failed for URL: ${url}, adding ${newDuration}s to failed duration.`);
-                totalFailedDuration += newDuration;
+                console.log(`Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
+                totalFailedDuration += newDuration || duration;
             }
 
         } catch (error) {
             console.error(`Unexpected error processing media (${url}): ${error.message}`);
-            totalFailedDuration += newDuration;  // Add the media duration to failed if unexpected error occurs
+            totalFailedDuration += newDuration || duration;  // Add the media duration to failed if unexpected error occurs
         }
     }
 
@@ -510,7 +510,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
-
 
 
 // Function to convert video to a standard format and resolution
