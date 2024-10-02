@@ -407,10 +407,9 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     const maxRetries = 3; // Maximum retry limit for processing
 
     while (mediaToProcess.length > 0) {
-        const currentMediaSequence = [...mediaToProcess]; // Clone the media sequence to process in this iteration
+        const currentMediaSequence = [...mediaToProcess]; // Clone the media sequence for this iteration
         mediaToProcess = []; // Reset for potential reprocessing
 
-        // Track retries for each media item
         const retryCount = new Map();
 
         for (const media of currentMediaSequence) {
@@ -418,13 +417,13 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             const fileType = path.extname(url).toLowerCase();
             let failed = false;
 
-            try {
-                // Initialize retry count
-                if (!retryCount.has(url)) {
-                    retryCount.set(url, 0);
-                }
+            // Initialize retry count for the media item
+            if (!retryCount.has(url)) {
+                retryCount.set(url, 0);
+            }
 
-                // Handle video processing
+            try {
+                // Process videos
                 if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
                     console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
                     const localVideoPath = path.join(outputDir, path.basename(url));
@@ -449,7 +448,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                         }
                     }
                 }
-                // Handle image processing
+                // Process images
                 else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
                     console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
                     const response = await axios.head(url);
@@ -479,7 +478,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     // Increment retry count
                     retryCount.set(url, retryCount.get(url) + 1);
 
-                    // Only add to reprocess if it hasn't exceeded max retries
+                    // Only reprocess if it hasn't exceeded max retries
                     if (retryCount.get(url) < maxRetries) {
                         mediaToProcess.push(media); // Add to reprocess queue
                     } else {
@@ -505,7 +504,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             const additionalTimePerMedia = totalFailedDuration / validMediaCount;
             console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
 
-            // Adjust the duration for each valid media using adjustedDurations
+            // Adjust the duration for each valid media
             videoPaths.forEach((videoPath, index) => {
                 if (index < adjustedDurations.length) {
                     adjustedDurations[index] += additionalTimePerMedia; // Adjust the duration for the video
@@ -532,8 +531,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
-
-
 
 
 
