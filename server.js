@@ -415,40 +415,41 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
                 try {
                     await downloadFile(url, localVideoPath);
-                } catch (err) {
-                    console.error(`Download failed for video: ${url} - ${err.message}`);
-                    failed = true; // Set failed to true if the download fails
-                }
-
-                if (!failed) {
                     videoPaths.push({ path: localVideoPath, originalDuration: duration, isOriginalVideo: true });
                     totalValidDuration += duration; // Only add to valid duration
                     validMediaCount++;
                     validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
+                } catch (err) {
+                    console.error(`Download failed for video: ${url} - ${err.message}`);
+                    failed = true; // Set failed to true if the download fails
                 }
             } 
             // Handle image processing
             else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
                 console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
-                const response = await axios.head(url);
-                const mimeType = response.headers['content-type'];
+                try {
+                    const response = await axios.head(url);
+                    const mimeType = response.headers['content-type'];
 
-                if (!['image/jpeg', 'image/png'].includes(mimeType)) {
-                    console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
-                    failed = true; // Set failed to true for unsupported MIME type
-                } else {
-                    videoPaths.push({ url, originalDuration: duration, isOriginalVideo: false }); // Mark as image
-                    totalValidDuration += duration; // Only add to valid duration
-                    validMediaCount++;
-                    validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
+                    if (!['image/jpeg', 'image/png'].includes(mimeType)) {
+                        console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
+                        failed = true; // Set failed to true for unsupported MIME type
+                    } else {
+                        videoPaths.push({ url, originalDuration: duration, isOriginalVideo: false }); // Mark as image
+                        totalValidDuration += duration; // Only add to valid duration
+                        validMediaCount++;
+                        validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
+                    }
+                } catch (error) {
+                    console.error(`Failed to check image URL: ${url} - ${error.message}`);
+                    failed = true; // Set failed to true if there's an error fetching the image
+                }
+
+                if (failed) {
+                    console.log(`Image processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
+                    totalFailedDuration += duration; // Add to failed duration if processing fails
                 }
             }
-
-            if (failed) {
-                console.log(`Media processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
-                totalFailedDuration += duration; // Add to failed duration if processing fails
-            }
-
         } catch (error) {
             console.error(`Unexpected error processing media (${url}): ${error.message}`);
             totalFailedDuration += duration;  // Add the media duration to failed if unexpected error occurs
@@ -484,21 +485,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
             const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);  // Use adjusted duration here
             videoPaths[i].trimmedPath = trimmedVideoPath;
-        }
-    }
-
-    // Begin processing on original media for redistribution
-    for (let i = 0; i < validMediaIndices.length; i++) {
-        const originalMedia = mediaSequence[validMediaIndices[i]];
-        const originalDuration = originalMedia.duration; // Use adjusted duration
-
-        if (['.jpg', '.jpeg', '.png'].includes(path.extname(originalMedia.url).toLowerCase())) {
-            // Convert image to video
-            await convertImageToVideo(originalMedia.url, originalDuration, resolution, orientation);
-        } else {
-            // Process original videos
-            const convertedVideoPath = await convertVideoToStandardFormat(originalMedia.url, originalDuration, resolution, orientation);
-            await trimVideo(convertedVideoPath, originalDuration);
         }
     }
 
