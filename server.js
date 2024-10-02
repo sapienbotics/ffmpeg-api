@@ -379,12 +379,13 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
 
 
 
-// Function to process media sequence with failure handling at each step
 async function processMediaSequence(mediaSequence, orientation, resolution) {
     const videoPaths = [];
     let totalValidDuration = 0;
     let totalFailedDuration = 0;
     let validMediaCount = 0;
+
+    const adjustedDurations = mediaSequence.map(media => media.duration); // Keep track of the original durations
 
     // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
@@ -395,13 +396,12 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         const fileType = path.extname(url).toLowerCase();
         let failed = false;
 
-        // Handle each media step separately to ensure failures are caught
         try {
+            // Handle video processing
             if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
                 console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-
-                // Step 1: Download video
                 const localVideoPath = path.join(outputDir, path.basename(url));
+                
                 try {
                     await downloadFile(url, localVideoPath);
                 } catch (err) {
@@ -409,7 +409,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     failed = true;
                 }
 
-                // Step 2: Convert video (if download successful)
                 if (!failed) {
                     try {
                         const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
@@ -422,10 +421,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                         failed = true;
                     }
                 }
-            } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
+            } 
+            // Handle image processing
+            else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
                 console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
-
-                // Step 1: Check MIME type (ensure it's an image)
                 const response = await axios.head(url);
                 const mimeType = response.headers['content-type'];
 
@@ -433,7 +432,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
                     failed = true;
                 } else {
-                    // Step 2: Convert image to video
                     try {
                         const videoPath = await convertImageToVideo(url, duration, resolution, orientation);
                         videoPaths.push(videoPath);
@@ -446,7 +444,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 }
             }
 
-            // Step 3: Handle failure
+            // Handle failure
             if (failed) {
                 console.log(`Media processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
                 totalFailedDuration += duration;
@@ -464,14 +462,12 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             if (totalFailedDuration > 0 && validMediaCount > 0) {
                 const additionalTimePerMedia = totalFailedDuration / validMediaCount;
                 console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
-                
-                // Adjust the duration for each valid media
-                videoPaths.forEach((videoPath) => {
-                    // Find the corresponding media in the original sequence
-                    const media = mediaSequence.find(m => videoPath.includes(m.url));
-                    if (media) {
-                        media.duration += additionalTimePerMedia; // Adjust the duration
-                        console.log(`Adjusted duration for media ${media.url}: ${media.duration}`);
+
+                // Adjust the duration for each valid media using adjustedDurations
+                videoPaths.forEach((videoPath, index) => {
+                    if (index < adjustedDurations.length) {
+                        adjustedDurations[index] += additionalTimePerMedia; // Adjust the duration for the video
+                        console.log(`Adjusted duration for media ${mediaSequence[index].url}: ${adjustedDurations[index]}`);
                     }
                 });
             }
@@ -488,6 +484,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
