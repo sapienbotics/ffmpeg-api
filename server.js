@@ -86,6 +86,7 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
         // Step 1: Get MIME type
         const response = await axios.head(imageUrl);
         const mimeType = response.headers['content-type'];
+        console.log(`Initial MIME type of the image: ${mimeType}`);
 
         // Step 2: Download the image
         const imageResponse = await axios({
@@ -101,12 +102,16 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
             // Convert webp to jpg
             finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
             buffer = await sharp(buffer).toFormat('jpg').toBuffer();
+            const { info } = await sharp(buffer).metadata();
+            console.log(`Converted image format: ${info.format}`); // Should log 'jpeg'
             console.log('Converted webp image to jpg.');
+        } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
+            throw new Error(`Unsupported MIME type: ${mimeType}`);
         }
 
         // Step 4: Save the image
         fs.writeFileSync(finalOutputPath, buffer);
-        console.log(`Image downloaded and saved as ${finalOutputPath}`);
+        console.log(`Image successfully written to ${finalOutputPath}`);
         return finalOutputPath;
 
     } catch (error) {
