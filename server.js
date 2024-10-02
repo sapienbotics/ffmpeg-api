@@ -85,7 +85,7 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
     try {
         // Step 1: Get MIME type
         const response = await axios.head(imageUrl);
-        const mimeType = response.headers['content-type'];
+        let mimeType = response.headers['content-type'];
         console.log(`Initial MIME type of the image: ${mimeType}`);
 
         // Step 2: Download the image
@@ -97,7 +97,7 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
         let buffer = imageResponse.data;
         let finalOutputPath = outputFilePath;
 
-        // Step 3: Convert if necessary
+        // Step 3: Convert if necessary or inspect the image if MIME type is unsupported
         if (mimeType === 'image/webp') {
             // Convert webp to jpg
             finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
@@ -105,6 +105,18 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
             const { info } = await sharp(buffer).metadata();
             console.log(`Converted image format: ${info.format}`); // Should log 'jpeg'
             console.log('Converted webp image to jpg.');
+        } else if (mimeType === 'application/octet-stream') {
+            // Attempt to infer MIME type using sharp
+            const metadata = await sharp(buffer).metadata();
+            console.log(`Inferred image format using sharp: ${metadata.format}`);
+
+            if (['jpeg', 'png'].includes(metadata.format)) {
+                // Convert and proceed
+                finalOutputPath = outputFilePath.replace('.jpg', `_${metadata.format}.jpg`);
+                buffer = await sharp(buffer).toFormat('jpg').toBuffer();
+            } else {
+                throw new Error(`Unsupported inferred MIME type: ${metadata.format}`);
+            }
         } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
             throw new Error(`Unsupported MIME type: ${mimeType}`);
         }
@@ -119,6 +131,7 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
         throw error;
     }
 }
+
 
 
 // Function to cleanup files
@@ -484,7 +497,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
-
 
 
 
