@@ -8,6 +8,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const util = require('util');
 const { promisify } = require('util');
 const Vibrant = require('node-vibrant');
+const sharp = require('sharp'); // Add sharp for image conversion
 
 
 
@@ -79,6 +80,40 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
     }
 };
 
+// Function to download and convert image if needed
+async function downloadAndConvertImage(imageUrl, outputFilePath) {
+    try {
+        // Step 1: Get MIME type
+        const response = await axios.head(imageUrl);
+        const mimeType = response.headers['content-type'];
+
+        // Step 2: Download the image
+        const imageResponse = await axios({
+            url: imageUrl,
+            responseType: 'arraybuffer' // Get raw image data as buffer
+        });
+
+        let buffer = imageResponse.data;
+        let finalOutputPath = outputFilePath;
+
+        // Step 3: Convert if necessary
+        if (mimeType === 'image/webp') {
+            // Convert webp to jpg
+            finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
+            buffer = await sharp(buffer).toFormat('jpg').toBuffer();
+            console.log('Converted webp image to jpg.');
+        }
+
+        // Step 4: Save the image
+        fs.writeFileSync(finalOutputPath, buffer);
+        console.log(`Image downloaded and saved as ${finalOutputPath}`);
+        return finalOutputPath;
+
+    } catch (error) {
+        console.error(`Failed to download or convert image: ${error.message}`);
+        throw error;
+    }
+}
 
 
 // Function to cleanup files
@@ -166,69 +201,59 @@ const extractDominantColor = async (imagePath) => {
     return palette.Vibrant.hex; // Get the hex value of the dominant color
 };
 
+// Use this in your image-to-video processing
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    const startTime = Date.now(); // Start time for the entire function
+    const startTime = Date.now(); 
 
     return new Promise(async (resolve, reject) => {
         console.log(`Starting conversion for image: ${imageUrl}`);
 
-        // Log timing for each ffmpeg step
-        const timeLogger = (step) => {
-            console.log(`${step} took ${Date.now() - startTime} ms`);
-        };
+        const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
+        
+        try {
+            // Step 1: Download the image (and convert if necessary)
+            const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
-        const outputPath = './downloaded_image.jpg'; // Specify your output path for downloading
-        await downloadFile(imageUrl, outputPath); // Download the image
-        const dominantColor = await extractDominantColor(outputPath); // Extract the dominant color
+            // Step 2: Extract the dominant color
+            const dominantColor = await extractDominantColor(finalImagePath);
 
-        const [width, height] = resolution.split(':').map(Number);
-        let scaleOptions;
+            const [width, height] = resolution.split(':').map(Number);
+            let scaleOptions;
 
-        // Determine padding based on orientation
-        if (orientation === 'portrait') {
-            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
-        } else if (orientation === 'landscape') {
-            scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
-        } else if (orientation === 'square') {
-            scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
-        } else {
-            reject(new Error('Invalid orientation specified.'));
-            return; // Early exit on error
+            if (orientation === 'portrait') {
+                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+            } else if (orientation === 'landscape') {
+                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+            } else if (orientation === 'square') {
+                scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+            } else {
+                reject(new Error('Invalid orientation specified.'));
+                return;
+            }
+
+            // Step 3: Convert image to video
+            ffmpeg()
+                .input(finalImagePath)
+                .loop(duration)
+                .outputOptions('-vf', scaleOptions)
+                .outputOptions('-r', '15')
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+                .outputOptions('-threads', '6')
+                .on('end', () => {
+                    console.log(`Image converted to video.`);
+                    resolve(outputFilePath);
+                })
+                .on('error', (err) => {
+                    console.error(`Error converting image to video: ${err.message}`);
+                    reject(err);
+                })
+                .save(outputFilePath);
+
+        } catch (error) {
+            console.error(`Image download or conversion failed: ${error.message}`);
+            reject(error);
         }
-
-        ffmpeg()
-            .input(outputPath) // Use the downloaded image
-            .on('start', () => {
-                console.log('FFmpeg process started.');
-            })
-            .on('progress', (progress) => {
-                console.log(`Processing: ${progress.frames} frames done at ${progress.currentFps} fps`);
-            })
-            .on('end', () => {
-                timeLogger('Total Conversion');
-                console.log(`Converted ${imageUrl} to video.`);
-                resolve(outputFilePath);
-            })
-            .on('error', (err) => {
-                console.error(`Error converting image to video: ${err.message}`);
-                reject(err);
-            })
-            .loop(duration)
-            .on('codecData', () => {
-                timeLogger('Looping');
-            })
-            .outputOptions('-vf', scaleOptions)  // Use dynamic scaling based on orientation
-            .on('codecData', () => {
-                timeLogger('Resolution and Padding');
-            })
-            .outputOptions('-r', '15')
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
-            .outputOptions('-threads', '6')
-            .on('codecData', () => {
-                timeLogger('Encoding Settings');
-            })
-            .save(outputFilePath);
     });
 }
 
