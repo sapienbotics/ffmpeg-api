@@ -397,124 +397,103 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     let validMediaCount = 0;
 
     const adjustedDurations = mediaSequence.map(media => media.duration); // Keep track of the original durations
-    const originalMediaSequence = [...mediaSequence]; // Preserve original media sequence for reprocessing
+    let validMedia = []; // Array to hold only valid media for reprocessing
 
     // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
     console.log(`Parsed resolution: width=${width}, height=${height}`);
 
-    let mediaToProcess = [...originalMediaSequence]; // Start with the original media
-    const maxRetries = 3; // Maximum retry limit for processing
+    async function processMedia(media, newDuration) {
+        const { url, duration } = media;
+        const fileType = path.extname(url).toLowerCase();
+        let failed = false;
 
-    while (mediaToProcess.length > 0) {
-        const currentMediaSequence = [...mediaToProcess]; // Clone the media sequence for this iteration
-        mediaToProcess = []; // Reset for potential reprocessing
+        try {
+            // Handle video processing
+            if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
+                console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
+                const localVideoPath = path.join(outputDir, path.basename(url));
+                
+                try {
+                    await downloadFile(url, localVideoPath);  // Always download the original video
+                } catch (err) {
+                    console.error(`Download failed for video: ${url} - ${err.message}`);
+                    failed = true;
+                }
 
-        const retryCount = new Map();
-
-        for (const media of currentMediaSequence) {
-            const { url, duration } = media;
-            const fileType = path.extname(url).toLowerCase();
-            let failed = false;
-
-            // Initialize retry count for the media item
-            if (!retryCount.has(url)) {
-                retryCount.set(url, 0);
-            }
-
-            try {
-                // Process videos
-                if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
-                    console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
-                    const localVideoPath = path.join(outputDir, path.basename(url));
-
+                if (!failed) {
                     try {
-                        await downloadFile(url, localVideoPath);
+                        const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
+                        const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration); // Trim based on redistributed time
+                        videoPaths.push(trimmedVideoPath);
+                        totalValidDuration += newDuration;
+                        validMediaCount++;
                     } catch (err) {
-                        console.error(`Download failed for video: ${url} - ${err.message}`);
+                        console.error(`Conversion/Trimming failed for video: ${url} - ${err.message}`);
                         failed = true;
                     }
-
-                    if (!failed) {
-                        try {
-                            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
-                            const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);
-                            videoPaths.push(trimmedVideoPath);
-                            totalValidDuration += duration;
-                            validMediaCount++;
-                        } catch (err) {
-                            console.error(`Conversion/Trimming failed for video: ${url} - ${err.message}`);
-                            failed = true;
-                        }
-                    }
                 }
-                // Process images
-                else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
-                    console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
-                    const response = await axios.head(url);
-                    const mimeType = response.headers['content-type'];
+            } 
+            // Handle image processing
+            else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
+                console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
+                const response = await axios.head(url);
+                const mimeType = response.headers['content-type'];
 
-                    if (!['image/jpeg', 'image/png'].includes(mimeType)) {
-                        console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
-                        failed = true;
-                    } else {
-                        try {
-                            const videoPath = await convertImageToVideo(url, duration, resolution, orientation);
-                            videoPaths.push(videoPath);
-                            totalValidDuration += duration;
-                            validMediaCount++;
-                        } catch (err) {
-                            console.error(`Image to video conversion failed for image: ${url} - ${err.message}`);
-                            failed = true;
-                        }
-                    }
-                }
-
-                // Handle failure
-                if (failed) {
-                    console.log(`Media processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
-                    totalFailedDuration += duration;
-
-                    // Increment retry count
-                    retryCount.set(url, retryCount.get(url) + 1);
-
-                    // Only reprocess if it hasn't exceeded max retries
-                    if (retryCount.get(url) < maxRetries) {
-                        mediaToProcess.push(media); // Add to reprocess queue
-                    } else {
-                        console.error(`Max retries reached for media: ${url}. It will not be reprocessed.`);
-                    }
-                }
-
-            } catch (error) {
-                console.error(`Unexpected error processing media (${url}): ${error.message}`);
-                totalFailedDuration += duration; // Add the media duration to failed if unexpected error occurs
-                retryCount.set(url, retryCount.get(url) + 1);
-
-                if (retryCount.get(url) < maxRetries) {
-                    mediaToProcess.push(media); // Add to reprocess queue
+                if (!['image/jpeg', 'image/png'].includes(mimeType)) {
+                    console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
+                    failed = true;
                 } else {
-                    console.error(`Max retries reached for media: ${url}. It will not be reprocessed.`);
+                    try {
+                        const videoPath = await convertImageToVideo(url, newDuration, resolution, orientation); // Reprocess the original image with updated duration
+                        videoPaths.push(videoPath);
+                        totalValidDuration += newDuration;
+                        validMediaCount++;
+                    } catch (err) {
+                        console.error(`Image to video conversion failed for image: ${url} - ${err.message}`);
+                        failed = true;
+                    }
                 }
             }
+
+            if (!failed) {
+                validMedia.push(media);  // Keep track of valid media
+            } else {
+                console.log(`Media processing failed for URL: ${url}, adding ${newDuration}s to failed duration.`);
+                totalFailedDuration += newDuration;
+            }
+
+        } catch (error) {
+            console.error(`Unexpected error processing media (${url}): ${error.message}`);
+            totalFailedDuration += newDuration;  // Add the media duration to failed if unexpected error occurs
+        }
+    }
+
+    // First pass: Process all media normally
+    for (const media of mediaSequence) {
+        await processMedia(media, media.duration);
+    }
+
+    // Check if there are failed media that requires redistribution
+    if (totalFailedDuration > 0 && validMediaCount > 0) {
+        const additionalTimePerMedia = totalFailedDuration / validMediaCount;
+        console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
+
+        // Adjust durations for valid media
+        for (let i = 0; i < validMedia.length; i++) {
+            adjustedDurations[i] += additionalTimePerMedia; // Adjust the duration for each valid media
+            console.log(`Adjusted duration for media ${validMedia[i].url}: ${adjustedDurations[i]}`);
         }
 
-        // Redistribute failed duration only across valid media
-        if (totalFailedDuration > 0 && validMediaCount > 0) {
-            const additionalTimePerMedia = totalFailedDuration / validMediaCount;
-            console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
+        // Clear previous video paths and reprocess valid media
+        videoPaths.length = 0; // Reset processed video paths
+        totalValidDuration = 0; // Reset valid duration count
+        validMediaCount = 0; // Reset valid media count
 
-            // Adjust the duration for each valid media
-            videoPaths.forEach((videoPath, index) => {
-                if (index < adjustedDurations.length) {
-                    adjustedDurations[index] += additionalTimePerMedia; // Adjust the duration for the video
-                    console.log(`Adjusted duration for media ${originalMediaSequence[index].url}: ${adjustedDurations[index]}`);
-                }
-            });
+        // Reprocess only valid media with redistributed time
+        for (let i = 0; i < validMedia.length; i++) {
+            await processMedia(validMedia[i], adjustedDurations[i]);  // Reprocess valid media with updated time
         }
-
-        // Reset failed duration for the next iteration
-        totalFailedDuration = 0; 
     }
 
     if (videoPaths.length > 0) {
@@ -531,6 +510,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 // Function to convert video to a standard format and resolution
