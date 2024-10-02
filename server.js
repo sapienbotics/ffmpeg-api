@@ -397,8 +397,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     let totalValidDuration = 0;
     let totalFailedDuration = 0;
     let validMediaCount = 0;
-
-    const adjustedDurations = mediaSequence.map(media => media.duration); // Keep track of the original durations
+    const validMediaIndices = [];  // To keep track of valid media indices for redistribution
 
     // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
@@ -429,6 +428,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                         videoPaths.push(trimmedVideoPath);
                         totalValidDuration += duration;
                         validMediaCount++;
+                        validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
                     } catch (err) {
                         console.error(`Conversion/Trimming failed for video: ${url} - ${err.message}`);
                         failed = true;
@@ -450,6 +450,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                         videoPaths.push(videoPath);
                         totalValidDuration += duration;
                         validMediaCount++;
+                        validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
                     } catch (err) {
                         console.error(`Image to video conversion failed for image: ${url} - ${err.message}`);
                         failed = true;
@@ -476,12 +477,11 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 const additionalTimePerMedia = totalFailedDuration / validMediaCount;
                 console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
 
-                // Adjust the duration for each valid media using adjustedDurations
-                videoPaths.forEach((videoPath, index) => {
-                    if (index < adjustedDurations.length) {
-                        adjustedDurations[index] += additionalTimePerMedia; // Adjust the duration for the video
-                        console.log(`Adjusted duration for media ${mediaSequence[index].url}: ${adjustedDurations[index]}`);
-                    }
+                // Adjust the duration for each valid media using validMediaIndices
+                validMediaIndices.forEach((index) => {
+                    console.log(`Adjusting duration for valid media at index ${index}`);
+                    mediaSequence[index].duration += additionalTimePerMedia; // Adjust the duration only for valid media
+                    console.log(`Adjusted duration for media ${mediaSequence[index].url}: ${mediaSequence[index].duration}`);
                 });
             }
 
