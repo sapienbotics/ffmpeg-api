@@ -417,12 +417,12 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     await downloadFile(url, localVideoPath);
                 } catch (err) {
                     console.error(`Download failed for video: ${url} - ${err.message}`);
-                    failed = true;
+                    failed = true; // Set failed to true if the download fails
                 }
 
                 if (!failed) {
                     videoPaths.push({ path: localVideoPath, originalDuration: duration, isOriginalVideo: true });
-                    totalValidDuration += duration;
+                    totalValidDuration += duration; // Only add to valid duration
                     validMediaCount++;
                     validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
                 }
@@ -435,10 +435,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
                 if (!['image/jpeg', 'image/png'].includes(mimeType)) {
                     console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
-                    failed = true;
+                    failed = true; // Set failed to true for unsupported MIME type
                 } else {
                     videoPaths.push({ url, originalDuration: duration, isOriginalVideo: false }); // Mark as image
-                    totalValidDuration += duration;
+                    totalValidDuration += duration; // Only add to valid duration
                     validMediaCount++;
                     validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
                 }
@@ -446,7 +446,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
             if (failed) {
                 console.log(`Media processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
-                totalFailedDuration += duration;
+                totalFailedDuration += duration; // Add to failed duration if processing fails
             }
 
         } catch (error) {
@@ -517,6 +517,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
