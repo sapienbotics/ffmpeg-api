@@ -477,8 +477,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         if (!videoPaths[i].isOriginalVideo) {
             // Only convert images to video, no need to trim
-            const videoPath = await convertImageToVideo(videoPaths[i].url, duration, resolution, orientation);
+            const outputFilePath = path.join(outputDir, `converted_${Date.now()}_${path.basename(videoPaths[i].url, path.extname(videoPaths[i].url))}.mp4`);
+            const videoPath = await convertImageToVideo(videoPaths[i].url, duration, resolution, orientation, outputFilePath);
             videoPaths[i].path = videoPath; // Update path to the newly created video
+            console.log(`Image converted to video at: ${outputFilePath}`);
         } else {
             // Handle originally video media
             const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
@@ -489,20 +491,25 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
     // Finally, merge all the processed media
     if (videoPaths.length > 0) {
-        try {
-            const mergeResult = await mergeMediaUsingFile(videoPaths.map(v => v.trimmedPath).filter(p => p), resolution, orientation);
-            console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
-            return mergeResult.outputFileUrl;
-        } catch (error) {
-            console.error(`Error merging videos: ${error.message}`);
-            throw error;
+        const trimmedVideoPaths = videoPaths.map(v => v.trimmedPath).filter(p => p); // Filter out any undefined paths
+        if (trimmedVideoPaths.length > 0) {
+            try {
+                const mergeResult = await mergeMediaUsingFile(trimmedVideoPaths, resolution, orientation);
+                console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
+                return mergeResult.outputFileUrl;
+            } catch (error) {
+                console.error(`Error merging videos: ${error.message}`);
+                throw error;
+            }
+        } else {
+            console.error('No valid trimmed media found for merging.');
+            throw new Error('No valid trimmed media found for merging.');
         }
     } else {
         console.error('No valid media found for merging.');
         throw new Error('No valid media found for merging.');
     }
 }
-
 
 
 
