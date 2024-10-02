@@ -397,7 +397,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     let totalValidDuration = 0;
     let totalFailedDuration = 0;
     let validMediaCount = 0;
-    const validMediaIndices = [];  // Track valid media indices for redistribution
+    const validMediaIndices = [];  // To keep track of valid media indices for redistribution
 
     // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
@@ -422,10 +422,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 }
 
                 if (!failed) {
-                    videoPaths.push({ path: localVideoPath, originalDuration: duration, type: 'video' });
+                    videoPaths.push({ path: localVideoPath, originalDuration: duration, isOriginalVideo: true });
                     totalValidDuration += duration;
                     validMediaCount++;
-                    validMediaIndices.push(videoPaths.length - 1);
+                    validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
                 }
             } 
             // Handle image processing
@@ -438,10 +438,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
                     failed = true;
                 } else {
-                    videoPaths.push({ url, originalDuration: duration, type: 'image' });
+                    videoPaths.push({ url, originalDuration: duration, isOriginalVideo: false }); // Mark as image
                     totalValidDuration += duration;
                     validMediaCount++;
-                    validMediaIndices.push(videoPaths.length - 1);
+                    validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
                 }
             }
 
@@ -452,7 +452,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         } catch (error) {
             console.error(`Unexpected error processing media (${url}): ${error.message}`);
-            totalFailedDuration += duration;
+            totalFailedDuration += duration;  // Add the media duration to failed if unexpected error occurs
         }
     }
 
@@ -463,7 +463,9 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         // Adjust the duration for each valid media using validMediaIndices
         validMediaIndices.forEach((index) => {
+            console.log(`Adjusting duration for valid media at index ${index}`);
             mediaSequence[index].duration += additionalTimePerMedia; // Adjust the duration only for valid media
+            console.log(`Adjusted duration for media ${mediaSequence[index].url}: ${mediaSequence[index].duration}`);
         });
     }
 
@@ -472,49 +474,35 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         const media = mediaSequence[validMediaIndices[i]];
         const duration = media.duration; // Use adjusted duration
 
-        if (videoPaths[i].type === 'image') {
-            // Convert image to video
+        if (!videoPaths[i].isOriginalVideo) {
+            // Only convert images to video, no need to trim
             const videoPath = await convertImageToVideo(videoPaths[i].url, duration, resolution, orientation);
-            videoPaths[i].path = videoPath;
-        } else if (videoPaths[i].type === 'video') {
-            // Trim only for video media
-            const trimmedVideoPath = await trimVideo(videoPaths[i].path, duration);  // Use adjusted duration here
+            videoPaths[i].path = videoPath; // Update path to the newly created video
+            // Treat this converted video as derived, hence no trimming
+            videoPaths[i].isOriginalVideo = false; // Set it as derived
+        } else {
+            // Handle originally video media
+            const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
+            const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);  // Use adjusted duration here
             videoPaths[i].trimmedPath = trimmedVideoPath;
         }
     }
 
-    // Merge the final media paths
     if (videoPaths.length > 0) {
-        const mergeFilePaths = videoPaths.map(v => v.trimmedPath || v.path);
-        const concatFilePath = path.join(outputDir, 'concat.txt');
-        
-        // Prepare concat file
-        fs.writeFileSync(concatFilePath, mergeFilePaths.map(filePath => `file '${filePath}'`).join('\n'));
-        
-        // Execute ffmpeg command to merge videos
-        const mergeCommand = `ffmpeg -f concat -safe 0 -i ${concatFilePath} -c copy ${path.join(outputDir, 'final_output.mp4')}`;
-        console.log(`Executing merge command: ${mergeCommand}`);
-        
-        // Run the command and wait for it to finish
-        await new Promise((resolve, reject) => {
-            exec(mergeCommand, (error, stdout, stderr) => {
-                if (error) {
-                    console.error(`Error during merging: ${stderr}`);
-                    reject(error);
-                } else {
-                    console.log(`Merge completed: ${stdout}`);
-                    resolve();
-                }
-            });
-        });
-
-        console.log(`Merged video created at: ${path.join(outputDir, 'final_output.mp4')}`);
-        return path.join(outputDir, 'final_output.mp4');
+        try {
+            const mergeResult = await mergeMediaUsingFile(videoPaths.map(v => v.trimmedPath).filter(p => p), resolution, orientation);
+            console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
+            return mergeResult.outputFileUrl;
+        } catch (error) {
+            console.error(`Error merging videos: ${error.message}`);
+            throw error;
+        }
     } else {
         console.error('No valid media found for merging.');
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
