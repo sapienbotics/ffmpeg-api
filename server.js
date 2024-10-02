@@ -397,7 +397,8 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     let totalValidDuration = 0;
     let totalFailedDuration = 0;
     let validMediaCount = 0;
-    const validMediaIndices = [];  // To keep track of valid media indices for redistribution
+    const validMediaIndices = [];  // Track valid media indices for redistribution
+    const convertedFromImages = new Set(); // To track converted videos from images
 
     // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
@@ -422,10 +423,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 }
 
                 if (!failed) {
-                    videoPaths.push({ path: localVideoPath, originalDuration: duration });
+                    videoPaths.push({ path: localVideoPath, originalDuration: duration, type: 'video' });
                     totalValidDuration += duration;
                     validMediaCount++;
-                    validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
+                    validMediaIndices.push(videoPaths.length - 1);
                 }
             } 
             // Handle image processing
@@ -438,10 +439,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     console.error(`Unsupported MIME type for image: ${url} - ${mimeType}`);
                     failed = true;
                 } else {
-                    videoPaths.push({ url, originalDuration: duration });
+                    videoPaths.push({ url, originalDuration: duration, type: 'image' });
                     totalValidDuration += duration;
                     validMediaCount++;
-                    validMediaIndices.push(videoPaths.length - 1);  // Track valid media index
+                    validMediaIndices.push(videoPaths.length - 1);
                 }
             }
 
@@ -452,7 +453,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         } catch (error) {
             console.error(`Unexpected error processing media (${url}): ${error.message}`);
-            totalFailedDuration += duration;  // Add the media duration to failed if unexpected error occurs
+            totalFailedDuration += duration;
         }
     }
 
@@ -474,11 +475,12 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         const media = mediaSequence[validMediaIndices[i]];
         const duration = media.duration; // Use adjusted duration
 
-        if (videoPaths[i].url) {
+        if (videoPaths[i].type === 'image') {
             // Convert image to video, no need to trim since duration is specified
             const videoPath = await convertImageToVideo(videoPaths[i].url, duration, resolution, orientation);
             videoPaths[i].path = videoPath;
-        } else {
+            convertedFromImages.add(videoPath); // Track converted videos
+        } else if (videoPaths[i].type === 'video') {
             // Trim only for video media
             const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
             const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);  // Use adjusted duration here
@@ -486,6 +488,13 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         }
     }
 
+    // Discard any converted images that are no longer in use due to redistribution
+    for (const videoPath of convertedFromImages) {
+        // Logic to delete converted video files from images, if required
+        // e.g., fs.unlink(videoPath, (err) => { /* handle error */ });
+    }
+
+    // Merge the final media paths
     if (videoPaths.length > 0) {
         try {
             const mergeResult = await mergeMediaUsingFile(videoPaths.map(v => v.path || v.trimmedPath), resolution, orientation);
@@ -500,6 +509,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
