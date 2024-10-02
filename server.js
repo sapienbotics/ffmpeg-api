@@ -398,7 +398,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     let totalFailedDuration = 0;
     let validMediaCount = 0;
     const validMediaIndices = [];  // Track valid media indices for redistribution
-    const convertedFromImages = new Set(); // To track converted videos from images
 
     // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
@@ -464,9 +463,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         // Adjust the duration for each valid media using validMediaIndices
         validMediaIndices.forEach((index) => {
-            console.log(`Adjusting duration for valid media at index ${index}`);
             mediaSequence[index].duration += additionalTimePerMedia; // Adjust the duration only for valid media
-            console.log(`Adjusted duration for media ${mediaSequence[index].url}: ${mediaSequence[index].duration}`);
         });
     }
 
@@ -476,40 +473,43 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         const duration = media.duration; // Use adjusted duration
 
         if (videoPaths[i].type === 'image') {
-            // Convert image to video, no need to trim since duration is specified
-            console.log(`Converting image to video: ${videoPaths[i].url}, Duration: ${duration}`);
+            // Convert image to video
             const videoPath = await convertImageToVideo(videoPaths[i].url, duration, resolution, orientation);
             videoPaths[i].path = videoPath;
-            convertedFromImages.add(videoPath); // Track converted videos
         } else if (videoPaths[i].type === 'video') {
             // Trim only for video media
-            console.log(`Preparing to trim video: ${videoPaths[i].path}, Duration: ${duration}`);
-            if (fs.existsSync(videoPaths[i].path)) {
-                const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
-                const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);  // Use adjusted duration here
-                videoPaths[i].trimmedPath = trimmedVideoPath;
-            } else {
-                console.error(`Video path does not exist: ${videoPaths[i].path}`);
-            }
+            const trimmedVideoPath = await trimVideo(videoPaths[i].path, duration);  // Use adjusted duration here
+            videoPaths[i].trimmedPath = trimmedVideoPath;
         }
-    }
-
-    // Discard any converted images that are no longer in use due to redistribution
-    for (const videoPath of convertedFromImages) {
-        // Logic to delete converted video files from images, if required
-        // e.g., fs.unlink(videoPath, (err) => { /* handle error */ });
     }
 
     // Merge the final media paths
     if (videoPaths.length > 0) {
-        try {
-            const mergeResult = await mergeMediaUsingFile(videoPaths.map(v => v.path || v.trimmedPath), resolution, orientation);
-            console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
-            return mergeResult.outputFileUrl;
-        } catch (error) {
-            console.error(`Error merging videos: ${error.message}`);
-            throw error;
-        }
+        const mergeFilePaths = videoPaths.map(v => v.trimmedPath || v.path);
+        const concatFilePath = path.join(outputDir, 'concat.txt');
+        
+        // Prepare concat file
+        fs.writeFileSync(concatFilePath, mergeFilePaths.map(filePath => `file '${filePath}'`).join('\n'));
+        
+        // Execute ffmpeg command to merge videos
+        const mergeCommand = `ffmpeg -f concat -safe 0 -i ${concatFilePath} -c copy ${path.join(outputDir, 'final_output.mp4')}`;
+        console.log(`Executing merge command: ${mergeCommand}`);
+        
+        // Run the command and wait for it to finish
+        await new Promise((resolve, reject) => {
+            exec(mergeCommand, (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`Error during merging: ${stderr}`);
+                    reject(error);
+                } else {
+                    console.log(`Merge completed: ${stdout}`);
+                    resolve();
+                }
+            });
+        });
+
+        console.log(`Merged video created at: ${path.join(outputDir, 'final_output.mp4')}`);
+        return path.join(outputDir, 'final_output.mp4');
     } else {
         console.error('No valid media found for merging.');
         throw new Error('No valid media found for merging.');
