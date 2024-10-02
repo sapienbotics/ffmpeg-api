@@ -475,18 +475,20 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         const duration = media.duration; // Use adjusted duration
 
         if (videoPaths[i].url) {
+            // Convert image to video, no need to trim since duration is specified
             const videoPath = await convertImageToVideo(videoPaths[i].url, duration, resolution, orientation);
             videoPaths[i].path = videoPath;
+        } else {
+            // Trim only for video media
+            const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
+            const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);  // Use adjusted duration here
+            videoPaths[i].trimmedPath = trimmedVideoPath;
         }
-
-        const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
-        const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);  // Use adjusted duration here
-        videoPaths[i].trimmedPath = trimmedVideoPath;
     }
 
     if (videoPaths.length > 0) {
         try {
-            const mergeResult = await mergeMediaUsingFile(videoPaths.map(v => v.trimmedPath), resolution, orientation);
+            const mergeResult = await mergeMediaUsingFile(videoPaths.map(v => v.path || v.trimmedPath), resolution, orientation);
             console.log(`Merged video created at: ${mergeResult.outputFileUrl}`);
             return mergeResult.outputFileUrl;
         } catch (error) {
@@ -498,6 +500,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 
