@@ -444,12 +444,13 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     console.error(`Failed to check image URL: ${url} - ${error.message}`);
                     failed = true; // Set failed to true if there's an error fetching the image
                 }
-
-                if (failed) {
-                    console.log(`Image processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
-                    totalFailedDuration += duration; // Add to failed duration if processing fails
-                }
             }
+
+            if (failed) {
+                console.log(`Processing failed for URL: ${url}, adding ${duration}s to failed duration.`);
+                totalFailedDuration += duration; // Add to failed duration if processing fails
+            }
+
         } catch (error) {
             console.error(`Unexpected error processing media (${url}): ${error.message}`);
             totalFailedDuration += duration;  // Add the media duration to failed if unexpected error occurs
@@ -478,8 +479,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             // Only convert images to video, no need to trim
             const videoPath = await convertImageToVideo(videoPaths[i].url, duration, resolution, orientation);
             videoPaths[i].path = videoPath; // Update path to the newly created video
-            // Treat this converted video as derived, hence no trimming
-            videoPaths[i].isOriginalVideo = false; // Set it as derived
         } else {
             // Handle originally video media
             const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
@@ -503,10 +502,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
-
-
-
-
 
 
 
