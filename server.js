@@ -477,14 +477,20 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         if (videoPaths[i].type === 'image') {
             // Convert image to video, no need to trim since duration is specified
+            console.log(`Converting image to video: ${videoPaths[i].url}, Duration: ${duration}`);
             const videoPath = await convertImageToVideo(videoPaths[i].url, duration, resolution, orientation);
             videoPaths[i].path = videoPath;
             convertedFromImages.add(videoPath); // Track converted videos
         } else if (videoPaths[i].type === 'video') {
             // Trim only for video media
-            const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
-            const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);  // Use adjusted duration here
-            videoPaths[i].trimmedPath = trimmedVideoPath;
+            console.log(`Preparing to trim video: ${videoPaths[i].path}, Duration: ${duration}`);
+            if (fs.existsSync(videoPaths[i].path)) {
+                const convertedVideoPath = await convertVideoToStandardFormat(videoPaths[i].path, duration, resolution, orientation);
+                const trimmedVideoPath = await trimVideo(convertedVideoPath, duration);  // Use adjusted duration here
+                videoPaths[i].trimmedPath = trimmedVideoPath;
+            } else {
+                console.error(`Video path does not exist: ${videoPaths[i].path}`);
+            }
         }
     }
 
