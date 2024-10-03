@@ -485,9 +485,10 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
 
         // Adjust durations for valid media
-        validMedia.forEach((media, index) => {
-            adjustedDurations[mediaSequence.indexOf(media)] += additionalTimePerMedia; // Adjust each valid media
-            console.log(`Adjusted duration for media ${media.url}: ${adjustedDurations[mediaSequence.indexOf(media)]}`);
+        validMedia.forEach((media) => {
+            const originalIndex = mediaSequence.indexOf(media); // Find the original index
+            adjustedDurations[originalIndex] += additionalTimePerMedia; // Adjust each valid media
+            console.log(`Adjusted duration for media ${media.url}: ${adjustedDurations[originalIndex]}`);
         });
 
         // Restart processing for valid media with redistributed time
@@ -495,11 +496,14 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         totalValidDuration = 0; // Reset counters
         validMediaCount = 0; // Reset valid media count
 
-        for (const [index, media] of validMedia.entries()) {
-            const failed = await processMedia(media, adjustedDurations[mediaSequence.indexOf(media)]); // Reprocess valid media with updated time
+        for (const media of validMedia) {
+            const originalIndex = mediaSequence.indexOf(media); // Find the original index
+            const failed = await processMedia(media, adjustedDurations[originalIndex]); // Reprocess valid media with updated time
 
             if (!failed) {
                 validMediaCount++;
+            } else {
+                console.log(`Failed reprocessing media: ${media.url}`);
             }
         }
     }
