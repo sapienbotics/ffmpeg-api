@@ -423,7 +423,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 if (!failed) {
                     try {
                         const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
-                        const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration || duration); // Ensure newDuration is valid
+                        const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration || duration);
                         videoPaths.push(trimmedVideoPath);
                         totalValidDuration += newDuration || duration;
                         validMediaCount++;
@@ -486,8 +486,8 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         // Adjust durations for valid media
         validMedia.forEach((media, index) => {
-            adjustedDurations[index] += additionalTimePerMedia; // Adjust each valid media
-            console.log(`Adjusted duration for media ${validMedia[index].url}: ${adjustedDurations[index]}`);
+            adjustedDurations[mediaSequence.indexOf(media)] += additionalTimePerMedia; // Adjust each valid media
+            console.log(`Adjusted duration for media ${media.url}: ${adjustedDurations[mediaSequence.indexOf(media)]}`);
         });
 
         // Restart processing for valid media with redistributed time
@@ -496,7 +496,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         validMediaCount = 0; // Reset valid media count
 
         for (const [index, media] of validMedia.entries()) {
-            const failed = await processMedia(media, adjustedDurations[index]); // Reprocess valid media with updated time
+            const failed = await processMedia(media, adjustedDurations[mediaSequence.indexOf(media)]); // Reprocess valid media with updated time
 
             if (!failed) {
                 validMediaCount++;
