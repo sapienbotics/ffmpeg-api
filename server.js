@@ -389,7 +389,6 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
     });
 };
 
-
 async function processMediaSequence(mediaSequence, orientation, resolution) {
     const videoPaths = [];
     let totalValidDuration = 0;
@@ -474,7 +473,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         await processMedia(media, media.duration);
     }
 
-    // Check if there are failed media that requires redistribution
+    // Check if there are failed media that require redistribution
     if (totalFailedDuration > 0 && validMediaCount > 0) {
         const additionalTimePerMedia = totalFailedDuration / validMediaCount;
         console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
@@ -485,12 +484,12 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             console.log(`Adjusted duration for media ${validMedia[i].url}: ${adjustedDurations[i]}`);
         }
 
-        // Clear previous video paths and reprocess valid media
+        // Reprocess only valid media with redistributed time (no failed media)
         videoPaths.length = 0; // Reset processed video paths
         totalValidDuration = 0; // Reset valid duration count
         validMediaCount = 0; // Reset valid media count
 
-        // Reprocess only valid media with redistributed time
+        // Process valid media again after redistribution
         for (let i = 0; i < validMedia.length; i++) {
             await processMedia(validMedia[i], adjustedDurations[i]);  // Reprocess valid media with updated time
         }
@@ -510,6 +509,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
+
 
 
 // Function to convert video to a standard format and resolution
