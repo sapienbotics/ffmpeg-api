@@ -414,7 +414,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                 const localVideoPath = path.join(outputDir, path.basename(url));
 
                 try {
-                    await downloadFile(url, localVideoPath);  // Always download the original video
+                    await downloadFile(url, localVideoPath); // Always download the original video
                 } catch (err) {
                     console.error(`Download failed for video: ${url} - ${err.message}`);
                     failed = true;
@@ -444,7 +444,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     failed = true;
                 } else {
                     try {
-                        const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation); // Reprocess original image with updated duration
+                        const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
                         videoPaths.push(videoPath);
                         totalValidDuration += newDuration || duration;
                         validMediaCount++;
@@ -456,7 +456,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             }
 
             if (!failed) {
-                validMedia.push(media);  // Keep track of valid media
+                validMedia.push(media); // Keep track of valid media
             } else {
                 console.log(`Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
                 totalFailedDuration += newDuration || duration;
@@ -464,43 +464,43 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         } catch (error) {
             console.error(`Unexpected error processing media (${url}): ${error.message}`);
-            totalFailedDuration += newDuration || duration;  // Add the media duration to failed if unexpected error occurs
+            totalFailedDuration += newDuration || duration; // Add the media duration to failed if unexpected error occurs
         }
 
-        return failed;  // Return failure status
+        return failed; // Return failure status
     }
-
-    let shouldRedistribute = false; // Flag to trigger redistribution
 
     // Process each media and check for failure
-    for (let i = 0; i < mediaSequence.length; i++) {
-        const media = mediaSequence[i];
-        const failed = await processMedia(media, adjustedDurations[i]);
+    for (const [index, media] of mediaSequence.entries()) {
+        const failed = await processMedia(media, adjustedDurations[index]);
 
         if (failed) {
-            shouldRedistribute = true;
-            break;  // Break the loop immediately on failure
+            console.log(`Failed processing media: ${media.url}`);
         }
     }
 
-    // Redistribution logic after a failure
-    if (shouldRedistribute && validMediaCount > 0) {
+    // Redistribution logic after processing
+    if (validMediaCount > 0 && totalFailedDuration > 0) {
         const additionalTimePerMedia = totalFailedDuration / validMediaCount;
         console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
 
         // Adjust durations for valid media
-        validMedia.forEach((media, i) => {
-            adjustedDurations[i] += additionalTimePerMedia; // Adjust each valid media
-            console.log(`Adjusted duration for media ${validMedia[i].url}: ${adjustedDurations[i]}`);
+        validMedia.forEach((media, index) => {
+            adjustedDurations[index] += additionalTimePerMedia; // Adjust each valid media
+            console.log(`Adjusted duration for media ${validMedia[index].url}: ${adjustedDurations[index]}`);
         });
 
         // Restart processing for valid media with redistributed time
-        videoPaths = [];  // Reset processed video paths
-        totalValidDuration = 0;  // Reset counters
-        validMediaCount = 0;  // Reset valid media count
+        videoPaths = []; // Reset processed video paths
+        totalValidDuration = 0; // Reset counters
+        validMediaCount = 0; // Reset valid media count
 
-        for (let i = 0; i < validMedia.length; i++) {
-            await processMedia(validMedia[i], adjustedDurations[i]);  // Reprocess valid media with updated time
+        for (const [index, media] of validMedia.entries()) {
+            const failed = await processMedia(media, adjustedDurations[index]); // Reprocess valid media with updated time
+
+            if (!failed) {
+                validMediaCount++;
+            }
         }
     }
 
