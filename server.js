@@ -394,27 +394,24 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     let totalValidDuration = 0;
     let totalFailedDuration = 0;
     let validMediaCount = 0;
-    let validMedia = []; // Array to hold only valid media for reprocessing
-    let adjustedDurations = mediaSequence.map(media => media.duration); // Track original durations
-    const failedMediaUrls = new Set(); // Track failed media URLs
+    let validMedia = [];
+    let adjustedDurations = mediaSequence.map(media => media.duration);
+    const failedMediaUrls = new Set();
 
-    // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
     console.log(`Parsed resolution: width=${width}, height=${height}`);
 
     async function processMedia(media, newDuration) {
         const { url, duration } = media;
-        const fileType = path.extname(url).toLowerCase(); // Moved file type determination inside
+        const fileType = path.extname(url).toLowerCase();
 
         if (failedMediaUrls.has(url)) {
             console.log(`Skipping already failed media: ${url}`);
-            return true; // Skip already failed media
+            return true;
         }
 
         let failed = false;
-
         try {
-            // Handle video processing
             if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
                 console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
                 const localVideoPath = path.join(outputDir, path.basename(url));
@@ -438,9 +435,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                         failed = true;
                     }
                 }
-            }
-            // Handle image processing
-            else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
+            } else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
                 console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
                 try {
                     const response = await axios.head(url);
@@ -462,52 +457,52 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             }
 
             if (!failed) {
-                validMedia.push(media); // Keep track of valid media
+                validMedia.push(media);
             } else {
                 console.log(`Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
                 totalFailedDuration += newDuration || duration;
-                failedMediaUrls.add(url); // Mark as failed
+                failedMediaUrls.add(url);
             }
-
         } catch (error) {
             console.error(`Unexpected error processing media (${url}): ${error.message}`);
-            totalFailedDuration += newDuration || duration; // Add the media duration to failed if unexpected error occurs
-            failedMediaUrls.add(url); // Mark as failed
+            totalFailedDuration += newDuration || duration;
+            failedMediaUrls.add(url);
         }
 
-        return failed; // Return failure status
+        return failed;
     }
 
-    // Process each media and check for failure
+    // Initial media processing
     for (const [index, media] of mediaSequence.entries()) {
         const failed = await processMedia(media, adjustedDurations[index]);
-
         if (failed) {
             console.log(`Failed processing media: ${media.url}`);
         }
     }
 
-    // Redistribution logic after processing
+    // Redistribution of duration
     if (validMediaCount > 0 && totalFailedDuration > 0) {
         const additionalTimePerMedia = totalFailedDuration / validMediaCount;
         console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
 
-        // Adjust durations for valid media
         validMedia.forEach((media) => {
-            const originalIndex = mediaSequence.indexOf(media); // Find the original index
-            adjustedDurations[originalIndex] += additionalTimePerMedia; // Adjust each valid media
+            const originalIndex = mediaSequence.indexOf(media);
+            adjustedDurations[originalIndex] += additionalTimePerMedia;
             console.log(`Adjusted duration for media ${media.url}: ${adjustedDurations[originalIndex]}`);
         });
 
-        // Restart processing for valid media with redistributed time
-        videoPaths = []; // Reset processed video paths
-        totalValidDuration = 0; // Reset counters
-        validMediaCount = 0; // Reset valid media count
+        // Reprocessing valid media with updated durations
+        const reprocessValidMedia = [...validMedia]; // Copy of valid media for reprocessing
+        validMedia = []; // Clear valid media to avoid infinite loop
 
-        for (const media of validMedia) {
-            const originalIndex = mediaSequence.indexOf(media); // Find the original index
-            const newDuration = adjustedDurations[originalIndex]; // Get the new adjusted duration
-            const failed = await processMedia(media, newDuration); // Reprocess valid media with updated time
+        videoPaths = [];
+        totalValidDuration = 0;
+        validMediaCount = 0;
+
+        for (const media of reprocessValidMedia) {
+            const originalIndex = mediaSequence.indexOf(media);
+            const newDuration = adjustedDurations[originalIndex];
+            const failed = await processMedia(media, newDuration);
 
             if (!failed) {
                 validMediaCount++;
@@ -517,7 +512,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         }
     }
 
-    // Merging logic for valid videos/images
+    // Merging logic
     if (videoPaths.length > 0) {
         try {
             const mergeResult = await mergeMediaUsingFile(videoPaths, resolution, orientation);
