@@ -394,27 +394,26 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     let totalValidDuration = 0;
     let totalFailedDuration = 0;
     let validMediaCount = 0;
-    let validMedia = []; // Array to hold only valid media for reprocessing
-    let adjustedDurations = mediaSequence.map(media => media.duration); // Track original durations
+    let validMedia = [];
+    let adjustedDurations = mediaSequence.map(media => media.duration);
 
     // Parse resolution
     const [width, height] = resolution.split(':').map(Number);
     console.log(`Parsed resolution: width=${width}, height=${height}`);
 
-    // Function to process media
     async function processMedia(media, newDuration) {
         const { url, duration } = media;
         const fileType = path.extname(url).toLowerCase();
         let failed = false;
 
         try {
-            // Handle video processing
+            // Video processing
             if (['.mp4', '.mov', '.avi', '.mkv'].includes(fileType)) {
                 console.log(`Processing media - Type: video, URL: ${url}, Duration: ${duration}`);
                 const localVideoPath = path.join(outputDir, path.basename(url));
 
                 try {
-                    await downloadFile(url, localVideoPath); // Always download the original video
+                    await downloadFile(url, localVideoPath);
                 } catch (err) {
                     console.error(`Download failed for video: ${url} - ${err.message}`);
                     failed = true;
@@ -433,7 +432,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     }
                 }
             }
-            // Handle image processing
+            // Image processing
             else if (['.jpg', '.jpeg', '.png'].includes(fileType)) {
                 console.log(`Processing media - Type: image, URL: ${url}, Duration: ${duration}`);
                 const response = await axios.head(url);
@@ -456,7 +455,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             }
 
             if (!failed) {
-                validMedia.push(media); // Keep track of valid media
+                validMedia.push(media);
             } else {
                 console.log(`Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
                 totalFailedDuration += newDuration || duration;
@@ -464,22 +463,20 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
 
         } catch (error) {
             console.error(`Unexpected error processing media (${url}): ${error.message}`);
-            totalFailedDuration += newDuration || duration; // Add the media duration to failed if unexpected error occurs
+            totalFailedDuration += newDuration || duration;
         }
 
-        return failed; // Return failure status
+        return failed;
     }
 
-    // Process each media and check for failure
     for (const [index, media] of mediaSequence.entries()) {
         const failed = await processMedia(media, adjustedDurations[index]);
-
         if (failed) {
             console.log(`Failed processing media: ${media.url}`);
         }
     }
 
-    // Redistribution logic after processing
+    // Redistribution logic
     if (validMediaCount > 0 && totalFailedDuration > 0) {
         const additionalTimePerMedia = totalFailedDuration / validMediaCount;
         console.log(`Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
@@ -487,27 +484,29 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         // Adjust durations for valid media
         validMedia.forEach((media) => {
             const originalIndex = mediaSequence.indexOf(media);
-            adjustedDurations[originalIndex] += additionalTimePerMedia; // Adjust each valid media
+            adjustedDurations[originalIndex] += additionalTimePerMedia;
             console.log(`Adjusted duration for media ${media.url}: ${adjustedDurations[originalIndex]}`);
         });
 
-        // Reset processed video paths and valid media count
+        // Reset variables for reprocessing
         videoPaths = [];
-        totalValidDuration = 0; 
-        validMediaCount = 0; 
+        totalValidDuration = 0;
+        validMediaCount = 0;
 
-        // Reprocess valid media with updated time
+        // Reprocess valid media with updated durations
         for (const media of validMedia) {
             const originalIndex = mediaSequence.indexOf(media);
-            const failed = await processMedia(media, adjustedDurations[originalIndex]); // Reprocess valid media with updated time
+            const failed = await processMedia(media, adjustedDurations[originalIndex]);
 
             if (!failed) {
                 validMediaCount++;
+            } else {
+                console.log(`Failed reprocessing media: ${media.url}`);
             }
         }
     }
 
-    // Merging logic for valid videos/images
+    // Merging logic
     if (videoPaths.length > 0) {
         try {
             const mergeResult = await mergeMediaUsingFile(videoPaths, resolution, orientation);
