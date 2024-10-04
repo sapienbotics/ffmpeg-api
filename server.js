@@ -887,7 +887,6 @@ app.post('/apply-subtitles', async (req, res) => {
             subtitle_size: fontSize, 
             subtitle_color: subtitleColor, 
             subtitles_position: position, 
-            video_orientation: orientation, 
             include_subtitles: includeSubtitles 
         } = req.body;
 
@@ -905,7 +904,7 @@ app.post('/apply-subtitles', async (req, res) => {
         // Define the output video path
         const videoId = uuidv4();
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
-        const subtitleFile = path.join(outputDir, `${videoId}.ass`); // Use ASS instead of SRT
+        const subtitleFile = path.join(outputDir, `${videoId}.ass`); // Use ASS format for styling
 
         // Step 1: Download the video from the link
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
@@ -925,14 +924,11 @@ app.post('/apply-subtitles', async (req, res) => {
 
         // Step 2: Generate the ASS file from the provided content
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, position);
-        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' }); // Ensure UTF-8 encoding
+        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
         // Step 3: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
-            .input(subtitleFile) // Add subtitles as a separate input
-            .outputOptions([
-                `-vf "subtitles=${subtitleFile}:force_style='FontName=${fontName},FontSize=${parseInt(fontSize)},PrimaryColour=${convertHexToAssColor(subtitleColor)},Alignment=${position}'`
-            ])
+            .outputOptions([`-vf subtitles=${subtitleFile}`]) // Correct usage of subtitles filter
             .on('end', () => {
                 console.log('Subtitles applied successfully!');
                 
@@ -977,7 +973,6 @@ Format: Layer, Start, End, Style, Text
     const words = content.split(' ');
     let startTime = 0;
     let chunk = [];
-    let index = 1;
     const wordsPerSecond = 3;
     let events = '';
 
@@ -993,7 +988,6 @@ Format: Layer, Start, End, Style, Text
 
             chunk = [];
             startTime = endTime;
-            index++;
         }
     });
 
