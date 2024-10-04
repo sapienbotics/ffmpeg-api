@@ -930,29 +930,30 @@ app.post('/apply-subtitles', async (req, res) => {
         // Step 3: Set alignment based on numerical position
         const ffmpegAlignment = position; // Use the provided numerical position directly
 
-        // Step 4: Apply subtitles to the video using FFmpeg
-        ffmpeg(downloadPath)
-            .outputOptions([
-                `-vf subtitles=${subtitleFile}:force_style='Alignment=${ffmpegAlignment},FontName=${fontName},FontSize=${parseInt(fontSize)},PrimaryColour=${convertHexToFFmpegColor(subtitleColor)}'`
-            ])
-            .on('end', () => {
-                console.log('Subtitles applied successfully!');
-                
-                // Construct the video URL
-                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+// Step 4: Apply subtitles to the video using FFmpeg
+ffmpeg(downloadPath)
+    .outputOptions([
+        `-vf subtitles=${subtitleFile}:force_style='Alignment=${ffmpegAlignment},FontName="${fontName}",FontSize=${parseInt(fontSize)},PrimaryColour=${convertHexToFFmpegColor(subtitleColor)}'`
+    ])
+    .on('end', () => {
+        console.log('Subtitles applied successfully!');
+        
+        // Construct the video URL
+        const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
-                // Return the video URL
-                res.json({ videoUrl: videoUrl });
+        // Return the video URL
+        res.json({ videoUrl: videoUrl });
 
-                // Optional: Cleanup temporary files
-                fs.unlinkSync(downloadPath);
-                fs.unlinkSync(subtitleFile);
-            })
-            .on('error', (err) => {
-                console.error('Error applying subtitles:', err.message);
-                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-            })
-            .save(videoFile);
+        // Optional: Cleanup temporary files
+        fs.unlinkSync(downloadPath);
+        fs.unlinkSync(subtitleFile);
+    })
+    .on('error', (err) => {
+        console.error('Error applying subtitles:', err.message);
+        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+    })
+    .save(videoFile);
+
 
     } catch (error) {
         console.error('Error processing request:', error.message);
