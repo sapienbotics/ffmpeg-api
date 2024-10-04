@@ -924,7 +924,7 @@ app.post('/apply-subtitles', async (req, res) => {
         });
 
         // Step 2: Log the font path for debugging
-        const fontPath = path.join(__dirname, 'fonts', 'TiroDevanagariSanskrit-Regular.ttf');
+        const fontPath = path.join(__dirname, 'fonts', 'Sanskrit-2003.ttf');
         console.log("Font Path: ", fontPath);  // Log the path of the font
 
         // Step 3: Generate the ASS file from the provided content
