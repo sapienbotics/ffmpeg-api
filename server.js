@@ -885,13 +885,18 @@ app.post('/apply-subtitles', async (req, res) => {
             subtitle_font: fontName, 
             subtitle_size: fontSize, 
             subtitle_color: subtitleColor, 
-            subtitles_position: position, 
+            subtitles_position: position, // Now this is a number
             video_orientation: orientation, 
             include_subtitles: includeSubtitles 
         } = req.body;
 
         if (!includeSubtitles) {
             return res.status(400).json({ error: "Subtitles are disabled." });
+        }
+
+        // Validate input
+        if (!videoLink || !content || position === undefined) {
+            return res.status(400).json({ error: "Video link, content, and subtitle position are required." });
         }
 
         // Define the output video path
@@ -916,22 +921,16 @@ app.post('/apply-subtitles', async (req, res) => {
         });
 
         // Step 2: Generate the SRT file from the provided content
-        const srtContent = generateSrt(content); // Function to generate SRT file
-        fs.writeFileSync(subtitleFile, srtContent);
+        const srtContent = generateSrt(content);
+        fs.writeFileSync(subtitleFile, srtContent, { encoding: 'utf-8' }); // Ensure UTF-8 encoding
 
-        // Step 3: Map position, font size, and color to FFmpeg-compatible formats
-        const alignmentMap = {
-            bottom: 2,
-            middle: 5,
-            top: 6
-        };
-        const alignment = alignmentMap[position] || 2; // Default to bottom if invalid
-        const ffmpegSubtitleColor = convertHexToFFmpegColor(subtitleColor);
+        // Step 3: Set alignment based on numerical position
+        const ffmpegAlignment = position; // Use the provided numerical position directly
 
         // Step 4: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
             .outputOptions([
-                `-vf subtitles=${subtitleFile}:force_style='Alignment=${alignment},FontName=${fontName},FontSize=${parseInt(fontSize)},PrimaryColour=${ffmpegSubtitleColor}'`
+                `-vf subtitles=${subtitleFile}:force_style='Alignment=${ffmpegAlignment},FontName=${fontName},FontSize=${parseInt(fontSize)},PrimaryColour=${convertHexToFFmpegColor(subtitleColor)}'`
             ])
             .on('end', () => {
                 console.log('Subtitles applied successfully!');
@@ -941,6 +940,10 @@ app.post('/apply-subtitles', async (req, res) => {
 
                 // Return the video URL
                 res.json({ videoUrl: videoUrl });
+
+                // Optional: Cleanup temporary files
+                fs.unlinkSync(downloadPath);
+                fs.unlinkSync(subtitleFile);
             })
             .on('error', (err) => {
                 console.error('Error applying subtitles:', err);
@@ -953,6 +956,9 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.' });
     }
 });
+
+// Other utility functions (generateSrt, formatTime, convertHexToFFmpegColor, pad) remain the same...
+
 
 // Utility function to generate SRT from content based on 3 words per second
 function generateSrt(content) {
