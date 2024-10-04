@@ -748,22 +748,34 @@ app.post('/get-audio-duration', async (req, res) => {
 
 app.post('/add-audio', async (req, res) => {
   try {
-    const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume = 1, backgroundVolume = 0.5 } = req.body;
+    const { videoUrl, contentAudioUrl, backgroundAudioUrl, contentVolume = 1, backgroundVolume = 0.05 } = req.body;
 
     // Validate inputs
-    if (!videoUrl || !contentAudioUrl) {
-      return res.status(400).json({ error: 'Missing video URL or content audio URL.' });
+    if (!videoUrl) {
+      return res.status(400).json({ error: 'Missing video URL.' });
     }
 
     // Define paths for video, content audio, background audio, and output
     const videoPath = path.join(storageDir, `${uuidv4()}_input_video.mp4`);
-    const contentAudioPath = path.join(storageDir, `${uuidv4()}_content_audio.mp3`);
-    const backgroundAudioPath = path.join(storageDir, `${uuidv4()}_background_audio.mp3`);
+    const contentAudioPath = contentAudioUrl ? path.join(storageDir, `${uuidv4()}_content_audio.mp3`) : null;
+    const backgroundAudioPath = backgroundAudioUrl ? path.join(storageDir, `${uuidv4()}_background_audio.mp3`) : null;
     const outputFilePath = path.join(outputDir, `${uuidv4()}_final_output.mp4`);
 
-    // Download the video and audio files
+    // Download the video
     await downloadFile(videoUrl, videoPath);
-    await downloadFile(contentAudioUrl, contentAudioPath);
+
+    // Attempt to download content audio if it exists
+    let contentAudioExists = false;
+    if (contentAudioUrl) {
+      try {
+        await downloadFile(contentAudioUrl, contentAudioPath);
+        contentAudioExists = true;
+      } catch (error) {
+        console.error('Content audio download failed:', error.message);
+      }
+    }
+
+    // Attempt to download background audio if it exists
     let backgroundAudioExists = false;
     if (backgroundAudioUrl) {
       try {
@@ -778,22 +790,28 @@ app.post('/add-audio', async (req, res) => {
     const videoInfo = await getVideoInfo(videoPath);
     const hasVideoAudio = videoInfo.hasAudioStream;
 
-    // Prepare the FFmpeg command based on the availability of video audio and background audio
+    // Prepare the FFmpeg command based on the available audio sources
     let ffmpegCommand;
     const commonSettings = `-ar 44100 -bufsize 1000k -threads 2`;
 
-    if (hasVideoAudio && backgroundAudioExists) {
+    if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
       // Video, content, and background audio
       ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (hasVideoAudio) {
+    } else if (hasVideoAudio && contentAudioExists) {
       // Video and content audio only
       ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (backgroundAudioExists) {
+    } else if (contentAudioExists && backgroundAudioExists) {
       // Content and background audio only (no audio in video)
       ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else {
+    } else if (contentAudioExists) {
       // Content audio only (no audio in video or background)
       ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
+    } else if (backgroundAudioExists) {
+      // Background audio only (no content or video audio)
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
+    } else {
+      // No audio at all, just output the video
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
     }
 
     // Execute the FFmpeg command
@@ -801,10 +819,8 @@ app.post('/add-audio', async (req, res) => {
 
     // Clean up temporary files
     fs.unlinkSync(videoPath);
-    fs.unlinkSync(contentAudioPath);
-    if (backgroundAudioExists) {
-      fs.unlinkSync(backgroundAudioPath);
-    }
+    if (contentAudioExists) fs.unlinkSync(contentAudioPath);
+    if (backgroundAudioExists) fs.unlinkSync(backgroundAudioPath);
 
     // Check if the output file exists
     if (!fs.existsSync(outputFilePath)) {
