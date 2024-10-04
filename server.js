@@ -860,7 +860,118 @@ app.get('/download/merged/:filename', (req, res) => {
     }
 });
 
+// Endpoint to apply subtitles to a video
+app.post('/apply-subtitles', async (req, res) => {
+    try {
+        const { 
+            "video-link": videoLink, 
+            content, 
+            subtitle_font: fontName, 
+            subtitle_size: fontSize, 
+            subtitle_color: subtitleColor, 
+            subtitles_position: position, 
+            video_orientation: orientation, 
+            include_subtitles: includeSubtitles 
+        } = req.body;
 
+        if (!includeSubtitles) {
+            return res.status(400).json({ error: "Subtitles are disabled." });
+        }
+
+        // Define the output video path
+        const videoId = uuidv4();
+        const videoFile = path.join(outputDir, `${videoId}.mp4`);
+        const subtitleFile = path.join(outputDir, `${videoId}.srt`);
+
+        // Step 1: Download the video from the link
+        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+        const response = await axios({
+            method: 'get',
+            url: videoLink,
+            responseType: 'stream'
+        });
+
+        const writer = fs.createWriteStream(downloadPath);
+        response.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        // Step 2: Generate the SRT file from the provided content
+        const srtContent = generateSrt(content); // Function to generate SRT file
+        fs.writeFileSync(subtitleFile, srtContent);
+
+        // Step 3: Map position, font size, and color to FFmpeg-compatible formats
+        const alignmentMap = {
+            bottom: 2,
+            middle: 5,
+            top: 6
+        };
+        const alignment = alignmentMap[position] || 2; // Default to bottom if invalid
+        const ffmpegSubtitleColor = convertHexToFFmpegColor(subtitleColor);
+
+        // Step 4: Apply subtitles to the video using FFmpeg
+        ffmpeg(downloadPath)
+            .outputOptions([
+                `-vf subtitles=${subtitleFile}:force_style='Alignment=${alignment},FontName=${fontName},FontSize=${parseInt(fontSize)},PrimaryColour=${ffmpegSubtitleColor}'`
+            ])
+            .on('end', () => {
+                console.log('Subtitles applied successfully!');
+                
+                // Construct the video URL
+                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+
+                // Return the video URL
+                res.json({ videoUrl: videoUrl });
+            })
+            .on('error', (err) => {
+                console.error('Error applying subtitles:', err);
+                res.status(500).json({ error: 'Failed to apply subtitles' });
+            })
+            .save(videoFile);
+
+    } catch (error) {
+        console.error('Error processing request:', error);
+        res.status(500).json({ error: 'An error occurred while processing the request.' });
+    }
+});
+
+// Utility function to generate SRT from content (simple version)
+function generateSrt(content) {
+    const lines = content.split('.');
+    let srt = '';
+    let startTime = 0;
+    
+    lines.forEach((line, index) => {
+        const endTime = startTime + 3; // 3 seconds per line (this can be improved)
+        srt += `${index + 1}\n`;
+        srt += formatTime(startTime) + ' --> ' + formatTime(endTime) + '\n';
+        srt += line.trim() + '\n\n';
+        startTime = endTime;
+    });
+
+    return srt;
+}
+
+// Helper to format time in SRT format
+function formatTime(seconds) {
+    const date = new Date(null);
+    date.setSeconds(seconds); // Set seconds
+    const isoTime = date.toISOString().substr(11, 8);
+    return `${isoTime},000`;
+}
+
+// Helper to convert hex color to FFmpeg's color format
+function convertHexToFFmpegColor(hex) {
+    // Convert #RRGGBB hex color to &HAABBGGRR (FFmpeg format)
+    const color = hex.replace('#', '');
+    const r = color.slice(0, 2);
+    const g = color.slice(2, 4);
+    const b = color.slice(4, 6);
+    return `&H00${b}${g}${r}`.toUpperCase();
+}
 
 
 // Start the server
