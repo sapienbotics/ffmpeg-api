@@ -905,7 +905,7 @@ app.post('/apply-subtitles', async (req, res) => {
         // Define the output video path
         const videoId = uuidv4();
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
-        const subtitleFile = path.join(outputDir, `${videoId}.srt`);
+        const subtitleFile = path.join(outputDir, `${videoId}.ass`); // Use ASS instead of SRT
 
         // Step 1: Download the video from the link
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
@@ -923,37 +923,31 @@ app.post('/apply-subtitles', async (req, res) => {
             writer.on('error', reject);
         });
 
-        // Step 2: Generate the SRT file from the provided content
-        const srtContent = generateSrt(content);
-        fs.writeFileSync(subtitleFile, srtContent, { encoding: 'utf-8' }); // Ensure UTF-8 encoding
+        // Step 2: Generate the ASS file from the provided content
+        const assContent = generateAss(content, fontName, fontSize, subtitleColor, position);
+        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' }); // Ensure UTF-8 encoding
 
-        // Step 3: Set alignment based on numerical position
-        const ffmpegAlignment = position; // Use the provided numerical position directly
+        // Step 3: Apply subtitles to the video using FFmpeg
+        ffmpeg(downloadPath)
+            .outputOptions([`-vf ass=${subtitleFile}`])
+            .on('end', () => {
+                console.log('Subtitles applied successfully!');
+                
+                // Construct the video URL
+                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
-// Step 4: Apply subtitles to the video using FFmpeg
-ffmpeg(downloadPath)
-    .outputOptions([
-        `-vf subtitles=${subtitleFile}:force_style='Alignment=${ffmpegAlignment},FontName="${fontName}",FontSize=${parseInt(fontSize)},PrimaryColour=${convertHexToFFmpegColor(subtitleColor)}'`
-    ])
-    .on('end', () => {
-        console.log('Subtitles applied successfully!');
-        
-        // Construct the video URL
-        const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+                // Return the video URL
+                res.json({ videoUrl: videoUrl });
 
-        // Return the video URL
-        res.json({ videoUrl: videoUrl });
-
-        // Optional: Cleanup temporary files
-        fs.unlinkSync(downloadPath);
-        fs.unlinkSync(subtitleFile);
-    })
-    .on('error', (err) => {
-        console.error('Error applying subtitles:', err.message);
-        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-    })
-    .save(videoFile);
-
+                // Optional: Cleanup temporary files
+                fs.unlinkSync(downloadPath);
+                fs.unlinkSync(subtitleFile);
+            })
+            .on('error', (err) => {
+                console.error('Error applying subtitles:', err.message);
+                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+            })
+            .save(videoFile);
 
     } catch (error) {
         console.error('Error processing request:', error.message);
@@ -961,28 +955,38 @@ ffmpeg(downloadPath)
     }
 });
 
-// Utility function to generate SRT from content based on 3 words per second
-function generateSrt(content) {
+// Utility function to generate ASS from content
+function generateAss(content, fontName, fontSize, subtitleColor, position) {
+    const assHeader = `
+[Script Info]
+Title: Subtitles
+ScriptType: v4.00+
+PlayDepth: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, Alignment
+Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${position}
+
+[Events]
+Format: Layer, Start, End, Style, Text
+`;
+
     const words = content.split(' ');
-    let srt = '';
     let startTime = 0;
     let chunk = [];
     let index = 1;
-
-    const wordsPerSecond = 3; // 3 words per second, based on AI content logic
+    const wordsPerSecond = 3;
+    let events = '';
 
     words.forEach((word, i) => {
         chunk.push(word);
 
-        // If we've accumulated around 3 words, or we're at the end, create a subtitle
         if (chunk.length >= wordsPerSecond || i === words.length - 1) {
             const text = chunk.join(' ');
             const duration = chunk.length / wordsPerSecond;
             const endTime = startTime + duration;
 
-            srt += `${index}\n`;
-            srt += `${formatTime(startTime)} --> ${formatTime(endTime)}\n`;
-            srt += `${text}\n\n`;
+            events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
 
             chunk = [];
             startTime = endTime;
@@ -990,22 +994,11 @@ function generateSrt(content) {
         }
     });
 
-    return srt;
+    return assHeader + events;
 }
 
-// Helper to format time in SRT format
-function formatTime(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    const millis = Math.floor((seconds - Math.floor(seconds)) * 1000);
-
-    return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)},${pad(millis, 3)}`;
-}
-
-// Helper to convert hex color to FFmpeg's color format
-function convertHexToFFmpegColor(hex) {
-    // Convert #RRGGBB hex color to &HAABBGGRR (FFmpeg format)
+// Converts hex color to ASS format (&HAABBGGRR)
+function convertHexToAssColor(hex) {
     const color = hex.replace('#', '');
     const r = color.slice(0, 2);
     const g = color.slice(2, 4);
@@ -1013,11 +1006,21 @@ function convertHexToFFmpegColor(hex) {
     return `&H00${b}${g}${r}`.toUpperCase();
 }
 
+// Time formatting for ASS
+function formatTimeAss(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const millis = Math.floor((seconds - Math.floor(seconds)) * 100);
+    return `${pad(hours, 1)}:${pad(minutes, 2)}:${pad(secs, 2)}.${pad(millis, 2)}`;
+}
+
 // Helper function to pad time values with leading zeros
 function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
 }
+
 
 // Start the server
 const PORT = process.env.PORT || 8080;
