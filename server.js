@@ -877,6 +877,7 @@ app.get('/download/merged/:filename', (req, res) => {
 });
 
 
+
 // Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
@@ -956,6 +957,8 @@ app.post('/apply-subtitles', async (req, res) => {
 
 // Utility function to generate ASS from content
 function generateAss(content, fontName, fontSize, subtitleColor, position) {
+    const fontPath = path.join(__dirname, 'fonts', 'NotoSansDevanagari-VariableFont_wdth,wght.ttf'); // Full path to font
+
     const assHeader = `
 [Script Info]
 Title: Subtitles
@@ -963,8 +966,8 @@ ScriptType: v4.00+
 PlayDepth: 0
 
 [V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, Alignment
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${position}
+Format: Name, Fontname, Fontsize, PrimaryColour, Alignment, BorderStyle, Outline, Shadow, MarginL, MarginR, MarginV, Encoding
+Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${position},1,1,0,10,10,10,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
@@ -973,7 +976,7 @@ Format: Layer, Start, End, Style, Text
     const words = content.split(' ');
     let startTime = 0;
     let chunk = [];
-    const wordsPerSecond = 3;
+    const wordsPerSecond = 3; // Assuming 3 words per second for timing
     let events = '';
 
     words.forEach((word, i) => {
