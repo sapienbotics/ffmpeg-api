@@ -927,14 +927,11 @@ app.post('/apply-subtitles', async (req, res) => {
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' }); // Ensure UTF-8 encoding
 
-        // Step 3: Path to the NotoSansDevanagari font file
-        const fontPath = path.join(__dirname, 'fonts', 'NotoSansDevanagari-VariableFont_wdth,wght.ttf');
-
-        // Step 4: Apply subtitles to the video using FFmpeg
+        // Step 3: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
+            .input(subtitleFile) // Add subtitles as a separate input
             .outputOptions([
-                `-vf ass=${subtitleFile}`,
-                `-vf "subtitles=${subtitleFile}:force_style='FontName=${fontPath},FontSize=${parseInt(fontSize)},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`,
+                `-vf "subtitles=${subtitleFile}:force_style='FontName=${fontName},FontSize=${parseInt(fontSize)},PrimaryColour=${convertHexToAssColor(subtitleColor)},Alignment=${position}'`
             ])
             .on('end', () => {
                 console.log('Subtitles applied successfully!');
@@ -1026,6 +1023,7 @@ function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
 }
+
 
 
 // Start the server
