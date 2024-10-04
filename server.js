@@ -969,7 +969,7 @@ PlayDepth: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, Alignment
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${position}
+Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},5
 
 [Events]
 Format: Layer, Start, End, Style, Text
@@ -998,6 +998,7 @@ Format: Layer, Start, End, Style, Text
 
     return assHeader + events;
 }
+
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
