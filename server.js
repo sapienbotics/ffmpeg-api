@@ -876,6 +876,7 @@ app.get('/download/merged/:filename', (req, res) => {
     }
 });
 
+
 // Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
@@ -927,6 +928,9 @@ app.post('/apply-subtitles', async (req, res) => {
         // Step 3: Set alignment based on numerical position
         const ffmpegAlignment = position; // Use the provided numerical position directly
 
+        // Path to the font file
+        const fontPath = path.join(__dirname, 'fonts', 'NotoSansDevanagari-VariableFont_wdth,wght.ttf'); // Update with your font file
+
         // Step 4: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
             .outputOptions([
@@ -956,9 +960,6 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.' });
     }
 });
-
-// Other utility functions (generateSrt, formatTime, convertHexToFFmpegColor, pad) remain the same...
-
 
 // Utility function to generate SRT from content based on 3 words per second
 function generateSrt(content) {
