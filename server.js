@@ -923,13 +923,17 @@ app.post('/apply-subtitles', async (req, res) => {
             writer.on('error', reject);
         });
 
-        // Step 2: Generate the ASS file from the provided content
+        // Step 2: Log the font path for debugging
+        const fontPath = path.join(__dirname, 'fonts', 'NotoSansDevanagari-VariableFont_wdth,wght.ttf');
+        console.log("Font Path: ", fontPath);  // Log the path of the font
+
+        // Step 3: Generate the ASS file from the provided content
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Step 3: Apply subtitles to the video using FFmpeg
+        // Step 4: Apply subtitles to the video using FFmpeg, including the font path
         ffmpeg(downloadPath)
-            .outputOptions([`-vf subtitles=${subtitleFile}`]) // Correct usage of subtitles filter
+            .outputOptions([`-vf subtitles=${subtitleFile}:fontsdir=${path.join(__dirname, 'fonts')}`]) // Include fontsdir in FFmpeg command
             .on('end', () => {
                 console.log('Subtitles applied successfully!');
                 
