@@ -938,18 +938,33 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-// Utility function to generate SRT from content (simple version)
+// Utility function to generate SRT from content based on 3 words per second
 function generateSrt(content) {
-    const lines = content.split('.');
+    const words = content.split(' ');
     let srt = '';
     let startTime = 0;
-    
-    lines.forEach((line, index) => {
-        const endTime = startTime + 3; // 3 seconds per line (this can be improved)
-        srt += `${index + 1}\n`;
-        srt += formatTime(startTime) + ' --> ' + formatTime(endTime) + '\n';
-        srt += line.trim() + '\n\n';
-        startTime = endTime;
+    let chunk = [];
+    let index = 1;
+
+    const wordsPerSecond = 3; // 3 words per second, based on AI content logic
+
+    words.forEach((word, i) => {
+        chunk.push(word);
+
+        // If we've accumulated around 3 words, or we're at the end, create a subtitle
+        if (chunk.length >= wordsPerSecond || i === words.length - 1) {
+            const text = chunk.join(' ');
+            const duration = chunk.length / wordsPerSecond;
+            const endTime = startTime + duration;
+
+            srt += `${index}\n`;
+            srt += `${formatTime(startTime)} --> ${formatTime(endTime)}\n`;
+            srt += `${text}\n\n`;
+
+            chunk = [];
+            startTime = endTime;
+            index++;
+        }
     });
 
     return srt;
@@ -957,10 +972,12 @@ function generateSrt(content) {
 
 // Helper to format time in SRT format
 function formatTime(seconds) {
-    const date = new Date(null);
-    date.setSeconds(seconds); // Set seconds
-    const isoTime = date.toISOString().substr(11, 8);
-    return `${isoTime},000`;
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const millis = Math.floor((seconds - Math.floor(seconds)) * 1000);
+
+    return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)},${pad(millis, 3)}`;
 }
 
 // Helper to convert hex color to FFmpeg's color format
@@ -971,6 +988,12 @@ function convertHexToFFmpegColor(hex) {
     const g = color.slice(2, 4);
     const b = color.slice(4, 6);
     return `&H00${b}${g}${r}`.toUpperCase();
+}
+
+// Helper function to pad time values with leading zeros
+function pad(num, size) {
+    const s = "0000" + num;
+    return s.substr(s.length - size);
 }
 
 
