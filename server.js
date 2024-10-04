@@ -886,10 +886,12 @@ app.post('/apply-subtitles', async (req, res) => {
             subtitle_font: fontName, 
             subtitle_size: fontSize, 
             subtitle_color: subtitleColor, 
-            subtitles_position: position, // Now this is a number
+            subtitles_position: position, 
             video_orientation: orientation, 
             include_subtitles: includeSubtitles 
         } = req.body;
+
+        console.log('Received request body:', req.body); // Log incoming request
 
         if (!includeSubtitles) {
             return res.status(400).json({ error: "Subtitles are disabled." });
@@ -928,9 +930,6 @@ app.post('/apply-subtitles', async (req, res) => {
         // Step 3: Set alignment based on numerical position
         const ffmpegAlignment = position; // Use the provided numerical position directly
 
-        // Path to the font file
-        const fontPath = path.join(__dirname, 'fonts', 'NotoSansDevanagari-VariableFont_wdth,wght.ttf'); // Update with your font file
-
         // Step 4: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
             .outputOptions([
@@ -950,14 +949,14 @@ app.post('/apply-subtitles', async (req, res) => {
                 fs.unlinkSync(subtitleFile);
             })
             .on('error', (err) => {
-                console.error('Error applying subtitles:', err);
-                res.status(500).json({ error: 'Failed to apply subtitles' });
+                console.error('Error applying subtitles:', err.message);
+                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
             })
             .save(videoFile);
 
     } catch (error) {
-        console.error('Error processing request:', error);
-        res.status(500).json({ error: 'An error occurred while processing the request.' });
+        console.error('Error processing request:', error.message);
+        res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
 
@@ -1018,7 +1017,6 @@ function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
 }
-
 
 // Start the server
 const PORT = process.env.PORT || 8080;
