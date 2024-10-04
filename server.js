@@ -887,6 +887,8 @@ app.post('/apply-subtitles', async (req, res) => {
             subtitle_font: fontName, 
             subtitle_size: fontSize, 
             subtitle_color: subtitleColor, 
+            back_color: backColor,   // Extracted background color
+            opacity,                 // Extracted opacity
             subtitles_position: position, 
             include_subtitles: includeSubtitles 
         } = req.body;
@@ -928,7 +930,7 @@ app.post('/apply-subtitles', async (req, res) => {
         console.log("Font Path: ", fontPath);  // Log the path of the font
 
         // Step 3: Generate the ASS file from the provided content
-        const assContent = generateAss(content, fontName, fontSize, subtitleColor, position);
+        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
         // Step 4: Apply subtitles to the video using FFmpeg, including the font path
@@ -960,7 +962,7 @@ app.post('/apply-subtitles', async (req, res) => {
 });
 
 // Utility function to generate ASS from content
-function generateAss(content, fontName, fontSize, subtitleColor, position) {
+function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
     const assHeader = `
 [Script Info]
 Title: Subtitles
@@ -968,8 +970,8 @@ ScriptType: v4.00+
 PlayDepth: 0
 
 [V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, Alignment
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},5
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Alignment
+Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColor(backColor)},${position}
 
 [Events]
 Format: Layer, Start, End, Style, Text
@@ -989,7 +991,11 @@ Format: Layer, Start, End, Style, Text
             const duration = chunk.length / wordsPerSecond;
             const endTime = startTime + duration;
 
-            events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
+            // Set background opacity
+            const opacityValue = Math.round(opacity * 255); // Convert opacity to a value between 0 and 255
+            const assDialogue = `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,{\\an${position}\\1c${convertHexToAssColor(subtitleColor)}\\3c${convertHexToAssColor(backColor)}\\4c&H${opacityValue.toString(16).padStart(2, '0')}00&} ${text}\n`;
+
+            events += assDialogue;
 
             chunk = [];
             startTime = endTime;
@@ -998,7 +1004,6 @@ Format: Layer, Start, End, Style, Text
 
     return assHeader + events;
 }
-
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
@@ -1023,6 +1028,7 @@ function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
 }
+
 
 
 // Start the server
