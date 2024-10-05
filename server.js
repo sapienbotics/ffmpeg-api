@@ -1020,7 +1020,39 @@ Format: Layer, Start, End, Style, Text
     return assHeader + events;
 }
 
-// (Rest of your existing functions...)
+// Converts hex color to ASS format (&HAABBGGRR)
+function convertHexToAssColor(hex) {
+    const color = hex.replace('#', '');
+    const r = color.slice(0, 2);
+    const g = color.slice(2, 4);
+    const b = color.slice(4, 6);
+    return &H00${b}${g}${r}.toUpperCase();
+}
+
+// Converts hex color to ASS format with opacity for background (&HAABBGGRR)
+function convertHexToAssColorWithOpacity(hex, opacity) {
+    const alpha = Math.round((1 - opacity) * 255).toString(16).padStart(2, '0').toUpperCase();
+    const color = hex.replace('#', '');
+    const r = color.slice(0, 2);
+    const g = color.slice(2, 4);
+    const b = color.slice(4, 6);
+    return &H${alpha}${b}${g}${r}.toUpperCase();
+}
+
+// Time formatting for ASS
+function formatTimeAss(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const millis = Math.floor((seconds - Math.floor(seconds)) * 100);
+    return ${pad(hours, 1)}:${pad(minutes, 2)}:${pad(secs, 2)}.${pad(millis, 2)};
+}
+
+// Helper function to pad time values with leading zeros
+function pad(num, size) {
+    const s = "0000" + num;
+    return s.substr(s.length - size);
+}
 
 module.exports = app; // Ensure you export your app
 
