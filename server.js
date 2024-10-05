@@ -944,28 +944,28 @@ app.post('/apply-subtitles', async (req, res) => {
 
         // Step 4: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
-            .outputOptions([
-                `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`,  
-                `-sub_charenc UTF-8`                                 
-            ])
-            .on('end', () => {
-                console.log('Subtitles applied successfully!');
-                
-                // Construct the video URL
-                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+    .outputOptions([
+        `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`  
+    ])
+    .on('end', () => {
+        console.log('Subtitles applied successfully!');
+        
+        // Construct the video URL
+        const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
-                // Return the video URL
-                res.json({ videoUrl: videoUrl });
+        // Return the video URL
+        res.json({ videoUrl: videoUrl });
 
-                // Optional: Cleanup temporary files
-                fs.unlinkSync(downloadPath);
-                fs.unlinkSync(subtitleFile);
-            })
-            .on('error', (err) => {
-                console.error('Error applying subtitles:', err.message);
-                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-            })
-            .save(videoFile);
+        // Optional: Cleanup temporary files
+        fs.unlinkSync(downloadPath);
+        fs.unlinkSync(subtitleFile);
+    })
+    .on('error', (err) => {
+        console.error('Error applying subtitles:', err.message);
+        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+    })
+    .save(videoFile);
+
 
     } catch (error) {
         console.error('Error processing request:', error.message);
