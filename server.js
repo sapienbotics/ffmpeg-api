@@ -876,7 +876,6 @@ app.get('/download/merged/:filename', (req, res) => {
     }
 });
 
-
 // Endpoint to apply subtitles to a video 
 app.post('/apply-subtitles', async (req, res) => {
     try {
@@ -962,7 +961,8 @@ app.post('/apply-subtitles', async (req, res) => {
         console.log('Running FFmpeg to apply subtitles...');
         ffmpeg(downloadPath)
         .outputOptions([
-            `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`  
+            // Explicitly mention font directory and force font name to avoid issues
+            `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:force_style='FontName=${fontName.replace(/\s+/g, '')},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`  
         ])
         .on('end', () => {
             console.log('Subtitles applied successfully!');
@@ -1002,7 +1002,7 @@ PlayDepth: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},0,0,30
+Style: Default,${fontName.replace(/\s+/g, '')},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},0,0,30
 
 [Events]
 Format: Layer, Start, End, Style, Text
@@ -1067,7 +1067,6 @@ function pad(num, size) {
 }
 
 module.exports = app; // Ensure you export your app
-
 
 
 // Start the server
