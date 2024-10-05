@@ -877,9 +877,6 @@ app.get('/download/merged/:filename', (req, res) => {
 });
 
 
-// Required FFmpeg library for extracting video metadata
-const ffmpeg = require('fluent-ffmpeg'); // Ensure you have this installed
-
 // Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
