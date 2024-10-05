@@ -877,6 +877,9 @@ app.get('/download/merged/:filename', (req, res) => {
 });
 
 
+// Required FFmpeg library for extracting video metadata
+const ffmpeg = require('fluent-ffmpeg'); // Ensure you have this installed
+
 // Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
@@ -924,20 +927,35 @@ app.post('/apply-subtitles', async (req, res) => {
             writer.on('error', reject);
         });
 
-        // Step 2: Log the font path for debugging
+        // Step 2: Extract video length using FFmpeg
+        let videoLengthInSeconds = 0;
+
+        await new Promise((resolve, reject) => {
+            ffmpeg.ffprobe(downloadPath, (err, metadata) => {
+                if (err) {
+                    return reject(err);
+                }
+                // Extract the duration in seconds
+                videoLengthInSeconds = Math.ceil(metadata.format.duration);
+                console.log('Video Length (seconds):', videoLengthInSeconds);
+                resolve();
+            });
+        });
+
+        // Step 3: Log the font path for debugging
         const fontPath = path.join(__dirname, 'fonts', 'Sanskrit-2003.ttf');
         console.log("Font Path: ", fontPath);  // Log the path of the font
 
-        // Step 3: Generate the ASS file from the provided content
-        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
+        // Step 4: Generate the ASS file from the provided content
+        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Step 4: Apply subtitles to the video using FFmpeg, including the font path
+        // Step 5: Apply subtitles to the video using FFmpeg, including the font path
         ffmpeg(downloadPath)
             .outputOptions([`-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`]) // Include fontsdir in FFmpeg command
             .on('end', () => {
                 console.log('Subtitles applied successfully!');
-                
+
                 // Construct the video URL
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
@@ -960,7 +978,7 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position) {
+function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
     const assHeader = `
 [Script Info]
 Title: Subtitles
@@ -977,30 +995,27 @@ Format: Layer, Start, End, Style, Text
 
     const words = content.split(' ');
     const totalWords = words.length;
-    const wordsPerSecond = 3; // You can adjust this value based on your requirements
+    const wordsPerSubtitle = 4; // Adjust this to change how many words you want to display at once
+
+    // Adjusted video length to finish 2 seconds early
+    const adjustedDuration = Math.max(0, videoLengthInSeconds - 2);
     
-    // Assuming you get the video length from some source, here I will assume a placeholder for it
-    const videoLengthInSeconds = totalWords / wordsPerSecond + 2; // This should be the actual video length
-    const adjustedDuration = Math.max(0, videoLengthInSeconds - 2); // Adjusted duration (2 seconds less)
+    const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
+    const durationPerSubtitle = adjustedDuration / totalSubtitles; // Time allocated for each subtitle
 
     let startTime = 0;
     let events = '';
 
-    // Adjust the total duration for the subtitles
-    const adjustedSpeed = adjustedDuration / totalWords; // Calculate new duration per word
-
-    for (let i = 0; i < totalWords; i++) {
-        const text = words[i];
-        
-        const duration = adjustedSpeed; // Each word will be displayed according to the adjusted speed
-        const endTime = startTime + duration;
+    for (let i = 0; i < totalSubtitles; i++) {
+        const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
+        const endTime = startTime + durationPerSubtitle;
 
         // Ensure endTime doesn't exceed adjustedDuration
         if (endTime > adjustedDuration) {
             break; // Exit if the end time exceeds the adjusted duration
         }
 
-        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
+        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
 
         startTime = endTime; // Move to the next start time
     }
@@ -1008,44 +1023,10 @@ Format: Layer, Start, End, Style, Text
     return assHeader + events;
 }
 
-
-
-
-// Converts hex color to ASS format (&HAABBGGRR)
-function convertHexToAssColor(hex) {
-    const color = hex.replace('#', '');
-    const r = color.slice(0, 2);
-    const g = color.slice(2, 4);
-    const b = color.slice(4, 6);
-    return `&H00${b}${g}${r}`.toUpperCase();
-}
-
-// Converts hex color to ASS format with opacity for background (&HAABBGGRR)
-function convertHexToAssColorWithOpacity(hex, opacity) {
-    const alpha = Math.round((1 - opacity) * 255).toString(16).padStart(2, '0').toUpperCase();
-    const color = hex.replace('#', '');
-    const r = color.slice(0, 2);
-    const g = color.slice(2, 4);
-    const b = color.slice(4, 6);
-    return `&H${alpha}${b}${g}${r}`.toUpperCase();
-}
-
-// Time formatting for ASS
-function formatTimeAss(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    const millis = Math.floor((seconds - Math.floor(seconds)) * 100);
-    return `${pad(hours, 1)}:${pad(minutes, 2)}:${pad(secs, 2)}.${pad(millis, 2)}`;
-}
-
-// Helper function to pad time values with leading zeros
-function pad(num, size) {
-    const s = "0000" + num;
-    return s.substr(s.length - size);
-}
+// (Rest of your existing functions...)
 
 module.exports = app; // Ensure you export your app
+
 
 
 // Start the server
