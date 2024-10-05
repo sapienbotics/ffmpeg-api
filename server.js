@@ -976,6 +976,9 @@ Format: Layer, Start, End, Style, Text
 `;
 
     const words = content.split(' ');
+    const totalDuration = words.length / 3; // Duration based on words per second
+    const adjustedDuration = Math.max(0, totalDuration - 2); // Adjusted duration (2 seconds less)
+
     let startTime = 0;
     let chunk = [];
     const wordsPerSecond = 3; // Adjust as necessary
@@ -987,7 +990,12 @@ Format: Layer, Start, End, Style, Text
         if (chunk.length >= wordsPerSecond || i === words.length - 1) {
             const text = chunk.join(' ');  // Maintain the text as is
             const duration = chunk.length / wordsPerSecond;
-            const endTime = startTime + duration;
+
+            // Adjust the end time based on the adjusted duration
+            let endTime = startTime + duration;
+            if (endTime > adjustedDuration) {
+                endTime = adjustedDuration; // Cap end time to adjusted duration
+            }
 
             events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
 
@@ -998,6 +1006,7 @@ Format: Layer, Start, End, Style, Text
 
     return assHeader + events;
 }
+
 
 
 
