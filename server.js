@@ -976,33 +976,34 @@ Format: Layer, Start, End, Style, Text
 `;
 
     const words = content.split(' ');
-    const totalDuration = words.length / 3; // Duration based on words per second
-    const adjustedDuration = Math.max(0, totalDuration - 2); // Adjusted duration (2 seconds less)
+    const totalWords = words.length;
+    const wordsPerSecond = 3; // You can adjust this value based on your requirements
+    
+    // Assuming you get the video length from some source, here I will assume a placeholder for it
+    const videoLengthInSeconds = totalWords / wordsPerSecond + 2; // This should be the actual video length
+    const adjustedDuration = Math.max(0, videoLengthInSeconds - 2); // Adjusted duration (2 seconds less)
 
     let startTime = 0;
-    let chunk = [];
-    const wordsPerSecond = 3; // Adjust as necessary
     let events = '';
 
-    words.forEach((word, i) => {
-        chunk.push(word);
+    // Adjust the total duration for the subtitles
+    const adjustedSpeed = adjustedDuration / totalWords; // Calculate new duration per word
 
-        if (chunk.length >= wordsPerSecond || i === words.length - 1) {
-            const text = chunk.join(' ');  // Maintain the text as is
-            const duration = chunk.length / wordsPerSecond;
+    for (let i = 0; i < totalWords; i++) {
+        const text = words[i];
+        
+        const duration = adjustedSpeed; // Each word will be displayed according to the adjusted speed
+        const endTime = startTime + duration;
 
-            // Adjust the end time based on the adjusted duration
-            let endTime = startTime + duration;
-            if (endTime > adjustedDuration) {
-                endTime = adjustedDuration; // Cap end time to adjusted duration
-            }
-
-            events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
-
-            chunk = [];
-            startTime = endTime;
+        // Ensure endTime doesn't exceed adjustedDuration
+        if (endTime > adjustedDuration) {
+            break; // Exit if the end time exceeds the adjusted duration
         }
-    });
+
+        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
+
+        startTime = endTime; // Move to the next start time
+    }
 
     return assHeader + events;
 }
