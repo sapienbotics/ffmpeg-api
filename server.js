@@ -877,18 +877,6 @@ app.get('/download/merged/:filename', (req, res) => {
 });
 
 
-
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
-const ffmpeg = require('fluent-ffmpeg');
-const { v4: uuidv4 } = require('uuid');
-
-const app = express();
-const outputDir = path.join(__dirname, 'output');
-app.use(express.json());
-
 // Endpoint to apply subtitles to a video 
 app.post('/apply-subtitles', async (req, res) => {
     try {
