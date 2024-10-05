@@ -962,7 +962,7 @@ app.post('/apply-subtitles', async (req, res) => {
 });
 
 // Utility function to generate ASS from content
-function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
+function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position) {
     const assHeader = `
 [Script Info]
 Title: Subtitles
@@ -970,8 +970,8 @@ ScriptType: v4.00+
 PlayDepth: 0
 
 [V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Alignment
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColor(backColor)},${position}
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
+Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},0,0,30
 
 [Events]
 Format: Layer, Start, End, Style, Text
@@ -991,11 +991,7 @@ Format: Layer, Start, End, Style, Text
             const duration = chunk.length / wordsPerSecond;
             const endTime = startTime + duration;
 
-            // Set background opacity
-            const opacityValue = Math.round(opacity * 255); // Convert opacity to a value between 0 and 255
-            const assDialogue = `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,{\\an${position}\\1c${convertHexToAssColor(subtitleColor)}\\3c${convertHexToAssColor(backColor)}\\4c&H${opacityValue.toString(16).padStart(2, '0')}00&} ${text}\n`;
-
-            events += assDialogue;
+            events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
 
             chunk = [];
             startTime = endTime;
@@ -1012,6 +1008,16 @@ function convertHexToAssColor(hex) {
     const g = color.slice(2, 4);
     const b = color.slice(4, 6);
     return `&H00${b}${g}${r}`.toUpperCase();
+}
+
+// Converts hex color to ASS format with opacity for background (&HAABBGGRR)
+function convertHexToAssColorWithOpacity(hex, opacity) {
+    const alpha = Math.round((1 - opacity) * 255).toString(16).padStart(2, '0').toUpperCase();
+    const color = hex.replace('#', '');
+    const r = color.slice(0, 2);
+    const g = color.slice(2, 4);
+    const b = color.slice(4, 6);
+    return `&H${alpha}${b}${g}${r}`.toUpperCase();
 }
 
 // Time formatting for ASS
