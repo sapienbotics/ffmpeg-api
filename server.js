@@ -878,22 +878,33 @@ app.get('/download/merged/:filename', (req, res) => {
 
 
 
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const ffmpeg = require('fluent-ffmpeg');
+const { v4: uuidv4 } = require('uuid');
+
+const app = express();
+const outputDir = path.join(__dirname, 'output');
+app.use(express.json());
+
 // Endpoint to apply subtitles to a video 
 app.post('/apply-subtitles', async (req, res) => {
     try {
         const { 
             "video-link": videoLink, 
             content, 
-            subtitle_font: fontName,  // Should be Noto Sans Devanagari or similar
+            subtitle_font: fontName,  
             subtitle_size: fontSize, 
             subtitle_color: subtitleColor, 
-            back_color: backColor,   // Extracted background color
-            opacity,                 // Extracted opacity
+            back_color: backColor,  
+            opacity,                 
             subtitles_position: position, 
             include_subtitles: includeSubtitles 
         } = req.body;
 
-        console.log('Received request body:', req.body); // Log incoming request
+        console.log('Received request body:', req.body); 
 
         if (!includeSubtitles) {
             return res.status(400).json({ error: "Subtitles are disabled." });
@@ -907,7 +918,7 @@ app.post('/apply-subtitles', async (req, res) => {
         // Define the output video path
         const videoId = uuidv4();
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
-        const subtitleFile = path.join(outputDir, `${videoId}.ass`); // Use ASS format for styling
+        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
 
         // Step 1: Download the video from the link
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
@@ -927,20 +938,27 @@ app.post('/apply-subtitles', async (req, res) => {
 
         // Step 2: Log the font path for debugging
         const fontDir = path.join(__dirname, 'fonts');
-        const primaryFontPath = path.join(fontDir, 'NotoSansDevanagari-VariableFont_wdth,wght.ttf');  // Update font here
-        const fallbackFontPath = path.join(fontDir, 'NotoSerifDevanagari-VariableFont_wdth,wght.ttf'); // Fallback font
+        const primaryFontPath = path.join(fontDir, 'NotoSansDevanagari-VariableFont_wdth,wght.ttf');  
+        const fallbackFontPath = path.join(fontDir, 'NotoSerifDevanagari-VariableFont_wdth,wght.ttf'); 
 
-        console.log("Primary Font Path: ", primaryFontPath);  // Log the path of the primary font
-        console.log("Fallback Font Path: ", fallbackFontPath); // Log fallback font
+        // Check if font files exist
+        if (!fs.existsSync(primaryFontPath) || !fs.existsSync(fallbackFontPath)) {
+            console.error("Font files not found.");
+            return res.status(500).json({ error: "Font files not found." });
+        }
+
+        console.log("Primary Font Path: ", primaryFontPath);  
+        console.log("Fallback Font Path: ", fallbackFontPath); 
 
         // Step 3: Generate the ASS file from the provided content
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Step 4: Apply subtitles to the video using FFmpeg, including the font path and encoding
+        // Step 4: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
             .outputOptions([
-                `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:charenc=UTF-8"` // Include fontsdir and charenc in FFmpeg command
+                `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`,  
+                `-sub_charenc UTF-8`                                 
             ])
             .on('end', () => {
                 console.log('Subtitles applied successfully!');
@@ -1040,6 +1058,8 @@ function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
 }
+
+module.exports = app; // Ensure you export your app
 
 
 
