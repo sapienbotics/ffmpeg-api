@@ -960,7 +960,6 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-// Utility function to generate ASS from content
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position) {
     const assHeader = `
 [Script Info]
@@ -986,11 +985,11 @@ Format: Layer, Start, End, Style, Text
         chunk.push(word);
 
         if (chunk.length >= wordsPerSecond || i === words.length - 1) {
-            const text = chunk.join(' ');
+            const text = chunk.join(' ');  // Ensure proper spacing and formatting
             const duration = chunk.length / wordsPerSecond;
             const endTime = startTime + duration;
 
-            events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
+            events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text.replace(/([^\u0000-\u007F])/g, '\\$1')}\n`; // Ensure non-ASCII chars are properly escaped
 
             chunk = [];
             startTime = endTime;
@@ -999,6 +998,7 @@ Format: Layer, Start, End, Style, Text
 
     return assHeader + events;
 }
+
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
