@@ -940,8 +940,7 @@ app.post('/apply-subtitles', async (req, res) => {
         // Step 4: Apply subtitles to the video using FFmpeg, including the font path and encoding
         ffmpeg(downloadPath)
             .outputOptions([
-                `-vf subtitles=${subtitleFile}:fontsdir=${fontDir}`,    // Include fontsdir in FFmpeg command
-                `-sub_charenc UTF-8`                                   // Ensure proper Unicode encoding for Devanagari script
+                `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:charenc=UTF-8"` // Include fontsdir and charenc in FFmpeg command
             ])
             .on('end', () => {
                 console.log('Subtitles applied successfully!');
