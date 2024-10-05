@@ -1026,7 +1026,7 @@ function convertHexToAssColor(hex) {
     const r = color.slice(0, 2);
     const g = color.slice(2, 4);
     const b = color.slice(4, 6);
-    return &H00${b}${g}${r}.toUpperCase();
+    return `&H00${b}${g}${r}`.toUpperCase(); // Use backticks for string interpolation
 }
 
 // Converts hex color to ASS format with opacity for background (&HAABBGGRR)
@@ -1036,7 +1036,7 @@ function convertHexToAssColorWithOpacity(hex, opacity) {
     const r = color.slice(0, 2);
     const g = color.slice(2, 4);
     const b = color.slice(4, 6);
-    return &H${alpha}${b}${g}${r}.toUpperCase();
+    return `&H${alpha}${b}${g}${r}`.toUpperCase(); // Use backticks for string interpolation
 }
 
 // Time formatting for ASS
@@ -1045,7 +1045,7 @@ function formatTimeAss(seconds) {
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
     const millis = Math.floor((seconds - Math.floor(seconds)) * 100);
-    return ${pad(hours, 1)}:${pad(minutes, 2)}:${pad(secs, 2)}.${pad(millis, 2)};
+    return `${pad(hours, 1)}:${pad(minutes, 2)}:${pad(secs, 2)}.${pad(millis, 2)}`; // Use backticks for string interpolation
 }
 
 // Helper function to pad time values with leading zeros
@@ -1055,6 +1055,7 @@ function pad(num, size) {
 }
 
 module.exports = app; // Ensure you export your app
+
 
 
 
