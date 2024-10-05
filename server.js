@@ -956,6 +956,7 @@ app.post('/apply-subtitles', async (req, res) => {
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
         console.log('Subtitle ASS file created:', subtitleFile);
+        console.log('Generated ASS content:', assContent);
 
         // Step 4: Apply subtitles to the video using FFmpeg
         console.log('Running FFmpeg to apply subtitles...');
@@ -980,6 +981,7 @@ app.post('/apply-subtitles', async (req, res) => {
         })
         .on('error', (err) => {
             console.error('Error applying subtitles:', err.message);
+            console.error('FFmpeg error details:', err);
             res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
         })
         .save(videoFile);
