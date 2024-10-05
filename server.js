@@ -907,9 +907,12 @@ app.post('/apply-subtitles', async (req, res) => {
         const videoId = uuidv4();
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
+        console.log('Generated videoId:', videoId);
 
         // Step 1: Download the video from the link
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+        console.log('Download path for video:', downloadPath);
+
         const response = await axios({
             method: 'get',
             url: videoLink,
@@ -924,48 +927,62 @@ app.post('/apply-subtitles', async (req, res) => {
             writer.on('error', reject);
         });
 
+        console.log('Video downloaded successfully:', downloadPath);
+
         // Step 2: Log the font path for debugging
         const fontDir = path.join(__dirname, 'fonts');
         const primaryFontPath = path.join(fontDir, 'NotoSansDevanagari-VariableFont_wdth,wght.ttf');  
         const fallbackFontPath = path.join(fontDir, 'NotoSerifDevanagari-VariableFont_wdth,wght.ttf'); 
 
-        // Check if font files exist
-        if (!fs.existsSync(primaryFontPath) || !fs.existsSync(fallbackFontPath)) {
-            console.error("Font files not found.");
-            return res.status(500).json({ error: "Font files not found." });
-        }
-
+        console.log("Checking font paths...");
         console.log("Primary Font Path: ", primaryFontPath);  
         console.log("Fallback Font Path: ", fallbackFontPath); 
 
+        // Check if font files exist
+        if (!fs.existsSync(primaryFontPath)) {
+            console.error("Primary font file not found at:", primaryFontPath);
+        } else {
+            console.log("Primary font file found.");
+        }
+
+        if (!fs.existsSync(fallbackFontPath)) {
+            console.error("Fallback font file not found at:", fallbackFontPath);
+        } else {
+            console.log("Fallback font file found.");
+        }
+
         // Step 3: Generate the ASS file from the provided content
+        console.log('Generating ASS subtitle file...');
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
+        console.log('Subtitle ASS file created:', subtitleFile);
 
         // Step 4: Apply subtitles to the video using FFmpeg
+        console.log('Running FFmpeg to apply subtitles...');
         ffmpeg(downloadPath)
-    .outputOptions([
-        `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`  
-    ])
-    .on('end', () => {
-        console.log('Subtitles applied successfully!');
-        
-        // Construct the video URL
-        const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+        .outputOptions([
+            `-vf "subtitles=${subtitleFile}:fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`  
+        ])
+        .on('end', () => {
+            console.log('Subtitles applied successfully!');
+            
+            // Construct the video URL
+            const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+            console.log('Video URL:', videoUrl);
 
-        // Return the video URL
-        res.json({ videoUrl: videoUrl });
+            // Return the video URL
+            res.json({ videoUrl: videoUrl });
 
-        // Optional: Cleanup temporary files
-        fs.unlinkSync(downloadPath);
-        fs.unlinkSync(subtitleFile);
-    })
-    .on('error', (err) => {
-        console.error('Error applying subtitles:', err.message);
-        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-    })
-    .save(videoFile);
-
+            // Optional: Cleanup temporary files
+            fs.unlinkSync(downloadPath);
+            fs.unlinkSync(subtitleFile);
+            console.log('Temporary files cleaned up.');
+        })
+        .on('error', (err) => {
+            console.error('Error applying subtitles:', err.message);
+            res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+        })
+        .save(videoFile);
 
     } catch (error) {
         console.error('Error processing request:', error.message);
