@@ -930,24 +930,35 @@ app.post('/apply-subtitles', async (req, res) => {
         const assContent = generateAss(content, fontName, fontSize.replace('px', ''), subtitleColor, backColor, opacity, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Step 4: Apply subtitles using FFmpeg
-        ffmpeg(downloadPath)
-            .outputOptions([
-                `-vf subtitles=${subtitleFile}:fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize.replace('px', '')},PrimaryColour=${convertHexToAssColor(subtitleColor)}'`
-            ])
-            .on('end', () => {
-                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-                res.json({ videoUrl: videoUrl });
 
-                // Clean up
-                fs.unlinkSync(downloadPath);
-                fs.unlinkSync(subtitleFile);
-            })
-            .on('error', (err) => {
-                console.error('FFmpeg error:', err.message);
-                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-            })
-            .save(videoFile);
+        // Step 4: Apply subtitles to the video using FFmpeg
+console.log('Running FFmpeg to apply subtitles...');
+ffmpeg(downloadPath)
+.outputOptions([
+    `-vf "subtitles='${subtitleFile}':fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`  
+])
+.on('end', () => {
+    console.log('Subtitles applied successfully!');
+    
+    // Construct the video URL
+    const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+    console.log('Video URL:', videoUrl);
+
+    // Return the video URL
+    res.json({ videoUrl: videoUrl });
+
+    // Optional: Cleanup temporary files
+    fs.unlinkSync(downloadPath);
+    fs.unlinkSync(subtitleFile);
+    console.log('Temporary files cleaned up.');
+})
+.on('error', (err) => {
+    console.error('Error applying subtitles:', err.message);
+    console.error('FFmpeg error details:', err);
+    res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+})
+.save(videoFile);
+
 
     } catch (error) {
         console.error('Error processing request:', error.message);
