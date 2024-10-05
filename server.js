@@ -936,7 +936,7 @@ app.post('/apply-subtitles', async (req, res) => {
         });
 
         // Step 3: Log the font path for debugging
-        const fontPath = path.join(__dirname, 'fonts', 'Mangal Regular.ttf');
+        const fontPath = path.join(__dirname, 'fonts', 'NotoSansDevanagari-VariableFont_wdth,wght.ttf');
         console.log("Font Path: ", fontPath);
 
         // Step 4: Generate the ASS file from the provided content
