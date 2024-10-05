@@ -932,32 +932,30 @@ app.post('/apply-subtitles', async (req, res) => {
 
 
         // Step 4: Apply subtitles to the video using FFmpeg
-console.log('Running FFmpeg to apply subtitles...');
+
 ffmpeg(downloadPath)
-.outputOptions([
-    `-vf "subtitles='${subtitleFile}':fontsdir=${fontDir}:force_style='FontName=${fontName},FontSize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`  
-])
-.on('end', () => {
-    console.log('Subtitles applied successfully!');
-    
-    // Construct the video URL
-    const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-    console.log('Video URL:', videoUrl);
+    .outputOptions([
+        `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'` // Properly formatted
+    ])
+    .on('end', () => {
+        console.log('Subtitles applied successfully!');
 
-    // Return the video URL
-    res.json({ videoUrl: videoUrl });
+        // Construct the video URL
+        const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
-    // Optional: Cleanup temporary files
-    fs.unlinkSync(downloadPath);
-    fs.unlinkSync(subtitleFile);
-    console.log('Temporary files cleaned up.');
-})
-.on('error', (err) => {
-    console.error('Error applying subtitles:', err.message);
-    console.error('FFmpeg error details:', err);
-    res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-})
-.save(videoFile);
+        // Return the video URL
+        res.json({ videoUrl });
+
+        // Optional: Cleanup temporary files
+        fs.unlinkSync(downloadPath);
+        fs.unlinkSync(subtitleFile);
+    })
+    .on('error', (err) => {
+        console.error('Error applying subtitles:', err.message);
+        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+    })
+    .save(videoFile);
+
 
 
     } catch (error) {
