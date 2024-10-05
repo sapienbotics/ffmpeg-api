@@ -878,13 +878,13 @@ app.get('/download/merged/:filename', (req, res) => {
 
 
 
-// Endpoint to apply subtitles to a video
+// Endpoint to apply subtitles to a video 
 app.post('/apply-subtitles', async (req, res) => {
     try {
         const { 
             "video-link": videoLink, 
             content, 
-            subtitle_font: fontName, 
+            subtitle_font: fontName,  // Should be Noto Sans Devanagari or similar
             subtitle_size: fontSize, 
             subtitle_color: subtitleColor, 
             back_color: backColor,   // Extracted background color
@@ -926,16 +926,23 @@ app.post('/apply-subtitles', async (req, res) => {
         });
 
         // Step 2: Log the font path for debugging
-        const fontPath = path.join(__dirname, 'fonts', 'Sanskrit-2003.ttf');
-        console.log("Font Path: ", fontPath);  // Log the path of the font
+        const fontDir = path.join(__dirname, 'fonts');
+        const primaryFontPath = path.join(fontDir, 'NotoSansDevanagari-VariableFont_wdth,wght.ttf');  // Update font here
+        const fallbackFontPath = path.join(fontDir, 'NotoSerifDevanagari-VariableFont_wdth,wght.ttf'); // Fallback font
+
+        console.log("Primary Font Path: ", primaryFontPath);  // Log the path of the primary font
+        console.log("Fallback Font Path: ", fallbackFontPath); // Log fallback font
 
         // Step 3: Generate the ASS file from the provided content
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Step 4: Apply subtitles to the video using FFmpeg, including the font path
+        // Step 4: Apply subtitles to the video using FFmpeg, including the font path and encoding
         ffmpeg(downloadPath)
-            .outputOptions([`-vf subtitles=${subtitleFile}:fontsdir=${path.join(__dirname, 'fonts')}`]) // Include fontsdir in FFmpeg command
+            .outputOptions([
+                `-vf subtitles=${subtitleFile}:fontsdir=${fontDir}`,    // Include fontsdir in FFmpeg command
+                `-sub_charenc UTF-8`                                   // Ensure proper Unicode encoding for Devanagari script
+            ])
             .on('end', () => {
                 console.log('Subtitles applied successfully!');
                 
