@@ -978,18 +978,18 @@ Format: Layer, Start, End, Style, Text
     const words = content.split(' ');
     let startTime = 0;
     let chunk = [];
-    const wordsPerSecond = 3;
+    const wordsPerSecond = 3; // Adjust as necessary
     let events = '';
 
     words.forEach((word, i) => {
         chunk.push(word);
 
         if (chunk.length >= wordsPerSecond || i === words.length - 1) {
-            const text = chunk.join(' ');  // Ensure proper spacing and formatting
+            const text = chunk.join(' ');  // Maintain the text as is
             const duration = chunk.length / wordsPerSecond;
             const endTime = startTime + duration;
 
-            events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text.replace(/([^\u0000-\u007F])/g, '\\$1')}\n`; // Ensure non-ASCII chars are properly escaped
+            events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${text}\n`;
 
             chunk = [];
             startTime = endTime;
@@ -998,6 +998,7 @@ Format: Layer, Start, End, Style, Text
 
     return assHeader + events;
 }
+
 
 
 // Converts hex color to ASS format (&HAABBGGRR)
