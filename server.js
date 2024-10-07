@@ -981,7 +981,7 @@ Format: Layer, Start, End, Style, Text
     const totalWords = words.length;
     const wordsPerSubtitle = 4;
 
-    const adjustedDuration = Math.max(0, videoLengthInSeconds - 2);
+    const adjustedDuration = Math.max(0, videoLengthInSeconds);
     const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
     const durationPerSubtitle = adjustedDuration / totalSubtitles;
 
