@@ -947,7 +947,7 @@ app.post('/apply-subtitles', async (req, res) => {
         ffmpeg(downloadPath)
             .outputOptions([`-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`]) // Ensure fontsdir is included
             .on('end', () => {
-                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+                const videoUrl = `${req.protocol}://${req.get('host')}/download/merged/${videoId}.mp4`;
                 res.json({ videoUrl });
                 fs.unlinkSync(downloadPath); // Clean up temporary files
                 fs.unlinkSync(subtitleFile);
