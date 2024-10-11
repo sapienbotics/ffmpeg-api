@@ -891,19 +891,13 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
-        if (includeSubtitles !== "true") {
-            return res.status(400).json({ error: "Subtitles are disabled." });
-        }
-
         // Validate input
-        if (!videoLink || !content || position === undefined) {
-            return res.status(400).json({ error: "Video link, content, and subtitle position are required." });
+        if (!videoLink) {
+            return res.status(400).json({ error: "Video link is required." });
         }
 
-        // Define the output video path
         const videoId = uuidv4();
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
-        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
 
         // Step 1: Download the video from the link
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
@@ -920,6 +914,21 @@ app.post('/apply-subtitles', async (req, res) => {
             writer.on('finish', resolve);
             writer.on('error', reject);
         });
+
+        // If subtitles are disabled, skip subtitle generation
+        if (includeSubtitles !== "true") {
+            const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+            res.json({ videoUrl });
+
+            // Clean up temporary files
+            fs.unlinkSync(downloadPath);
+            return;
+        }
+
+        // Validate subtitle-related input
+        if (!content || position === undefined) {
+            return res.status(400).json({ error: "Content and subtitle position are required for subtitles." });
+        }
 
         // Step 2: Extract video length using FFmpeg
         let videoLengthInSeconds = 0;
@@ -938,10 +947,11 @@ app.post('/apply-subtitles', async (req, res) => {
         console.log("Font Path: ", fontPath);
 
         // Step 4: Generate the ASS file from the provided content
+        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });  // Ensure UTF-8 encoding
 
-        // Step 5: Apply subtitles to the video using FFmpeg, including the font path
+        // Step 5: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
             .outputOptions([
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
@@ -951,11 +961,10 @@ app.post('/apply-subtitles', async (req, res) => {
             .on('end', () => {
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
-                // Set Content-Disposition header to force download with a given filename
+                // Set Content-Disposition header to force download
                 res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-                
                 res.json({ videoUrl });
-                
+
                 // Clean up temporary files
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
@@ -969,6 +978,7 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
+
 
 
 
