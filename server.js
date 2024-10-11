@@ -889,17 +889,25 @@ app.post('/apply-subtitles', async (req, res) => {
             back_color: backColor = '#000000', // Black background
             opacity = 1,               // Fully opaque by default
             subtitles_position: position = 2, // Default position (bottom center)
-            include_subtitles: includeSubtitles = 'false' // Default to 'false'
+            include_subtitles: includeSubtitles = 'false' // Default to 'false' (string)
         } = req.body;
 
         // Convert string to boolean
         const shouldIncludeSubtitles = includeSubtitles.toLowerCase() === 'true';
 
-        // Step 1: Download the video from the link
-        const videoId = uuidv4();
-        const outputFile = path.join(outputDir, `${videoId}.mp4`);
-        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+        // Validate input
+        if (!videoLink || !content || position === undefined) {
+            if (!res.headersSent) {
+                return res.status(400).json({ error: "Video link, content, and subtitle position are required." });
+            }
+        }
 
+        const videoId = uuidv4();
+        const videoFile = path.join(outputDir, `${videoId}.mp4`);
+        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
+
+        // Step 1: Download the video from the link
+        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
         const response = await axios({
             method: 'get',
             url: videoLink,
@@ -914,12 +922,12 @@ app.post('/apply-subtitles', async (req, res) => {
             writer.on('error', reject);
         });
 
-        // Step 2: If subtitles are disabled, simply copy the input video to the output
+        // Step 2: If subtitles are disabled, simply send the video as it is
         if (!shouldIncludeSubtitles) {
-            fs.copyFileSync(downloadPath, outputFile);
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
-            return res.json({ videoUrl });
+            if (!res.headersSent) {
+                return res.json({ videoUrl });
+            }
         }
 
         // Step 3: Extract video length using FFmpeg
@@ -935,7 +943,6 @@ app.post('/apply-subtitles', async (req, res) => {
         });
 
         // Step 4: Generate the ASS file for subtitles
-        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
@@ -943,32 +950,31 @@ app.post('/apply-subtitles', async (req, res) => {
         await new Promise((resolve, reject) => {
             ffmpeg(downloadPath)
                 .outputOptions([`-vf "subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'"`])
-                .save(outputFile)
+                .save(videoFile)
                 .on('end', () => {
-                    resolve();
+                    const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+                    if (!res.headersSent) {
+                        res.json({ videoUrl });
+                    }
+
+                    // Clean up temporary files
+                    fs.unlinkSync(downloadPath);
+                    fs.unlinkSync(subtitleFile);
                 })
                 .on('error', (err) => {
+                    if (!res.headersSent) {
+                        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+                    }
                     reject(err);
                 });
         });
-
-        // Step 6: Generate the final video URL for display or download
-        const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-
-        // Step 7: Send the final video URL for display or download
-        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
-        res.json({ videoUrl });
-
-        // Clean up temporary files
-        fs.unlinkSync(downloadPath);
-        fs.unlinkSync(subtitleFile);
-
     } catch (error) {
         if (!res.headersSent) {
             res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
         }
     }
 });
+
 
 
 
