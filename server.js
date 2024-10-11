@@ -1044,6 +1044,22 @@ function pad(num, size) {
     return s.substr(s.length - size);
 }
 
+// Serve video files with 'Content-Disposition' set to 'attachment' for forced download
+app.get('/output/:videoId.mp4', (req, res) => {
+    const videoId = req.params.videoId;
+    const videoPath = path.join(outputDir, `${videoId}.mp4`);
+
+    // Ensure the video file exists
+    if (fs.existsSync(videoPath)) {
+        // Set Content-Disposition header to force download with a given filename
+        res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+        res.setHeader('Content-Type', 'video/mp4');
+        res.sendFile(videoPath);
+    } else {
+        res.status(404).json({ error: 'Video not found.' });
+    }
+});
+
 
 module.exports = app; // Ensure you export your app
 
