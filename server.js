@@ -887,7 +887,7 @@ app.post('/apply-subtitles', async (req, res) => {
             subtitle_size: fontSize = 40,
             subtitle_color: subtitleColor = '#FFFFFF', // White by default
             back_color: backColor = '#000000', // Black background
-            opacity = 1, // Fully opaque by default
+            opacity = 1,               // Fully opaque by default
             subtitles_position: position = 2, // Default position (bottom center)
             include_subtitles: includeSubtitles = 'false' // Default to 'false'
         } = req.body;
@@ -895,11 +895,11 @@ app.post('/apply-subtitles', async (req, res) => {
         // Convert string to boolean
         const shouldIncludeSubtitles = includeSubtitles.toLowerCase() === 'true';
 
-        // Generate a unique video ID
+        // Step 1: Download the video from the link
         const videoId = uuidv4();
         const outputFile = path.join(outputDir, `${videoId}.mp4`);
-
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+
         const response = await axios({
             method: 'get',
             url: videoLink,
@@ -914,14 +914,11 @@ app.post('/apply-subtitles', async (req, res) => {
             writer.on('error', reject);
         });
 
+        // Step 2: If subtitles are disabled, simply copy the input video to the output
         if (!shouldIncludeSubtitles) {
-            // If subtitles are disabled, simply copy the input video to the output
             fs.copyFileSync(downloadPath, outputFile);
-
-            // Generate the final video URL for display or download
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
-            res.setHeader('Content-Type', 'video/mp4'); // Explicit content type
+            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`); // Set header for download
             return res.json({ videoUrl });
         }
 
@@ -943,26 +940,28 @@ app.post('/apply-subtitles', async (req, res) => {
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
         // Step 5: Apply subtitles to the video using FFmpeg
-        ffmpeg(downloadPath)
-            .outputOptions([`-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`])
-            .on('end', () => {
-                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+        await new Promise((resolve, reject) => {
+            ffmpeg(downloadPath)
+                .outputOptions([`-vf "subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'"`])
+                .save(outputFile)
+                .on('end', () => {
+                    resolve();
+                })
+                .on('error', (err) => {
+                    reject(err);
+                });
+        });
 
-                // Step 6: Send the final video URL for display or download
-                res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
-                res.setHeader('Content-Type', 'video/mp4'); // Explicit content type
-                res.json({ videoUrl });
+        // Step 6: Generate the final video URL for display or download
+        const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
-                // Clean up temporary files
-                fs.unlinkSync(downloadPath);
-                fs.unlinkSync(subtitleFile);
-            })
-            .on('error', (err) => {
-                if (!res.headersSent) {
-                    res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-                }
-            })
-            .save(outputFile); // Save the output video with subtitles
+        // Step 7: Send the final video URL for display or download
+        res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`); // Set header for download
+        res.json({ videoUrl });
+
+        // Clean up temporary files
+        fs.unlinkSync(downloadPath);
+        fs.unlinkSync(subtitleFile);
 
     } catch (error) {
         if (!res.headersSent) {
@@ -970,6 +969,7 @@ app.post('/apply-subtitles', async (req, res) => {
         }
     }
 });
+
 
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
