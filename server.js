@@ -950,8 +950,14 @@ app.post('/apply-subtitles', async (req, res) => {
             ])
             .on('end', () => {
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+
+                // Set Content-Disposition header to force download with a given filename
+                res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+                
                 res.json({ videoUrl });
-                fs.unlinkSync(downloadPath); // Clean up temporary files
+                
+                // Clean up temporary files
+                fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
             .on('error', (err) => {
@@ -963,9 +969,6 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
-
-
-
 
 
 
