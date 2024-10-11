@@ -899,27 +899,26 @@ app.post('/apply-subtitles', async (req, res) => {
         const videoId = uuidv4();
         const outputFile = path.join(outputDir, `${videoId}.mp4`);
 
+        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+        const response = await axios({
+            method: 'get',
+            url: videoLink,
+            responseType: 'stream'
+        });
+
+        const writer = fs.createWriteStream(downloadPath);
+        response.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
         if (!shouldIncludeSubtitles) {
             // If subtitles are disabled, simply copy the input video to the output
-            const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
-            const response = await axios({
-                method: 'get',
-                url: videoLink,
-                responseType: 'stream'
-            });
-
-            const writer = fs.createWriteStream(downloadPath);
-            response.data.pipe(writer);
-
-            await new Promise((resolve, reject) => {
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-            });
-
-            // Step 2: Copy the input video to the output
             fs.copyFileSync(downloadPath, outputFile);
 
-            // Step 3: Generate the final video URL for display or download
+            // Generate the final video URL for display or download
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
             res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
             res.setHeader('Content-Type', 'video/mp4'); // Explicit content type
