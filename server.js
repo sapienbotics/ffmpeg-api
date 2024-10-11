@@ -889,44 +889,43 @@ app.post('/apply-subtitles', async (req, res) => {
             back_color: backColor = '#000000', // Black background
             opacity = 1,               // Fully opaque by default
             subtitles_position: position = 2, // Default position (bottom center)
-            include_subtitles: includeSubtitles = true // Default to include subtitles
+            include_subtitles: includeSubtitles = 'false' // Default to 'false'
         } = req.body;
 
-        // Validate input
-        if (!videoLink) {
-            return res.status(400).json({ error: "Video link is required." });
-        }
+        // Convert string to boolean
+        const shouldIncludeSubtitles = includeSubtitles.toLowerCase() === 'true';
 
-        const videoId = uuidv4();
-        const outputPath = path.join(outputDir, `${videoId}.mp4`);
-
-        // Step 1: Download the video from the link
-        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
-        const response = await axios({
-            method: 'get',
-            url: videoLink,
-            responseType: 'stream'
-        });
-
-        const writer = fs.createWriteStream(downloadPath);
-        response.data.pipe(writer);
-
-        await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
-        });
-
-        // Step 2: Check if subtitles should be included
-        if (!include_subtitles) {
+        if (!shouldIncludeSubtitles) {
             // If subtitles are disabled, simply copy the input video to the output
-            fs.copyFileSync(downloadPath, outputPath);
-            const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+            const videoId = uuidv4();
+            const outputFile = path.join(outputDir, `${videoId}.mp4`);
 
-            // Set Content-Disposition header for download
-            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+            // Step 1: Download the video from the link
+            const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+            const response = await axios({
+                method: 'get',
+                url: videoLink,
+                responseType: 'stream'
+            });
+
+            const writer = fs.createWriteStream(downloadPath);
+            response.data.pipe(writer);
+
+            await new Promise((resolve, reject) => {
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+            });
+
+            // Step 2: Copy the input video to the output
+            fs.copyFileSync(downloadPath, outputFile);
+
+            // Step 3: Generate the final video URL for display or download
+            const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`); // Set header for download
             return res.json({ videoUrl });
         }
 
+        // Continue processing with subtitles if shouldIncludeSubtitles is true
         // Step 3: Extract video length using FFmpeg
         let videoLengthInSeconds = 0;
         await new Promise((resolve, reject) => {
