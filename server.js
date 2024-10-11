@@ -917,12 +917,12 @@ app.post('/apply-subtitles', async (req, res) => {
 
         // If subtitles are disabled, skip subtitle generation
         if (includeSubtitles !== "true") {
+            // Rename the downloaded file to match the videoFile path for consistent output
+            fs.renameSync(downloadPath, videoFile);
+            
+            // Return video URL without deleting the file
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-            res.json({ videoUrl });
-
-            // Clean up temporary files
-            fs.unlinkSync(downloadPath);
-            return;
+            return res.json({ videoUrl });
         }
 
         // Validate subtitle-related input
@@ -965,7 +965,7 @@ app.post('/apply-subtitles', async (req, res) => {
                 res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
                 res.json({ videoUrl });
 
-                // Clean up temporary files
+                // Clean up temporary files (except the output video)
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
@@ -978,6 +978,7 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
+
 
 
 
