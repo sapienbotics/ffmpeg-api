@@ -918,7 +918,7 @@ app.post('/apply-subtitles', async (req, res) => {
         if (!shouldIncludeSubtitles) {
             fs.copyFileSync(downloadPath, outputFile);
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`); // Set header for download
+            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
             return res.json({ videoUrl });
         }
 
@@ -956,7 +956,7 @@ app.post('/apply-subtitles', async (req, res) => {
         const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
         // Step 7: Send the final video URL for display or download
-        res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`); // Set header for download
+        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
         res.json({ videoUrl });
 
         // Clean up temporary files
@@ -969,6 +969,7 @@ app.post('/apply-subtitles', async (req, res) => {
         }
     }
 });
+
 
 
 
