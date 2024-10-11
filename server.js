@@ -887,7 +887,7 @@ app.post('/apply-subtitles', async (req, res) => {
             subtitle_size: fontSize = 40,
             subtitle_color: subtitleColor = '#FFFFFF', // White by default
             back_color: backColor = '#000000', // Black background
-            opacity = 1,               // Fully opaque by default
+            opacity = 1, // Fully opaque by default
             subtitles_position: position = 2, // Default position (bottom center)
             include_subtitles: includeSubtitles = 'false' // Default to 'false'
         } = req.body;
@@ -895,12 +895,12 @@ app.post('/apply-subtitles', async (req, res) => {
         // Convert string to boolean
         const shouldIncludeSubtitles = includeSubtitles.toLowerCase() === 'true';
 
+        // Generate a unique video ID
+        const videoId = uuidv4();
+        const outputFile = path.join(outputDir, `${videoId}.mp4`);
+
         if (!shouldIncludeSubtitles) {
             // If subtitles are disabled, simply copy the input video to the output
-            const videoId = uuidv4();
-            const outputFile = path.join(outputDir, `${videoId}.mp4`);
-
-            // Step 1: Download the video from the link
             const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
             const response = await axios({
                 method: 'get',
@@ -921,11 +921,11 @@ app.post('/apply-subtitles', async (req, res) => {
 
             // Step 3: Generate the final video URL for display or download
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`); // Set header for download
+            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
+            res.setHeader('Content-Type', 'video/mp4'); // Explicit content type
             return res.json({ videoUrl });
         }
 
-        // Continue processing with subtitles if shouldIncludeSubtitles is true
         // Step 3: Extract video length using FFmpeg
         let videoLengthInSeconds = 0;
         await new Promise((resolve, reject) => {
@@ -950,7 +950,8 @@ app.post('/apply-subtitles', async (req, res) => {
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
 
                 // Step 6: Send the final video URL for display or download
-                res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+                res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`); // Set header for download
+                res.setHeader('Content-Type', 'video/mp4'); // Explicit content type
                 res.json({ videoUrl });
 
                 // Clean up temporary files
@@ -962,7 +963,7 @@ app.post('/apply-subtitles', async (req, res) => {
                     res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
                 }
             })
-            .save(outputPath);
+            .save(outputFile); // Save the output video with subtitles
 
     } catch (error) {
         if (!res.headersSent) {
