@@ -223,10 +223,9 @@ const extractDominantColor = async (imagePath) => {
 // Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
+    console.log(`Starting conversion for image: ${imageUrl}`);
 
     return new Promise(async (resolve, reject) => {
-        console.log(`Starting conversion for image: ${imageUrl}`);
-
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
@@ -238,38 +237,31 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
 
             const [width, height] = resolution.split(':').map(Number);
             let scaleOptions;
-            let zoomEffect;
 
             // Define scale options based on orientation
-            switch (orientation) {
-                case 'portrait':
-                    scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-                    break;
-                case 'landscape':
-                    scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-                    break;
-                case 'square':
-                    scaleOptions = `scale='min(${Math.min(width, height)},iw)':min(${Math.min(width, height)},ih):force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-                    break;
-                default:
-                    reject(new Error('Invalid orientation specified.'));
-                    return;
+            const zoomFactor = 1.2; // Adjust this factor for more or less zoom
+            if (orientation === 'portrait') {
+                scaleOptions = `scale=${width * zoomFactor}:${height * zoomFactor},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            } else if (orientation === 'landscape') {
+                scaleOptions = `scale=${width * zoomFactor}:${height * zoomFactor},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            } else if (orientation === 'square') {
+                const minDim = Math.min(width, height);
+                scaleOptions = `scale=${minDim * zoomFactor}:${minDim * zoomFactor},pad=${minDim}:${minDim}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            } else {
+                reject(new Error('Invalid orientation specified.'));
+                return;
             }
 
-            // Step 3: Apply zoom-in effect
-            // Ensure that the zoom effect works on the whole frame including the padding
-            zoomEffect = `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
-
-            // Step 4: Convert image to video with zoom-in effect
+            // Step 3: Convert image to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', `${scaleOptions},${zoomEffect}`)
+                .outputOptions('-vf', `zoompan=z='if(gte(zoom,1.5),1.5,zoom+0.01)':x='iw/2':y='ih/2':d=1:s=${Math.ceil(width * zoomFactor)}x${Math.ceil(height * zoomFactor)},${scaleOptions}`)
                 .outputOptions('-r', '15')
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-threads', '6')
                 .on('end', () => {
-                    console.log(`Image converted to video with zoom-in effect.`);
+                    console.log('Image converted to video.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
@@ -284,6 +276,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 
