@@ -240,6 +240,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             let scaleOptions;
             let zoomEffect;
 
+            // Prepare the scale options based on orientation
             if (orientation === 'portrait') {
                 scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else if (orientation === 'landscape') {
@@ -251,19 +252,22 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 return;
             }
 
-            // Step 3: Apply zoom-in effect to the entire padded image
-            zoomEffect = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,` +
-                         `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},` +
-                         `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
+            // Step 3: Apply zoom-in effect
+            // Zoom in over the specified duration
+            zoomEffect = `zoompan=z='if(lte(on,${duration}),zoom+0.02,zoom)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
+
+            // Combine zoom and scale options
+            const filterOptions = `${zoomEffect},${scaleOptions}`;
 
             // Step 4: Convert image to video with zoom-in effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', `${zoomEffect}`)
+                .outputOptions('-vf', filterOptions)
                 .outputOptions('-r', '15')
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-threads', '6')
+                .outputOptions('-report')  // Enable FFmpeg report for debugging
                 .on('end', () => {
                     console.log(`Image converted to video with zoom-in effect.`);
                     resolve(outputFilePath);
@@ -280,6 +284,10 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
+
+
+
 
 
 // Function to get audio duration using ffmpeg
