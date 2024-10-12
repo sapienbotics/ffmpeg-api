@@ -239,24 +239,17 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            let scaleOptions, zoomOptions;
-            const zoomFactor = 1.5;  // Adjust this for the zoom speed/strength
+            // Step 4: Define padding and zoom filter options
+            const zoomFactor = 2; // Adjust for maximum zoom level
+            const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration*30}:s=${width}x${height}`;
 
-            // Define scale options based on orientation
-            if (orientation === 'portrait' || orientation === 'landscape' || orientation === 'square') {
-                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-                zoomOptions = `zoompan=z='min(zoom+0.05,${zoomFactor})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}`;
-            } else {
-                reject(new Error('Invalid orientation specified.'));
-                return;
-            }
-
-            // Step 4: Convert image to video with zoom effect
+            // Step 5: Convert image to video with zoom effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', `${scaleOptions},${zoomOptions}`)
-                .outputOptions('-r', '15')  // Frame rate
+                .outputOptions('-vf', `${scaleAndPad},${zoomEffect}`)
+                .outputOptions('-r', '30')  // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
                 .outputOptions('-threads', '6')  // Speed up with multiple threads
                 .on('end', () => {
