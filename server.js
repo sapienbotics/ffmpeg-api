@@ -223,12 +223,12 @@ const extractDominantColor = async (imagePath) => {
 // Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    
+
     return new Promise(async (resolve, reject) => {
         console.log(`Starting conversion for image: ${imageUrl}`);
 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
-        
+
         try {
             // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
@@ -240,34 +240,34 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             let scaleOptions;
             let zoomEffect;
 
-            // Prepare the scale options based on orientation
-            if (orientation === 'portrait') {
-                scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
-            } else if (orientation === 'landscape') {
-                scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
-            } else if (orientation === 'square') {
-                scaleOptions = `scale='min(${Math.min(width, height)},iw)':min(${Math.min(width, height)},ih):force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
-            } else {
-                reject(new Error('Invalid orientation specified.'));
-                return;
+            // Define scale options based on orientation
+            switch (orientation) {
+                case 'portrait':
+                    scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                    break;
+                case 'landscape':
+                    scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                    break;
+                case 'square':
+                    scaleOptions = `scale='min(${Math.min(width, height)},iw)':min(${Math.min(width, height)},ih):force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                    break;
+                default:
+                    reject(new Error('Invalid orientation specified.'));
+                    return;
             }
 
             // Step 3: Apply zoom-in effect
-            // Zoom in over the specified duration
-            zoomEffect = `zoompan=z='if(lte(on,${duration}),zoom+0.02,zoom)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
-
-            // Combine zoom and scale options
-            const filterOptions = `${zoomEffect},${scaleOptions}`;
+            // Ensure that the zoom effect works on the whole frame including the padding
+            zoomEffect = `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
 
             // Step 4: Convert image to video with zoom-in effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', filterOptions)
+                .outputOptions('-vf', `${scaleOptions},${zoomEffect}`)
                 .outputOptions('-r', '15')
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-threads', '6')
-                .outputOptions('-report')  // Enable FFmpeg report for debugging
                 .on('end', () => {
                     console.log(`Image converted to video with zoom-in effect.`);
                     resolve(outputFilePath);
