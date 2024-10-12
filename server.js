@@ -242,7 +242,8 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 4: Define padding and zoom filter options
             const zoomFactor = 2; // Adjust for maximum zoom level
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            const zoomEffect = `zoompan=z='if(gte(zoom,1.5),1.5,zoom+0.005)':x='iw/2':y='ih/2':d=1:s=${Math.ceil(width * zoomFactor)}x${Math.ceil(height * zoomFactor)}`;
+            const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration*60}:s=${width}x${height}`;
+
 
             // Step 5: Convert image to video with zoom effect
             ffmpeg()
