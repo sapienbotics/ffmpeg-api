@@ -550,9 +550,14 @@ async function convertVideoToStandardFormat(inputVideoPath, duration, resolution
 
     return new Promise((resolve, reject) => {
         ffmpeg()
-            .input(inputVideoPath)
-            .outputOptions('-vf', scaleOptions)
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+    .input(inputVideoPath)
+    .outputOptions('-vf', scaleOptions)
+    .outputOptions(
+        '-c:v', 'libx264', 
+        '-preset', 'fast', 
+        '-crf', '23',
+        '-threads', '6' // Utilize 6 threads for processing
+    )
             .on('end', () => {
                 console.log(`Converted video to standard format: ${outputVideoPath}`);
                 resolve(outputVideoPath);
@@ -662,7 +667,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 15 -an -y "${normalizedPath}"`;
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 15 -an -threads 6 -y "${normalizedPath}"`;
 
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
@@ -684,7 +689,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         const filterComplex = `concat=n=${normalizedFiles.length}:v=1:a=0`;
 
         // Add pixel format and color range settings for PC and mobile, and include verbose logging
-        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -loglevel verbose -y "${outputPath}"`;
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -threads 6 -loglevel verbose -y "${outputPath}"`;
 
         console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
 
@@ -792,27 +797,28 @@ app.post('/add-audio', async (req, res) => {
 
     // Prepare the FFmpeg command based on the available audio sources
     let ffmpegCommand;
-    const commonSettings = `-ar 44100 -bufsize 1000k -threads 2`;
+    const commonSettings = `-ar 44100 -bufsize 1000k -threads 6`;
 
-    if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
-      // Video, content, and background audio
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (hasVideoAudio && contentAudioExists) {
-      // Video and content audio only
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (contentAudioExists && backgroundAudioExists) {
-      // Content and background audio only (no audio in video)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (contentAudioExists) {
-      // Content audio only (no audio in video or background)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (backgroundAudioExists) {
-      // Background audio only (no content or video audio)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else {
-      // No audio at all, just output the video
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    }
+if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
+  // Video, content, and background audio
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else if (hasVideoAudio && contentAudioExists) {
+  // Video and content audio only
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else if (contentAudioExists && backgroundAudioExists) {
+  // Content and background audio only (no audio in video)
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else if (contentAudioExists) {
+  // Content audio only (no audio in video or background)
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else if (backgroundAudioExists) {
+  // Background audio only (no content or video audio)
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else {
+  // No audio at all, just output the video
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+}
+
 
     // Execute the FFmpeg command
     await execPromise(ffmpegCommand);
@@ -955,11 +961,12 @@ app.post('/apply-subtitles', async (req, res) => {
 
         // Step 5: Apply subtitles to the video using FFmpeg
         ffmpeg(downloadPath)
-            .outputOptions([
-                `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
-                '-pix_fmt yuv420p', // Ensures compatibility with most players
-                '-color_range pc'   // Keeps the color range consistent
-            ])
+    .outputOptions([
+        `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
+        '-pix_fmt yuv420p', // Ensures compatibility with most players
+        '-color_range pc',   // Keeps the color range consistent
+        '-threads 6'        // Utilize 6 threads for processing
+    ])
             .on('end', () => {
                 // Set response headers to force download
                 res.setHeader('Content-Type', 'video/mp4');
