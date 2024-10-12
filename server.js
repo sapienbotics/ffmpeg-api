@@ -920,9 +920,11 @@ app.post('/apply-subtitles', async (req, res) => {
             // Rename the downloaded file to match the videoFile path for consistent output
             fs.renameSync(downloadPath, videoFile);
             
-            // Return video URL without deleting the file
-            const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-            return res.json({ videoUrl });
+            // Set response headers to force download
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+
+            return res.download(videoFile);  // Direct download response
         }
 
         // Validate subtitle-related input
@@ -959,13 +961,14 @@ app.post('/apply-subtitles', async (req, res) => {
                 '-color_range pc'   // Keeps the color range consistent
             ])
             .on('end', () => {
-                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-
-                // Set Content-Disposition header to force download
+                // Set response headers to force download
+                res.setHeader('Content-Type', 'video/mp4');
                 res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-                res.json({ videoUrl });
 
-                // Clean up temporary files (except the output video)
+                // Send the file as a downloadable response
+                res.download(videoFile);
+
+                // Clean up temporary files
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
@@ -978,7 +981,6 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
-
 
 
 
