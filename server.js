@@ -233,7 +233,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
-            // Step 2: Extract the dominant color
+            // Step 2: Extract the dominant color (to use for padding)
             const dominantColor = await extractDominantColor(finalImagePath);
 
             const [width, height] = resolution.split(':').map(Number);
@@ -242,26 +242,24 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Define scale options based on orientation
             const zoomFactor = 1.2; // Adjust this factor for more or less zoom
             if (orientation === 'portrait') {
-                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                // Scaling image while maintaining aspect ratio and padding it to fit the resolution
+                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else if (orientation === 'landscape') {
-                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else if (orientation === 'square') {
                 const minDim = Math.min(width, height);
-                scaleOptions = `scale=${minDim}:${minDim}:force_original_aspect_ratio=decrease,pad=${minDim}:${minDim}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                scaleOptions = `scale=${minDim}:${minDim}:force_original_aspect_ratio=decrease,pad=${minDim}:${minDim}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else {
                 reject(new Error('Invalid orientation specified.'));
                 return;
             }
 
-            // Step 3: Convert image to video with zoom effect
+            // Step 3: Convert image to video with zoom applied to the entire frame (image + padding)
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions(
-                    '-vf',
-                    `${scaleOptions},zoompan=z='min(zoom+0.005,1.5)':d=25:x='iw/2':y='ih/2'`
-                )
-                .outputOptions('-r', '15') // Frame rate
+                .outputOptions('-vf', `${scaleOptions},zoompan=z='if(gte(zoom,1.5),1.5,zoom+0.01)':x='iw/2':y='ih/2':d=1:s=${width}x${height}`)
+                .outputOptions('-r', '15')
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-threads', '6')
                 .on('end', () => {
