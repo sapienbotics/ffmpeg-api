@@ -251,8 +251,10 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 return;
             }
 
-            // Step 3: Apply zoom-in effect to the entire canvas (image + padding)
-            zoomEffect = `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)',scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+            // Step 3: Apply zoom-in effect to the entire padded image
+            zoomEffect = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,` +
+                         `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},` +
+                         `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
 
             // Step 4: Convert image to video with zoom-in effect
             ffmpeg()
