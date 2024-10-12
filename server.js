@@ -220,6 +220,7 @@ const extractDominantColor = async (imagePath) => {
 };
 
 
+
 // Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
@@ -241,23 +242,26 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Define scale options based on orientation
             const zoomFactor = 1.2; // Adjust this factor for more or less zoom
             if (orientation === 'portrait') {
-                scaleOptions = `scale=${width * zoomFactor}:${height * zoomFactor},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
             } else if (orientation === 'landscape') {
-                scaleOptions = `scale=${width * zoomFactor}:${height * zoomFactor},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
             } else if (orientation === 'square') {
                 const minDim = Math.min(width, height);
-                scaleOptions = `scale=${minDim * zoomFactor}:${minDim * zoomFactor},pad=${minDim}:${minDim}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+                scaleOptions = `scale=${minDim}:${minDim}:force_original_aspect_ratio=decrease,pad=${minDim}:${minDim}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
             } else {
                 reject(new Error('Invalid orientation specified.'));
                 return;
             }
 
-            // Step 3: Convert image to video
+            // Step 3: Convert image to video with zoom effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', `zoompan=z='if(gte(zoom,1.5),1.5,zoom+0.01)':x='iw/2':y='ih/2':d=1:s=${Math.ceil(width * zoomFactor)}x${Math.ceil(height * zoomFactor)},${scaleOptions}`)
-                .outputOptions('-r', '15')
+                .outputOptions(
+                    '-vf',
+                    `${scaleOptions},zoompan=z='min(zoom+0.005,1.5)':d=25:x='iw/2':y='ih/2'`
+                )
+                .outputOptions('-r', '15') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-threads', '6')
                 .on('end', () => {
