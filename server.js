@@ -237,34 +237,32 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const dominantColor = await extractDominantColor(finalImagePath);
 
             const [width, height] = resolution.split(':').map(Number);
-            let scaleOptions;
-            let zoomEffect;
+            let scaleAndPad;
 
             if (orientation === 'portrait') {
-                scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+                scaleAndPad = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else if (orientation === 'landscape') {
-                scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+                scaleAndPad = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else if (orientation === 'square') {
-                scaleOptions = `scale='min(${Math.min(width, height)},iw)':min(${Math.min(width, height)},ih):force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+                scaleAndPad = `scale='min(${Math.min(width, height)},iw)':min(${Math.min(width, height)},ih):force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else {
                 reject(new Error('Invalid orientation specified.'));
                 return;
             }
 
-            // Step 3: Apply zoom-in effect
-            // We apply the zoom in a way that doesn't compress the image. It zooms from original size over time.
-            zoomEffect = `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)',scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            // Step 3: Apply zoom effect on the image with padding
+            const zoomEffect = `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
 
-            // Step 4: Convert image to video with zoom-in effect
+            // Step 4: Convert image to video with zoom-in effect on the padded image
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', `${zoomEffect}`)
+                .outputOptions('-vf', `${scaleAndPad},${zoomEffect}`)  // Apply scaling and padding first, then zoom
                 .outputOptions('-r', '15')
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-threads', '6')
                 .on('end', () => {
-                    console.log(`Image converted to video with zoom-in effect.`);
+                    console.log(`Image with padding zoomed in and converted to video.`);
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
