@@ -219,11 +219,11 @@ const extractDominantColor = async (imagePath) => {
     return palette.Vibrant.hex; // Get the hex value of the dominant color
 };
 
+
 // Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    const startTime = Date.now(); 
-
+    
     return new Promise(async (resolve, reject) => {
         console.log(`Starting conversion for image: ${imageUrl}`);
 
@@ -241,25 +241,25 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             let zoomEffect;
 
             if (orientation === 'portrait') {
-                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+                scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else if (orientation === 'landscape') {
-                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+                scaleOptions = `scale='min(${width},iw)':min(${height},ih):force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else if (orientation === 'square') {
-                scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+                scaleOptions = `scale='min(${Math.min(width, height)},iw)':min(${Math.min(width, height)},ih):force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
             } else {
                 reject(new Error('Invalid orientation specified.'));
                 return;
             }
 
             // Step 3: Apply zoom-in effect
-            // Zoom in gradually from 1x to 2x over the entire duration of the video
-            zoomEffect = `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
+            // We apply the zoom in a way that doesn't compress the image. It zooms from original size over time.
+            zoomEffect = `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)',scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
             // Step 4: Convert image to video with zoom-in effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', `${scaleOptions},${zoomEffect}`)
+                .outputOptions('-vf', `${zoomEffect}`)
                 .outputOptions('-r', '15')
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-threads', '6')
@@ -279,7 +279,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 
 // Function to get audio duration using ffmpeg
