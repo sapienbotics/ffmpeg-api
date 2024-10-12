@@ -219,7 +219,7 @@ const extractDominantColor = async (imagePath) => {
     return palette.Vibrant.hex; // Get the hex value of the dominant color
 };
 
-// Use this in your image-to-video processing
+// Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     const startTime = Date.now(); 
@@ -238,6 +238,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
 
             const [width, height] = resolution.split(':').map(Number);
             let scaleOptions;
+            let zoomEffect;
 
             if (orientation === 'portrait') {
                 scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
@@ -250,16 +251,20 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 return;
             }
 
-            // Step 3: Convert image to video
+            // Step 3: Apply zoom-in effect
+            // Zoom in gradually from 1x to 2x over the entire duration of the video
+            zoomEffect = `zoompan=z='1+0.02*on/${duration}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
+
+            // Step 4: Convert image to video with zoom-in effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', scaleOptions)
+                .outputOptions('-vf', `${scaleOptions},${zoomEffect}`)
                 .outputOptions('-r', '15')
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-threads', '6')
                 .on('end', () => {
-                    console.log(`Image converted to video.`);
+                    console.log(`Image converted to video with zoom-in effect.`);
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
