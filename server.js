@@ -240,12 +240,11 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
 
             // Step 4: Define padding and zoom filter options
-            const zoomFactor = 2; // Maximum zoom level
+            const zoomFactor = 1.5; // Smaller max zoom level for smoother transitions
+            const zoomSpeed = 0.005; // Slower zoom speed to avoid jitter
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration*30}:s=${width}x${height}:fps=30`;
 
-            // Enable interpolation for smoother zoom
-            const zoomEffect = `zoompan=z='min(zoom+0.01,${zoomFactor})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}:fps=30:interpol=1`;
-            
             // Step 5: Convert image to video with zoom effect
             ffmpeg()
                 .input(finalImagePath)
