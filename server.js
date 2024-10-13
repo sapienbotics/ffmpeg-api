@@ -239,12 +239,11 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define padding and zoom filter options
-const zoomFactor = 1.1; // Further reduced zoom factor to minimize shaking
-const zoomSpeed = 0.001; // Slower zoom speed for smoother transitions
+            // Step 4: Define padding and zoom effect for smooth zoom-in
+const zoomFactor = 1.2; // Smaller max zoom level for subtle zoom-in
+const zoomSpeed = 0.0015; // Slower zoom speed to avoid jitter
 const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration*30}:s=${width}x${height}:fps=30,scale=${width}:${height}:flags=lanczos`;
-
+const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration*30}:s=${width}x${height}:fps=30`;
 
 
 
