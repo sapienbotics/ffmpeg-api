@@ -242,7 +242,8 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 4: Define padding and zoom filter options
             const zoomFactor = 2; // Adjust for maximum zoom level
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
+            const zoomEffect = `zoompan=z='zoom+0.02':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30`;
+
 
 
 
