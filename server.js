@@ -240,13 +240,16 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
 
             // Step 4: Define padding and zoom filter options
-const zoomFactor = 1.3; // Slightly lower maximum zoom level for smoother transitions
-const zoomSpeed = (zoomFactor - 1) / (duration * 30 * 0.5); // Reduced zoom speed (adjust factor for more/less speed)
+const zoomFactor = 1.5; // Maximum zoom level
+const zoomSpeed = zoomFactor / (duration * 30); // Total zoom to reach over the full duration
 const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration * 30}:s=${width}x${height}:fps=30`;
+
+// Modify the zoom logic to ensure continuous zooming
+const zoomEffect = `zoompan=z='zoom+${zoomSpeed}':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=30`;
 
 // Combine scale and zoom effect for final processing
 const finalFilter = `${scaleAndPad},${zoomEffect}`;
+
 
 
 
