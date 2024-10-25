@@ -1031,6 +1031,25 @@ function generateSRT(content, videoLengthInSeconds) {
     return srtContent;
 }
 
+// Converts hex color to ASS format (&HAABBGGRR)
+function convertHexToAssColor(hex) {
+    const color = hex.replace('#', '');
+    const r = color.slice(0, 2);
+    const g = color.slice(2, 4);
+    const b = color.slice(4, 6);
+    return `&H00${b}${g}${r}`.toUpperCase();
+}
+
+// Converts hex color to ASS format with opacity for background (&HAABBGGRR)
+function convertHexToAssColorWithOpacity(hex, opacity) {
+    const alpha = Math.round((1 - opacity) * 255).toString(16).padStart(2, '0').toUpperCase();
+    const color = hex.replace('#', '');
+    const r = color.slice(0, 2);
+    const g = color.slice(2, 4);
+    const b = color.slice(4, 6);
+    return `&H${alpha}${b}${g}${r}`.toUpperCase();
+}
+
 // Format time for SRT
 function formatTimeSRT(seconds) {
     const hours = Math.floor(seconds / 3600);
