@@ -960,34 +960,37 @@ app.post('/apply-subtitles', async (req, res) => {
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });  // Ensure UTF-8 encoding
 
         // Step 5: Apply subtitles to the video using FFmpeg
-        ffmpeg(downloadPath)
+ffmpeg(downloadPath)
     .outputOptions([
         `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
         '-pix_fmt yuv420p', // Ensures compatibility with most players
         '-color_range pc',   // Keeps the color range consistent
         '-threads 6'        // Utilize 6 threads for processing
     ])
-            .on('end', () => {
-                // Set response headers to force download
-                res.setHeader('Content-Type', 'video/mp4');
-                res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+    .on('end', () => {
+        // Set response headers to force download if headers haven't been sent
+        if (!res.headersSent) {
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+        }
 
-                // Send the file as a downloadable response
-                res.download(videoFile);
+        // Send the file as a downloadable response
+        res.download(videoFile);
 
-                // Clean up temporary files
-                fs.unlinkSync(downloadPath);
-                fs.unlinkSync(subtitleFile);
-            })
-            .on('error', (err) => {
-                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-            })
-            .save(videoFile);
+        // Clean up temporary files
+        fs.unlinkSync(downloadPath);
+        fs.unlinkSync(subtitleFile);
+    })
+    .on('error', (err) => {
+        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+    })
+    .save(videoFile);
 
     } catch (error) {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
+
 
 
 
