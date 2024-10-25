@@ -896,6 +896,8 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
+        console.log("Received include_subtitles:", includeSubtitles); // Log include_subtitles value
+
         if (!videoLink) {
             return res.status(400).json({ error: "Video link is required." });
         }
@@ -926,6 +928,7 @@ app.post('/apply-subtitles', async (req, res) => {
 
         // Check if subtitles should be included
         if (includeSubtitles !== "true") {
+            console.log("Subtitles not included, returning video directly."); // Debug log
             fs.renameSync(downloadPath, videoFile);
             if (!res.headersSent) {
                 res.setHeader('Content-Type', 'video/mp4');
@@ -933,6 +936,9 @@ app.post('/apply-subtitles', async (req, res) => {
                 return res.download(videoFile);
             }
         }
+
+        // Log to confirm subtitle conditions are met
+        console.log("Subtitles will be included.");
 
         if (!content || position === undefined) {
             return res.status(400).json({ error: "Content and subtitle position are required for subtitles." });
@@ -981,6 +987,7 @@ app.post('/apply-subtitles', async (req, res) => {
                 console.log("FFmpeg command:", commandLine);
             })
             .on('end', () => {
+                console.log("FFmpeg processing completed."); // Debug log
                 if (!res.headersSent) {
                     res.setHeader('Content-Type', 'video/mp4');
                     res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
@@ -998,11 +1005,13 @@ app.post('/apply-subtitles', async (req, res) => {
             .save(videoFile);
 
     } catch (error) {
+        console.error("General error in subtitle processing:", error.message); // Log general errors
         if (!res.headersSent) {
             res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
         }
     }
 });
+
 
 
 
