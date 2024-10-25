@@ -967,32 +967,32 @@ app.post('/apply-subtitles', async (req, res) => {
         console.log("Subtitle file contents:", fs.readFileSync(subtitleFile, 'utf-8'));
 
         ffmpeg(downloadPath)
-            .outputOptions([
-                `-vf subtitles='${subtitleFile}':force_style='FontName=${fontName}',fontsdir='${path.join(__dirname, 'fonts')}'`,
-                '-pix_fmt yuv420p',
-                '-color_range pc',
-                '-threads 6'
-            ])
-            .on('start', (commandLine) => {
-                console.log("FFmpeg command:", commandLine);
-            })
-            .on('end', () => {
-                console.log("FFmpeg processing completed.");
-                if (!res.headersSent) {
-                    res.setHeader('Content-Type', 'video/mp4');
-                    res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-                    res.download(videoFile);
-                }
-                cleanupFiles([downloadPath, subtitleFile]);
-            })
-            .on('error', (err) => {
-                console.error("FFmpeg error:", err.message);
-                if (!res.headersSent) {
-                    res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-                }
-                cleanupFiles([downloadPath, subtitleFile, videoFile]);
-            })
-            .save(videoFile);
+    .outputOptions([
+        `-vf subtitles='${subtitleFile}'`, // Removed `force_style` to simplify subtitle application
+        '-pix_fmt yuv420p',
+        '-color_range pc',
+        '-threads 6'
+    ])
+    .on('start', (commandLine) => {
+        console.log("FFmpeg command:", commandLine);
+    })
+    .on('end', () => {
+        console.log("FFmpeg processing completed.");
+        if (!res.headersSent) {
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+            res.download(videoFile);
+        }
+        cleanupFiles([downloadPath, subtitleFile]);
+    })
+    .on('error', (err) => {
+        console.error("FFmpeg error:", err.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+        }
+        cleanupFiles([downloadPath, subtitleFile, videoFile]);
+    })
+    .save(videoFile);
 
     } catch (error) {
         console.error("General error in subtitle processing:", error.message);
