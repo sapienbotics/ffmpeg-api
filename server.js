@@ -968,7 +968,7 @@ app.post('/apply-subtitles', async (req, res) => {
 
         ffmpeg(downloadPath)
     .outputOptions([
-        `-vf subtitles='${subtitleFile}'`, // Removed `force_style` to simplify subtitle application
+        `-vf subtitles='${subtitleFile}'`,
         '-pix_fmt yuv420p',
         '-color_range pc',
         '-threads 6'
@@ -978,21 +978,28 @@ app.post('/apply-subtitles', async (req, res) => {
     })
     .on('end', () => {
         console.log("FFmpeg processing completed.");
-        if (!res.headersSent) {
+        
+        if (!res.headersSent) {  // Check if headers are already sent
             res.setHeader('Content-Type', 'video/mp4');
             res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-            res.download(videoFile);
+            res.download(videoFile, (err) => {
+                if (err) {
+                    console.error("Download error:", err);
+                }
+                cleanupFiles([downloadPath, subtitleFile, videoFile]);
+            });
         }
-        cleanupFiles([downloadPath, subtitleFile]);
     })
     .on('error', (err) => {
         console.error("FFmpeg error:", err.message);
-        if (!res.headersSent) {
+        
+        if (!res.headersSent) {  // Prevent double response
             res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
         }
         cleanupFiles([downloadPath, subtitleFile, videoFile]);
     })
     .save(videoFile);
+
 
     } catch (error) {
         console.error("General error in subtitle processing:", error.message);
