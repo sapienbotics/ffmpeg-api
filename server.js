@@ -881,7 +881,6 @@ app.get('/download/merged/:filename', (req, res) => {
     }
 });
 
-// Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
         const {
@@ -896,7 +895,7 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
-        console.log("Received include_subtitles:", includeSubtitles); // Log include_subtitles value
+        console.log("Received include_subtitles:", includeSubtitles);
 
         if (!videoLink) {
             return res.status(400).json({ error: "Video link is required." });
@@ -908,7 +907,6 @@ app.post('/apply-subtitles', async (req, res) => {
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const fontPath = path.join(__dirname, 'fonts', `${fontName}.ttf`);
 
-        // Step 1: Download the video
         try {
             const response = await axios({
                 method: 'get',
@@ -917,7 +915,6 @@ app.post('/apply-subtitles', async (req, res) => {
             });
             const writer = fs.createWriteStream(downloadPath);
             response.data.pipe(writer);
-
             await new Promise((resolve, reject) => {
                 writer.on('finish', resolve);
                 writer.on('error', reject);
@@ -926,9 +923,8 @@ app.post('/apply-subtitles', async (req, res) => {
             return res.status(500).json({ error: "Failed to download video", details: error.message });
         }
 
-        // Check if subtitles should be included
         if (includeSubtitles !== "true") {
-            console.log("Subtitles not included, returning video directly."); // Debug log
+            console.log("Subtitles not included, returning video directly.");
             fs.renameSync(downloadPath, videoFile);
             if (!res.headersSent) {
                 res.setHeader('Content-Type', 'video/mp4');
@@ -937,14 +933,12 @@ app.post('/apply-subtitles', async (req, res) => {
             }
         }
 
-        // Log to confirm subtitle conditions are met
         console.log("Subtitles will be included.");
 
         if (!content || position === undefined) {
             return res.status(400).json({ error: "Content and subtitle position are required for subtitles." });
         }
 
-        // Get video duration
         let videoLengthInSeconds;
         try {
             await new Promise((resolve, reject) => {
@@ -958,27 +952,23 @@ app.post('/apply-subtitles', async (req, res) => {
             return res.status(500).json({ error: "Failed to get video duration", details: error.message });
         }
 
-        // Check if font file exists
         if (!fs.existsSync(fontPath)) {
             return res.status(500).json({ error: "Font file not found", details: `Font path checked: ${fontPath}` });
         }
         console.log("Font Path:", fontPath);
 
-        // Step 4: Generate the ASS subtitle file
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Confirm ASS file creation and inspect its contents
         if (!fs.existsSync(subtitleFile)) {
             return res.status(500).json({ error: "Subtitle file creation failed" });
         }
         console.log("Subtitle file generated:", subtitleFile);
         console.log("Subtitle file contents:", fs.readFileSync(subtitleFile, 'utf-8'));
 
-        // Step 5: Apply subtitles with FFmpeg
         ffmpeg(downloadPath)
             .outputOptions([
-                `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
+                `-vf subtitles='${subtitleFile}':force_style='FontName=${fontName}',fontsdir='${path.join(__dirname, 'fonts')}'`,
                 '-pix_fmt yuv420p',
                 '-color_range pc',
                 '-threads 6'
@@ -987,7 +977,7 @@ app.post('/apply-subtitles', async (req, res) => {
                 console.log("FFmpeg command:", commandLine);
             })
             .on('end', () => {
-                console.log("FFmpeg processing completed."); // Debug log
+                console.log("FFmpeg processing completed.");
                 if (!res.headersSent) {
                     res.setHeader('Content-Type', 'video/mp4');
                     res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
@@ -1005,12 +995,13 @@ app.post('/apply-subtitles', async (req, res) => {
             .save(videoFile);
 
     } catch (error) {
-        console.error("General error in subtitle processing:", error.message); // Log general errors
+        console.error("General error in subtitle processing:", error.message);
         if (!res.headersSent) {
             res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
         }
     }
 });
+
 
 
 
