@@ -924,6 +924,7 @@ app.post('/apply-subtitles', async (req, res) => {
             return res.status(500).json({ error: "Failed to download video", details: error.message });
         }
 
+        // Check if subtitles should be included
         if (includeSubtitles !== "true") {
             fs.renameSync(downloadPath, videoFile);
             if (!res.headersSent) {
@@ -937,6 +938,7 @@ app.post('/apply-subtitles', async (req, res) => {
             return res.status(400).json({ error: "Content and subtitle position are required for subtitles." });
         }
 
+        // Get video duration
         let videoLengthInSeconds;
         try {
             await new Promise((resolve, reject) => {
@@ -950,7 +952,7 @@ app.post('/apply-subtitles', async (req, res) => {
             return res.status(500).json({ error: "Failed to get video duration", details: error.message });
         }
 
-        // Check font file existence
+        // Check if font file exists
         if (!fs.existsSync(fontPath)) {
             return res.status(500).json({ error: "Font file not found", details: `Font path checked: ${fontPath}` });
         }
@@ -1001,6 +1003,8 @@ app.post('/apply-subtitles', async (req, res) => {
         }
     }
 });
+
+
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
     const assHeader = `
