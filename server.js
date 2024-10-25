@@ -922,14 +922,12 @@ app.post('/apply-subtitles', async (req, res) => {
 
         // If subtitles are disabled, skip subtitle generation
         if (includeSubtitles !== "true") {
-            // Rename the downloaded file to match the videoFile path for consistent output
             fs.renameSync(downloadPath, videoFile);
-            
-            // Set response headers to force download
-            res.setHeader('Content-Type', 'video/mp4');
-            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-
-            return res.download(videoFile);  // Direct download response
+            if (!res.headersSent) {
+                res.setHeader('Content-Type', 'video/mp4');
+                res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+                return res.download(videoFile); 
+            }
         }
 
         // Validate subtitle-related input
@@ -949,46 +947,52 @@ app.post('/apply-subtitles', async (req, res) => {
             });
         });
 
-        // Step 3: Log the font path for debugging
+        // Step 3: Set font path and log for debugging
         const fontPath = path.join(__dirname, 'fonts', fontName + '.ttf');
         console.log("Font Path: ", fontPath);
 
-        // Step 4: Generate the ASS file from the provided content
+        // Step 4: Generate the ASS subtitle file
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
-        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });  // Ensure UTF-8 encoding
+        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
         // Step 5: Apply subtitles to the video using FFmpeg
-ffmpeg(downloadPath)
-    .outputOptions([
-        `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
-        '-pix_fmt yuv420p', // Ensures compatibility with most players
-        '-color_range pc',   // Keeps the color range consistent
-        '-threads 6'        // Utilize 6 threads for processing
-    ])
-    .on('end', () => {
-        // Set response headers to force download if headers haven't been sent
-        if (!res.headersSent) {
-            res.setHeader('Content-Type', 'video/mp4');
-            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-        }
+        ffmpeg(downloadPath)
+            .outputOptions([
+                `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
+                '-pix_fmt yuv420p', 
+                '-color_range pc', 
+                '-threads 6'       
+            ])
+            .on('end', () => {
+                // Ensure response headers aren't already sent
+                if (!res.headersSent) {
+                    res.setHeader('Content-Type', 'video/mp4');
+                    res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+                    res.download(videoFile);
+                }
 
-        // Send the file as a downloadable response
-        res.download(videoFile);
-
-        // Clean up temporary files
-        fs.unlinkSync(downloadPath);
-        fs.unlinkSync(subtitleFile);
-    })
-    .on('error', (err) => {
-        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-    })
-    .save(videoFile);
+                // Clean up temporary files
+                fs.unlinkSync(downloadPath);
+                fs.unlinkSync(subtitleFile);
+            })
+            .on('error', (err) => {
+                if (!res.headersSent) {
+                    res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+                }
+                // Clean up in case of error
+                if (fs.existsSync(downloadPath)) fs.unlinkSync(downloadPath);
+                if (fs.existsSync(subtitleFile)) fs.unlinkSync(subtitleFile);
+            })
+            .save(videoFile);
 
     } catch (error) {
-        res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
+        }
     }
 });
+
 
 
 
