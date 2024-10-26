@@ -979,7 +979,6 @@ app.post('/apply-subtitles', async (req, res) => {
 
 
 
-
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
     const assHeader = `
 [Script Info]
@@ -995,11 +994,10 @@ Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${
 Format: Layer, Start, End, Style, Text
 `;
 
-
-
+    // Split content into manageable segments
     const words = content.split(' ');
     const totalWords = words.length;
-    const wordsPerSubtitle = 4;
+    const wordsPerSubtitle = 4;  // Words per line, adjust as needed
 
     const adjustedDuration = Math.max(0, videoLengthInSeconds);
     const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
@@ -1015,12 +1013,14 @@ Format: Layer, Start, End, Style, Text
             break;
         }
 
-        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
+        // Add `\N` for forced line breaks on long subtitles
+        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk.replace(/\s/g, '\\N ')}\n`;
         startTime = endTime;
     }
 
     return assHeader + events;
 }
+
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
