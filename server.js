@@ -962,8 +962,24 @@ app.post('/apply-subtitles', async (req, res) => {
 
 async function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
     try {
-        // Before using `content.map`, check `content` structure
         console.log("Content structure:", content);
+
+        // If content is a string, split into segments (example segmentation)
+        if (typeof content === 'string') {
+            // Example: Split string by sentence. Adjust as necessary for your use case.
+            const sentences = content.split(/[.!?]\s/).filter(Boolean);
+
+            // Generate simple start and end times for each segment (dummy timing)
+            content = sentences.map((sentence, index) => {
+                const startTime = index * 5; // Assume each segment is 5 seconds apart
+                const endTime = startTime + 5;
+                return {
+                    start: formatTimeAss(startTime),
+                    end: formatTimeAss(endTime),
+                    text: sentence.trim() + (sentence.endsWith('.') ? '' : '.') // Ensure period at the end
+                };
+            });
+        }
 
         // Validate if `content` is an array
         if (!Array.isArray(content)) {
