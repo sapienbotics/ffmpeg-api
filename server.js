@@ -997,9 +997,6 @@ ffmpeg(downloadPath)
     })
     .save(videoFile);
 
-
-
-
     } catch (error) {
         console.error("General error in subtitle processing:", error.message);
         if (!res.headersSent) {
