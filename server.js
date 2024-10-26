@@ -884,7 +884,7 @@ app.post('/apply-subtitles', async (req, res) => {
             subtitle_color: subtitleColor = '#FFFFFF', // White by default
             back_color: backColor = '#000000', // Black background
             opacity = 1,               // Fully opaque by default
-            subtitles_position: position = 2, // Default position (bottom center)
+            subtitles_position: position = 3, // Default position (bottom center)
             include_subtitles: includeSubtitles
         } = req.body;
 
@@ -989,11 +989,12 @@ PlayDepth: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},10,10,30
+Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,1,0,${position},20,20,40
 
 [Events]
 Format: Layer, Start, End, Style, Text
 `;
+
 
     const words = content.split(' ');
     const totalWords = words.length;
