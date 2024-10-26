@@ -960,13 +960,14 @@ app.post('/apply-subtitles', async (req, res) => {
         console.log("Subtitle file generated:", subtitleFile);
         console.log("Subtitle file contents:", fs.readFileSync(subtitleFile, 'utf-8'));
 
-        ffmpeg(downloadPath)
+        // Adjust subtitle path and force style options
+ffmpeg(downloadPath)
     .outputOptions([
-        `-vf "subtitles=${subtitleFile.replace(/\\/g, "/")}:force_style='Fontname=${fontName},Fontsize=${fontSize},PrimaryColour=${convertHexToAssColor(subtitleColor)}'"`,
+        `-vf subtitles=${subtitleFile.replace(/\\/g, "/")}:force_style='Fontname=${fontName},Fontsize=${fontSize},PrimaryColour=&HFFFFFF00'`, // Modified color format
         '-pix_fmt yuv420p',
         '-color_range pc',
         '-threads 6',
-        '-loglevel debug' // Enable detailed logging for FFmpeg
+        '-loglevel debug' // Enable debug logging for FFmpeg output
     ])
     .on('start', (commandLine) => {
         console.log("FFmpeg command:", commandLine);
@@ -995,6 +996,7 @@ app.post('/apply-subtitles', async (req, res) => {
         cleanupFiles([downloadPath, subtitleFile, videoFile]);
     })
     .save(videoFile);
+
 
 
     } catch (error) {
