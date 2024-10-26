@@ -219,45 +219,47 @@ const extractDominantColor = async (imagePath) => {
     return palette.Vibrant.hex; // Get the hex value of the dominant color
 };
 
-
-
-// Use this in your image-to-video processing with zoom in effect
+// Use this in your image-to-video processing
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    console.log(`Starting conversion for image: ${imageUrl}`);
+    const startTime = Date.now(); 
 
     return new Promise(async (resolve, reject) => {
-        const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
+        console.log(`Starting conversion for image: ${imageUrl}`);
 
+        const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
+        
         try {
             // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
-            // Step 2: Extract the dominant color for padding
+            // Step 2: Extract the dominant color
             const dominantColor = await extractDominantColor(finalImagePath);
 
-            // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
+            let scaleOptions;
 
-            // Step 4: Define padding and zoom filter options
-            const zoomFactor = 1.5; // Maximum zoom level
-            const zoomSpeed = (zoomFactor - 1) / (duration * 30); // Calculate zoom speed for smooth transition
-            const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration * 30}:s=${width}x${height}:fps=30`;
+            if (orientation === 'portrait') {
+                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+            } else if (orientation === 'landscape') {
+                scaleOptions = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+            } else if (orientation === 'square') {
+                scaleOptions = `scale=${Math.min(width, height)}:${Math.min(width, height)}:force_original_aspect_ratio=decrease,pad=${Math.min(width, height)}:${Math.min(width, height)}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},setsar=1/1`;
+            } else {
+                reject(new Error('Invalid orientation specified.'));
+                return;
+            }
 
-            // Combine scale and zoom effect for final processing
-            const finalFilter = `${scaleAndPad},${zoomEffect}`;
-
-            // Step 5: Convert image to video with zoom effect
+            // Step 3: Convert image to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', finalFilter)
-                .outputOptions('-r', '30')  // Frame rate
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
-                .outputOptions('-threads', '6')  // Speed up with multiple threads
+                .outputOptions('-vf', scaleOptions)
+                .outputOptions('-r', '15')
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+                .outputOptions('-threads', '6')
                 .on('end', () => {
-                    console.log('Image converted to video with zoom.');
+                    console.log(`Image converted to video.`);
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
@@ -272,7 +274,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 
 
@@ -549,14 +550,9 @@ async function convertVideoToStandardFormat(inputVideoPath, duration, resolution
 
     return new Promise((resolve, reject) => {
         ffmpeg()
-    .input(inputVideoPath)
-    .outputOptions('-vf', scaleOptions)
-    .outputOptions(
-        '-c:v', 'libx264', 
-        '-preset', 'fast', 
-        '-crf', '23',
-        '-threads', '6' // Utilize 6 threads for processing
-    )
+            .input(inputVideoPath)
+            .outputOptions('-vf', scaleOptions)
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
             .on('end', () => {
                 console.log(`Converted video to standard format: ${outputVideoPath}`);
                 resolve(outputVideoPath);
@@ -666,7 +662,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 15 -an -threads 6 -y "${normalizedPath}"`;
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 15 -an -y "${normalizedPath}"`;
 
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
@@ -688,7 +684,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         const filterComplex = `concat=n=${normalizedFiles.length}:v=1:a=0`;
 
         // Add pixel format and color range settings for PC and mobile, and include verbose logging
-        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -threads 6 -loglevel verbose -y "${outputPath}"`;
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -loglevel verbose -y "${outputPath}"`;
 
         console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
 
@@ -796,28 +792,27 @@ app.post('/add-audio', async (req, res) => {
 
     // Prepare the FFmpeg command based on the available audio sources
     let ffmpegCommand;
-    const commonSettings = `-ar 44100 -bufsize 1000k -threads 6`;
+    const commonSettings = `-ar 44100 -bufsize 1000k -threads 2`;
 
-if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
-  // Video, content, and background audio
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
-} else if (hasVideoAudio && contentAudioExists) {
-  // Video and content audio only
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
-} else if (contentAudioExists && backgroundAudioExists) {
-  // Content and background audio only (no audio in video)
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
-} else if (contentAudioExists) {
-  // Content audio only (no audio in video or background)
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
-} else if (backgroundAudioExists) {
-  // Background audio only (no content or video audio)
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
-} else {
-  // No audio at all, just output the video
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
-}
-
+    if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
+      // Video, content, and background audio
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
+    } else if (hasVideoAudio && contentAudioExists) {
+      // Video and content audio only
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
+    } else if (contentAudioExists && backgroundAudioExists) {
+      // Content and background audio only (no audio in video)
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
+    } else if (contentAudioExists) {
+      // Content audio only (no audio in video or background)
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
+    } else if (backgroundAudioExists) {
+      // Background audio only (no content or video audio)
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
+    } else {
+      // No audio at all, just output the video
+      ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
+    }
 
     // Execute the FFmpeg command
     await execPromise(ffmpegCommand);
@@ -881,133 +876,128 @@ app.get('/download/merged/:filename', (req, res) => {
     }
 });
 
+// Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
         const {
             "video-link": videoLink,
             content,
-            subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght',
+            subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght', // Default font
             subtitle_size: fontSize = 40,
-            subtitle_color: subtitleColor = '#FFFFFF',
-            back_color: backColor = '#000000',
-            opacity = 1,
-            subtitles_position: position = 2,
+            subtitle_color: subtitleColor = '#FFFFFF', // White by default
+            back_color: backColor = '#000000', // Black background
+            opacity = 1,               // Fully opaque by default
+            subtitles_position: position = 2, // Default position (bottom center)
             include_subtitles: includeSubtitles
         } = req.body;
 
-        console.log("Received include_subtitles:", includeSubtitles);
-
+        // Validate input
         if (!videoLink) {
             return res.status(400).json({ error: "Video link is required." });
         }
 
         const videoId = uuidv4();
-        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
-        const subtitleFile = path.join(outputDir, `${videoId}.srt`);
 
-        try {
-            const response = await axios({
-                method: 'get',
-                url: videoLink,
-                responseType: 'stream'
-            });
-            const writer = fs.createWriteStream(downloadPath);
-            response.data.pipe(writer);
-            await new Promise((resolve, reject) => {
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-            });
-        } catch (error) {
-            return res.status(500).json({ error: "Failed to download video", details: error.message });
-        }
+        // Step 1: Download the video from the link
+        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+        const response = await axios({
+            method: 'get',
+            url: videoLink,
+            responseType: 'stream'
+        });
 
+        const writer = fs.createWriteStream(downloadPath);
+        response.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        // If subtitles are disabled, skip subtitle generation
         if (includeSubtitles !== "true") {
-            console.log("Subtitles not included, returning video directly.");
+            // Rename the downloaded file to match the videoFile path for consistent output
             fs.renameSync(downloadPath, videoFile);
-            if (!res.headersSent) {
-                res.setHeader('Content-Type', 'video/mp4');
-                res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-                return res.download(videoFile);
-            }
+            
+            // Return video URL without deleting the file
+            const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+            return res.json({ videoUrl });
         }
 
-        console.log("Subtitles will be included.");
-
+        // Validate subtitle-related input
         if (!content || position === undefined) {
             return res.status(400).json({ error: "Content and subtitle position are required for subtitles." });
         }
 
-        let videoLengthInSeconds;
-        try {
-            await new Promise((resolve, reject) => {
-                ffmpeg.ffprobe(downloadPath, (err, metadata) => {
-                    if (err) return reject(err);
-                    videoLengthInSeconds = Math.ceil(metadata.format.duration);
-                    resolve();
-                });
-            });
-        } catch (error) {
-            return res.status(500).json({ error: "Failed to get video duration", details: error.message });
-        }
-
-        const srtContent = generateSRT(content, videoLengthInSeconds);
-        fs.writeFileSync(subtitleFile, srtContent, { encoding: 'utf-8' });
-
-        if (!fs.existsSync(subtitleFile)) {
-            return res.status(500).json({ error: "Subtitle file creation failed" });
-        }
-        console.log("Subtitle file generated:", subtitleFile);
-        console.log("Subtitle file contents:", fs.readFileSync(subtitleFile, 'utf-8'));
-
-        // Adjust subtitle path and force style options
-ffmpeg(downloadPath)
-    .outputOptions([
-        `-vf subtitles=${subtitleFile.replace(/\\/g, "/")}:charenc=UTF-8`, // Forcing UTF-8 encoding
-        '-pix_fmt yuv420p',
-        '-color_range pc',
-        '-threads 6',
-        '-loglevel debug'
-    ])
-    .on('start', (commandLine) => {
-        console.log("FFmpeg command:", commandLine);
-    })
-    .on('progress', (progress) => {
-        console.log(`Processing: ${progress.percent}% done`);
-    })
-    .on('end', () => {
-        console.log("FFmpeg processing completed.");
-        if (!res.headersSent) {
-            res.setHeader('Content-Type', 'video/mp4');
-            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-            res.download(videoFile, (err) => {
+        // Step 2: Extract video length using FFmpeg
+        let videoLengthInSeconds = 0;
+        await new Promise((resolve, reject) => {
+            ffmpeg.ffprobe(downloadPath, (err, metadata) => {
                 if (err) {
-                    console.error("Download error:", err);
+                    return reject(err);
                 }
-                cleanupFiles([downloadPath, subtitleFile, videoFile]);
+                videoLengthInSeconds = Math.ceil(metadata.format.duration);
+                resolve();
             });
-        }
-    })
-    .on('error', (err) => {
-        console.error("FFmpeg error:", err.message);
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-        }
-        cleanupFiles([downloadPath, subtitleFile, videoFile]);
-    })
-    .save(videoFile);
+        });
 
+        // Step 3: Log the font path for debugging
+        const fontPath = path.join(__dirname, 'fonts', fontName + '.ttf');
+        console.log("Font Path: ", fontPath);
+
+        // Step 4: Generate the ASS file from the provided content
+        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
+        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
+        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });  // Ensure UTF-8 encoding
+
+        // Step 5: Apply subtitles to the video using FFmpeg
+        ffmpeg(downloadPath)
+            .outputOptions([
+                `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
+                '-pix_fmt yuv420p', // Ensures compatibility with most players
+                '-color_range pc'   // Keeps the color range consistent
+            ])
+            .on('end', () => {
+                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+
+                // Set Content-Disposition header to force download
+                res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+                res.json({ videoUrl });
+
+                // Clean up temporary files (except the output video)
+                fs.unlinkSync(downloadPath);
+                fs.unlinkSync(subtitleFile);
+            })
+            .on('error', (err) => {
+                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+            })
+            .save(videoFile);
 
     } catch (error) {
-        console.error("General error in subtitle processing:", error.message);
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
-        }
+        res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
 
-// SRT Subtitle Generator
-function generateSRT(content, videoLengthInSeconds) {
+
+
+
+
+function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
+    const assHeader = `
+[Script Info]
+Title: Subtitles
+ScriptType: v4.00+
+PlayDepth: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
+Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},10,10,30
+
+[Events]
+Format: Layer, Start, End, Style, Text
+`;
+
     const words = content.split(' ');
     const totalWords = words.length;
     const wordsPerSubtitle = 4;
@@ -1017,7 +1007,7 @@ function generateSRT(content, videoLengthInSeconds) {
     const durationPerSubtitle = adjustedDuration / totalSubtitles;
 
     let startTime = 0;
-    let srtContent = '';
+    let events = '';
 
     for (let i = 0; i < totalSubtitles; i++) {
         const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
@@ -1026,13 +1016,11 @@ function generateSRT(content, videoLengthInSeconds) {
             break;
         }
 
-        srtContent += `${i + 1}\n`;
-        srtContent += `${formatTimeSRT(startTime)} --> ${formatTimeSRT(endTime)}\n`;
-        srtContent += `${chunk}\n\n`;
+        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
         startTime = endTime;
     }
 
-    return srtContent;
+    return assHeader + events;
 }
 
 // Converts hex color to ASS format (&HAABBGGRR)
@@ -1054,19 +1042,18 @@ function convertHexToAssColorWithOpacity(hex, opacity) {
     return `&H${alpha}${b}${g}${r}`.toUpperCase();
 }
 
-// Format time for SRT
-function formatTimeSRT(seconds) {
+function formatTimeAss(seconds) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    const millis = Math.floor((seconds - Math.floor(seconds)) * 1000);
-    return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(secs, 2)},${pad(millis, 3)}`;
+    const millis = Math.floor((seconds - Math.floor(seconds)) * 100);
+    return `${pad(hours, 1)}:${pad(minutes, 2)}:${pad(secs, 2)}.${pad(millis, 2)}`;
 }
 
 function pad(num, size) {
-    return num.toString().padStart(size, '0');
+    const s = "0000" + num;
+    return s.substr(s.length - size);
 }
-
 
 // Serve video files with 'Content-Disposition' set to 'attachment' for forced download
 app.get('/output/:videoId.mp4', (req, res) => {
