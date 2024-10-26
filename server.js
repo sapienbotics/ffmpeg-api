@@ -8,9 +8,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const util = require('util');
 const { promisify } = require('util');
 const Vibrant = require('node-vibrant');
-const sharp = require('sharp'); // Add sharp for image conversion
-
-
+const sharp = require('sharp'); // For image conversion if required
 
 const app = express();
 app.use(express.json());
@@ -18,19 +16,19 @@ app.use(express.json());
 // Promisify exec for easier use with async/await
 const execPromise = util.promisify(exec);
 
+// Directory setup
 const storageDir = path.join(__dirname, 'storage', 'processed');
 const processedDir = path.join(storageDir, 'media');
-const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
+const outputDir = path.join(__dirname, 'output'); // Directory for storing processed videos
+const fontsDir = path.join(__dirname, 'fonts'); // Directory for fonts
+
+// Ensure required directories exist
+if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
+if (!fs.existsSync(processedDir)) fs.mkdirSync(processedDir, { recursive: true });
+if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+// Serve static files from the "output" directory
 app.use('/output', express.static(outputDir));
-
-
-// Ensure processed and output directories exist
-if (!fs.existsSync(processedDir)) {
-    fs.mkdirSync(processedDir, { recursive: true });
-}
-if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-}
 
 
 // Helper function to download files with timeout and retry logic
@@ -878,12 +876,12 @@ app.post('/apply-subtitles', async (req, res) => {
         const {
             "video-link": videoLink,
             content,
-            subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght', // Default font
+            subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght',
             subtitle_size: fontSize = 40,
-            subtitle_color: subtitleColor = '#FFFFFF', // White by default
-            back_color: backColor = '#000000', // Black background
-            opacity = 1,               // Fully opaque by default
-            subtitles_position: position = 3, // Default position (bottom center)
+            subtitle_color: subtitleColor = '#FFFFFF',
+            back_color: backColor = '#000000',
+            opacity = 1,
+            subtitles_position: position = 3,
             include_subtitles: includeSubtitles
         } = req.body;
 
@@ -897,7 +895,7 @@ app.post('/apply-subtitles', async (req, res) => {
         console.log("Position:", position);
 
         // Validate and log the font file path
-        const fontPath = path.join(__dirname, 'fonts', `${fontName}.ttf`);
+        const fontPath = path.join(fontsDir, `${fontName}.ttf`);
         if (!fs.existsSync(fontPath)) {
             console.error(`Font file not found: ${fontPath}`);
             return res.status(400).json({ error: `Font file not found: ${fontPath}` });
@@ -905,9 +903,9 @@ app.post('/apply-subtitles', async (req, res) => {
         console.log("Font Path:", fontPath);
 
         // Download the video
-        const videoId = new Date().getTime();
-        const downloadPath = path.join(__dirname, 'downloads', `${videoId}.mp4`);
-        const videoFile = path.join(__dirname, 'output', `${videoId}.mp4`);
+        const videoId = uuidv4(); // Unique ID for each video processing
+        const downloadPath = path.join(processedDir, `${videoId}.mp4`);
+        const videoFile = path.join(outputDir, `${videoId}.mp4`);
 
         const response = await axios({
             url: videoLink,
@@ -922,7 +920,7 @@ app.post('/apply-subtitles', async (req, res) => {
             console.log("Video downloaded successfully:", downloadPath);
 
             // Generate ASS subtitle content
-            const subtitleFile = path.join(__dirname, 'output', `${videoId}.ass`);
+            const subtitleFile = path.join(outputDir, `${videoId}.ass`);
             const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
             fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
             console.log("Generated subtitle file at:", subtitleFile);
@@ -930,7 +928,7 @@ app.post('/apply-subtitles', async (req, res) => {
             // Apply subtitles to the video using FFmpeg
             ffmpeg(downloadPath)
                 .outputOptions([
-                    `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
+                    `-vf subtitles='${subtitleFile}':fontsdir='${fontsDir}'`,
                     '-pix_fmt yuv420p',
                     '-color_range pc'
                 ])
@@ -980,7 +978,6 @@ Format: Layer, Start, End, Style, Text
 ${content.map((line, i) => `Dialogue: 0,${line.start},${line.end},Default,${line.text}`).join('\n')}
 `;
 }
-
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
     const color = hex.replace('#', '');
