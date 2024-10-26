@@ -960,33 +960,55 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-async function generateAss(content) {
+async function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
     try {
-        // Before using `content.map`, add a console log to check `content` structure
+        // Before using `content.map`, check `content` structure
         console.log("Content structure:", content);
 
-        // Check if content is an array before applying `map` and handle accordingly
+        // Validate if `content` is an array
         if (!Array.isArray(content)) {
-            console.error("Content is not an array:", content);
-            return { error: "Invalid content format. Expected an array of subtitle lines." }; // Adjust response if needed
+            throw new Error("Invalid content format. Expected an array of subtitle lines.");
         }
 
-        // Generate ASS (Advanced SubStation Alpha) format
-        const assContent = content
+        // Convert colors to ASS format
+        const subtitleAssColor = convertHexToAssColor(subtitleColor);
+        const backgroundAssColor = convertHexToAssColorWithOpacity(backColor, opacity);
+
+        // Header for ASS file with font settings
+        const assHeader = `
+        [Script Info]
+        Title: Subtitles
+        ScriptType: v4.00+
+        WrapStyle: 0
+        ScaledBorderAndShadow: yes
+        Collisions: Normal
+        PlayDepth: 0
+        Timer: 100.0000
+
+        [V4+ Styles]
+        Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+        Style: Default,${fontName},${fontSize},${subtitleAssColor},${backgroundAssColor},0,0,0,0,100,100,0,0,1,1,0,${position},10,10,10,1
+
+        [Events]
+        Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+        `;
+
+        // Generate ASS body from subtitle lines
+        const assBody = content
             .map((line) => `Dialogue: 0,${line.start},${line.end},Default,,0,0,0,,${line.text}`)
             .join('\n');
 
-        // Proceed with writing to the .ass file
-        const assFilePath = path.join(outputDir, 'subtitles.ass'); // Ensure the path is correct
-        fs.writeFileSync(assFilePath, assContent, 'utf8');
-        
-        console.log("Subtitle file written successfully:", assFilePath);
-        return { success: true }; // Adjust response if needed
+        // Combine header and body
+        const assContent = `${assHeader}\n${assBody}`;
+
+        console.log("Generated ASS content:\n", assContent);
+        return assContent;
     } catch (error) {
         console.error("Error generating ASS file:", error);
         throw error; // Rethrow the error for further handling
     }
 }
+
 
 
 // Converts hex color to ASS format (&HAABBGGRR)
