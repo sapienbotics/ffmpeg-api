@@ -963,11 +963,11 @@ app.post('/apply-subtitles', async (req, res) => {
         // Adjust subtitle path and force style options
 ffmpeg(downloadPath)
     .outputOptions([
-        `-vf subtitles=${subtitleFile.replace(/\\/g, "/")}:force_style='Fontname=${fontName},Fontsize=${fontSize},PrimaryColour=&HFFFFFF00'`, // Modified color format
+        `-vf subtitles=${subtitleFile.replace(/\\/g, "/")}`, // No force_style attributes for simplicity
         '-pix_fmt yuv420p',
         '-color_range pc',
         '-threads 6',
-        '-loglevel debug' // Enable debug logging for FFmpeg output
+        '-loglevel debug'
     ])
     .on('start', (commandLine) => {
         console.log("FFmpeg command:", commandLine);
@@ -996,6 +996,7 @@ ffmpeg(downloadPath)
         cleanupFiles([downloadPath, subtitleFile, videoFile]);
     })
     .save(videoFile);
+
 
 
 
