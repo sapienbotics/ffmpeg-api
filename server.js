@@ -878,11 +878,11 @@ app.post('/apply-subtitles', async (req, res) => {
             "video-link": videoLink,
             content,
             subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght', // Default font
-            subtitle_size: fontSize = 40,
+            subtitle_size: fontSize = 20,
             subtitle_color: subtitleColor = '#FFFFFF', // White by default
             back_color: backColor = '#000000', // Black background
             opacity = 1,               // Fully opaque by default
-            subtitles_position: position = 2, // Default position (bottom center)
+            subtitles_position: position = 5, // Default position (bottom center)
             include_subtitles: includeSubtitles
         } = req.body;
 
