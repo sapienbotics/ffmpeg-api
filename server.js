@@ -960,24 +960,35 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
-    const colorHex = subtitleColor.replace('#', '&H') + '&';
-    const backColorHex = backColor.replace('#', '&H') + '&';
-    return `[Script Info]
-Title: Subtitles
-ScriptType: v4.00+
-Collisions: Normal
-PlayDepth: 0
+async function generateAss(content) {
+    try {
+        // Before using `content.map`, add a console log to check `content` structure
+        console.log("Content structure:", content);
 
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${fontName},${fontSize},${colorHex},${backColorHex},0,0,1,1,0,${position},10,10,10,1
+        // Check if content is an array before applying `map` and handle accordingly
+        if (!Array.isArray(content)) {
+            console.error("Content is not an array:", content);
+            return { error: "Invalid content format. Expected an array of subtitle lines." }; // Adjust response if needed
+        }
 
-[Events]
-Format: Layer, Start, End, Style, Text
-${content.map((line, i) => `Dialogue: 0,${line.start},${line.end},Default,${line.text}`).join('\n')}
-`;
+        // Generate ASS (Advanced SubStation Alpha) format
+        const assContent = content
+            .map((line) => `Dialogue: 0,${line.start},${line.end},Default,,0,0,0,,${line.text}`)
+            .join('\n');
+
+        // Proceed with writing to the .ass file
+        const assFilePath = path.join(outputDir, 'subtitles.ass'); // Ensure the path is correct
+        fs.writeFileSync(assFilePath, assContent, 'utf8');
+        
+        console.log("Subtitle file written successfully:", assFilePath);
+        return { success: true }; // Adjust response if needed
+    } catch (error) {
+        console.error("Error generating ASS file:", error);
+        throw error; // Rethrow the error for further handling
+    }
 }
+
+
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
     const color = hex.replace('#', '');
