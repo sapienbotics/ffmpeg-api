@@ -871,7 +871,6 @@ app.get('/download/merged/:filename', (req, res) => {
     }
 });
 
-// Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
         const {
@@ -923,7 +922,11 @@ app.post('/apply-subtitles', async (req, res) => {
             // Ensure content is treated as an array
             const subtitlesArray = Array.isArray(content) ? content : [content];
             const subtitleFile = path.join(outputDir, `${videoId}.ass`);
+
+            // Wait for ASS content generation to complete
             const assContent = generateAss(subtitlesArray, fontName, fontSize, subtitleColor, backColor, opacity, position);
+            
+            // Write ASS content synchronously
             fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
             console.log("Generated subtitle file at:", subtitleFile);
 
@@ -962,18 +965,17 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-async function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
-    try {
-        // Check if content is an array
-        console.log("Content structure:", content);
+function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
+    // Check if content is an array
+    console.log("Content structure:", content);
 
-        if (!Array.isArray(content)) {
-            console.error("Content is not an array:", content);
-            return { error: "Invalid content format. Expected an array of subtitle lines." };
-        }
+    if (!Array.isArray(content)) {
+        console.error("Content is not an array:", content);
+        throw new Error("Invalid content format. Expected an array of subtitle lines.");
+    }
 
-        // Generate ASS (Advanced SubStation Alpha) format
-        const assContent = `[Script Info]
+    // Generate ASS (Advanced SubStation Alpha) format
+    const assContent = `[Script Info]
 Title: Subtitles
 ScriptType: v4.00+
 WrapStyle: 0
@@ -994,14 +996,10 @@ ${content.map((line, index) => {
 }).join('\n')}
 `;
 
-        console.log("ASS content generated successfully.");
-        return assContent;
-
-    } catch (error) {
-        console.error("Error generating ASS file:", error);
-        throw error;
-    }
+    console.log("ASS content generated successfully.");
+    return assContent;
 }
+
 
 
 // Helper function to convert hex color to ASS color format (&HAABBGGRR)
