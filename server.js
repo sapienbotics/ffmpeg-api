@@ -917,38 +917,45 @@ app.post('/apply-subtitles', async (req, res) => {
         response.data.pipe(writer);
 
         writer.on('finish', async () => {
-            console.log("Video downloaded successfully:", downloadPath);
+            try {
+                console.log("Video downloaded successfully:", downloadPath);
 
-            // Generate ASS subtitle content
-            const subtitleFile = path.join(outputDir, `${videoId}.ass`);
-            const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
-            fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
-            console.log("Generated subtitle file at:", subtitleFile);
+                // Generate ASS subtitle content
+                const subtitleFile = path.join(outputDir, `${videoId}.ass`);
+                const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
+                
+                // Ensure content is written to the file as a string
+                fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
+                console.log("Generated subtitle file at:", subtitleFile);
 
-            // Apply subtitles to the video using FFmpeg
-            ffmpeg(downloadPath)
-                .outputOptions([
-                    `-vf subtitles='${subtitleFile}':fontsdir='${fontsDir}'`,
-                    '-pix_fmt yuv420p',
-                    '-color_range pc'
-                ])
-                .on('start', (commandLine) => console.log("FFmpeg command:", commandLine))
-                .on('end', () => {
-                    const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-                    res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-                    res.json({ videoUrl });
-                    console.log("Subtitle process completed. Video URL:", videoUrl);
-                    
-                    // Clean up
-                    fs.unlinkSync(downloadPath);
-                    fs.unlinkSync(subtitleFile);
-                })
-                .on('error', (err) => {
-                    console.error("Failed to apply subtitles:", err);
-                    res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
-                })
-                .save(videoFile);
+                // Apply subtitles to the video using FFmpeg
+                ffmpeg(downloadPath)
+                    .outputOptions([
+                        `-vf subtitles='${subtitleFile}':fontsdir='${fontsDir}'`,
+                        '-pix_fmt yuv420p',
+                        '-color_range pc'
+                    ])
+                    .on('start', (commandLine) => console.log("FFmpeg command:", commandLine))
+                    .on('end', () => {
+                        const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+                        res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+                        res.json({ videoUrl });
+                        console.log("Subtitle process completed. Video URL:", videoUrl);
 
+                        // Clean up
+                        fs.unlinkSync(downloadPath);
+                        fs.unlinkSync(subtitleFile);
+                    })
+                    .on('error', (err) => {
+                        console.error("Failed to apply subtitles:", err);
+                        res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+                    })
+                    .save(videoFile);
+
+            } catch (err) {
+                console.error("Error during video processing:", err);
+                res.status(500).json({ error: 'Error processing video', details: err.message });
+            }
         }).on('error', (error) => {
             console.error("Error downloading video:", error);
             res.status(500).json({ error: 'Failed to download video', details: error.message });
@@ -960,37 +967,19 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-async function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
+// Function to generate ASS content (Modified to accept synchronous return)
+function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position) {
     try {
-        console.log("Content structure:", content);
-
-        // If content is a string, split into segments (example segmentation)
-        if (typeof content === 'string') {
-            // Example: Split string by sentence. Adjust as necessary for your use case.
-            const sentences = content.split(/[.!?]\s/).filter(Boolean);
-
-            // Generate simple start and end times for each segment (dummy timing)
-            content = sentences.map((sentence, index) => {
-                const startTime = index * 5; // Assume each segment is 5 seconds apart
-                const endTime = startTime + 5;
-                return {
-                    start: formatTimeAss(startTime),
-                    end: formatTimeAss(endTime),
-                    text: sentence.trim() + (sentence.endsWith('.') ? '' : '.') // Ensure period at the end
-                };
-            });
-        }
-
-        // Validate if `content` is an array
+        // Ensure content is in correct format (Array of objects)
         if (!Array.isArray(content)) {
             throw new Error("Invalid content format. Expected an array of subtitle lines.");
         }
 
         // Convert colors to ASS format
-        const subtitleAssColor = convertHexToAssColor(subtitleColor);
-        const backgroundAssColor = convertHexToAssColorWithOpacity(backColor, opacity);
+        const primaryColor = convertHexToAssColor(subtitleColor);
+        const backgroundColor = convertHexToAssColorWithOpacity(backColor, opacity);
 
-        // Header for ASS file with font settings
+        // ASS file header and styles
         const assHeader = `
         [Script Info]
         Title: Subtitles
@@ -1003,25 +992,21 @@ async function generateAss(content, fontName, fontSize, subtitleColor, backColor
 
         [V4+ Styles]
         Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-        Style: Default,${fontName},${fontSize},${subtitleAssColor},${backgroundAssColor},0,0,0,0,100,100,0,0,1,1,0,${position},10,10,10,1
+        Style: Default,${fontName},${fontSize}px,${primaryColor},${backgroundColor},0,0,0,0,100,100,0,0,1,1,0,${position},10,10,10,1
 
         [Events]
         Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         `;
 
-        // Generate ASS body from subtitle lines
-        const assBody = content
-            .map((line) => `Dialogue: 0,${line.start},${line.end},Default,,0,0,0,,${line.text}`)
+        // Generate dialogue lines
+        const assContent = content
+            .map((line) => `Dialogue: 0,${formatTimeAss(line.start)},${formatTimeAss(line.end)},Default,,0,0,0,,${line.text}`)
             .join('\n');
 
-        // Combine header and body
-        const assContent = `${assHeader}\n${assBody}`;
-
-        console.log("Generated ASS content:\n", assContent);
-        return assContent;
+        return assHeader + assContent;
     } catch (error) {
         console.error("Error generating ASS file:", error);
-        throw error; // Rethrow the error for further handling
+        throw error;
     }
 }
 
