@@ -963,7 +963,7 @@ app.post('/apply-subtitles', async (req, res) => {
         // Adjust subtitle path and force style options
 ffmpeg(downloadPath)
     .outputOptions([
-        `-vf subtitles=${subtitleFile.replace(/\\/g, "/")}`, // No force_style attributes for simplicity
+        `-vf subtitles=${subtitleFile.replace(/\\/g, "/")}:charenc=UTF-8`, // Forcing UTF-8 encoding
         '-pix_fmt yuv420p',
         '-color_range pc',
         '-threads 6',
@@ -996,6 +996,7 @@ ffmpeg(downloadPath)
         cleanupFiles([downloadPath, subtitleFile, videoFile]);
     })
     .save(videoFile);
+
 
     } catch (error) {
         console.error("General error in subtitle processing:", error.message);
