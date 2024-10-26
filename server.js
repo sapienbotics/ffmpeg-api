@@ -976,49 +976,45 @@ app.post('/apply-subtitles', async (req, res) => {
 
 
 
+async function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position) {
+    try {
+        // Convert colors from hex to ASS format
+        const primaryColor = convertHexToAssColor(subtitleColor);
+        const backColor = convertHexToAssColorWithOpacity(backgroundColor, opacity);
 
+        // Determine alignment based on the position variable
+        const alignment = getAlignmentCode(position);
 
-function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
-    const assHeader = `
+        // Generate the ASS file content
+        const assContent = `
 [Script Info]
 Title: Subtitles
 ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+Collisions: Normal
 PlayDepth: 0
+Timer: 100.0000
 
 [V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},10,10,30
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,${fontName},${fontSize},${primaryColor},${backColor},0,0,0,0,100,100,0,0,1,1,0,${alignment},10,10,10,1
 
 [Events]
-Format: Layer, Start, End, Style, Text
-`;
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${content.map(line => `Dialogue: 0,${line.start},${line.end},Default,,0,0,0,,${line.text}`).join('\n')}
+        `;
 
-    const words = content.split(' ');
-    const totalWords = words.length;
-    const wordsPerSubtitle = 4;
-
-    const adjustedDuration = Math.max(0, videoLengthInSeconds);
-    const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
-    const durationPerSubtitle = adjustedDuration / totalSubtitles;
-
-    let startTime = 0;
-    let events = '';
-
-    for (let i = 0; i < totalSubtitles; i++) {
-        const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
-        const endTime = startTime + durationPerSubtitle;
-        if (endTime > adjustedDuration) {
-            break;
-        }
-
-        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
-        startTime = endTime;
+        // Write the ASS content to a file
+        const assFilePath = path.join(__dirname, 'subtitles.ass');
+        fs.writeFileSync(assFilePath, assContent.trim(), 'utf8');
+        console.log("Subtitle file written successfully:", assFilePath);
+    } catch (error) {
+        console.error("Error generating ASS file:", error);
     }
-
-    return assHeader + events;
 }
 
-// Converts hex color to ASS format (&HAABBGGRR)
+// Helper function to convert hex color to ASS color format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
     const color = hex.replace('#', '');
     const r = color.slice(0, 2);
@@ -1036,6 +1032,23 @@ function convertHexToAssColorWithOpacity(hex, opacity) {
     const b = color.slice(4, 6);
     return `&H${alpha}${b}${g}${r}`.toUpperCase();
 }
+
+// Get alignment code based on position
+function getAlignmentCode(position) {
+    switch (position) {
+        case 1: return 1; // Top Left
+        case 2: return 2; // Top Center
+        case 3: return 3; // Top Right
+        case 4: return 4; // Middle Left
+        case 5: return 5; // Middle Center
+        case 6: return 6; // Middle Right
+        case 7: return 7; // Bottom Left
+        case 8: return 8; // Bottom Center
+        case 9: return 9; // Bottom Right
+        default: return 5; // Default to Middle Center
+    }
+}
+
 
 function formatTimeAss(seconds) {
     const hours = Math.floor(seconds / 3600);
