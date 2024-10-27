@@ -1020,7 +1020,7 @@ Format: Layer, Start, End, Style, Text
 
     const words = content.split(' ');
     const totalWords = words.length;
-    const wordsPerSubtitle = 6; // Increase words per subtitle for better splitting
+    const wordsPerSubtitle = 4;
 
     const adjustedDuration = Math.max(0, videoLengthInSeconds);
     const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
@@ -1030,23 +1030,20 @@ Format: Layer, Start, End, Style, Text
     let events = '';
 
     for (let i = 0; i < totalSubtitles; i++) {
-        // Adjust chunking and add line breaks where needed
         const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
-
-        // Check if the chunk length exceeds a threshold and split into multiple lines
-        const chunkWithLineBreaks = chunk.length > 30 ? chunk.replace(/(.{30})(?!$)/g, '$1\\N') : chunk;
-
         const endTime = startTime + durationPerSubtitle;
         if (endTime > adjustedDuration) {
             break;
         }
 
-        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,,0,0,0,,${chunkWithLineBreaks}\n`;
+        // Corrected Dialogue line without unnecessary zeros
+        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
         startTime = endTime;
     }
 
     return assHeader + events;
 }
+
 
 
 
