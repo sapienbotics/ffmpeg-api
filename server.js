@@ -1011,6 +1011,26 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
+// Serve video files with 'Content-Disposition' set to 'attachment' for forced download
+app.get('/download/:videoId.mp4', (req, res) => {
+    const videoId = req.params.videoId;
+    const videoPath = path.join(outputDir, `${videoId}.mp4`);
+
+    if (fs.existsSync(videoPath)) {
+        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
+        res.setHeader('Content-Type', 'video/mp4');
+        res.sendFile(videoPath, (err) => {
+            if (err) {
+                console.error("Error sending video file:", err);
+                res.status(500).json({ error: 'Failed to send the video file.' });
+            }
+        });
+    } else {
+        console.error("Video not found for ID:", videoId);
+        res.status(404).json({ error: 'Video not found.' });
+    }
+});
+
 
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
@@ -1088,22 +1108,6 @@ function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
 }
-
-
-// Serve video files with 'Content-Disposition' set to 'attachment' for forced download
-app.get('/download/:videoId.mp4', (req, res) => {
-    const videoId = req.params.videoId;
-    const videoPath = path.join(outputDir, `${videoId}.mp4`);
-
-    if (fs.existsSync(videoPath)) {
-        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
-        res.setHeader('Content-Type', 'video/mp4');
-        res.sendFile(videoPath);
-    } else {
-        console.error("Video not found for ID:", videoId);
-        res.status(404).json({ error: 'Video not found.' });
-    }
-});
 
 
 module.exports = app; // Ensure you export your app to give
