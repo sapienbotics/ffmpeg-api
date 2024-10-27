@@ -179,7 +179,7 @@ async function trimVideo(videoUrl, duration) {
                 '-r 23', 
                 '-c:v libx264', 
                 '-preset fast',
-                '-crf 22',
+                '-crf 23',
                 '-vf setsar=1/1' // Ensure the SAR is set, but no scaling is applied
             ])
             .on('end', () => {
@@ -366,7 +366,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '22')
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
             // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
