@@ -1087,14 +1087,18 @@ app.get('/output/:videoId.mp4', (req, res) => {
 
     // Ensure the video file exists
     if (fs.existsSync(videoPath)) {
-        // Set headers to force download
-        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
-        res.setHeader('Content-Type', 'application/octet-stream');  // Use generic binary data type for forcing download
-        res.sendFile(videoPath);
+        // Use res.download to force the file download
+        res.download(videoPath, `${videoId}.mp4`, (err) => {
+            if (err) {
+                console.error("Error during file download:", err.message);
+                res.status(500).json({ error: 'Error during file download' });
+            }
+        });
     } else {
         res.status(404).json({ error: 'Video not found.' });
     }
 });
+
 
 
 
