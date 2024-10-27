@@ -935,7 +935,7 @@ app.post('/apply-subtitles', async (req, res) => {
         if (includeSubtitles !== "true") {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
-            const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+            const downloadUrl = `${req.protocol}://${req.get('host')}/download/${videoId}.mp4`;
             return res.json({ downloadUrl });
         }
 
@@ -987,7 +987,7 @@ app.post('/apply-subtitles', async (req, res) => {
 
                 // Confirm the file was created and return the download URL
                 if (fs.existsSync(videoFile)) {
-                    const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+                    const downloadUrl = `${req.protocol}://${req.get('host')}/download/${videoId}.mp4`;
                     console.log("Returning download URL:", downloadUrl);
                     res.json({ downloadUrl });
                 } else {
@@ -1012,25 +1012,20 @@ app.post('/apply-subtitles', async (req, res) => {
 });
 
 // Serve video files with 'Content-Disposition' set to 'attachment' for forced download
-app.get('/output/:videoId.mp4', (req, res) => {
+app.get('/download/:videoId.mp4', (req, res) => {
     const videoId = req.params.videoId;
     const videoPath = path.join(outputDir, `${videoId}.mp4`);
 
     if (fs.existsSync(videoPath)) {
-        // Force download with Content-Disposition header
         res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
         res.setHeader('Content-Type', 'video/mp4');
-        res.sendFile(videoPath, (err) => {
-            if (err) {
-                console.error("Error sending video file:", err);
-                res.status(500).json({ error: 'Failed to send the video file.' });
-            }
-        });
+        res.sendFile(videoPath);
     } else {
         console.error("Video not found for ID:", videoId);
         res.status(404).json({ error: 'Video not found.' });
     }
 });
+
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
     const assHeader = `
