@@ -8,7 +8,9 @@ const ffmpeg = require('fluent-ffmpeg');
 const util = require('util');
 const { promisify } = require('util');
 const Vibrant = require('node-vibrant');
-const sharp = require('sharp'); // For image conversion if required
+const sharp = require('sharp'); // Add sharp for image conversion
+
+
 
 const app = express();
 app.use(express.json());
@@ -16,19 +18,19 @@ app.use(express.json());
 // Promisify exec for easier use with async/await
 const execPromise = util.promisify(exec);
 
-// Directory setup
 const storageDir = path.join(__dirname, 'storage', 'processed');
 const processedDir = path.join(storageDir, 'media');
-const outputDir = path.join(__dirname, 'output'); // Directory for storing processed videos
-const fontsDir = path.join(__dirname, 'fonts'); // Directory for fonts
-
-// Ensure required directories exist
-if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
-if (!fs.existsSync(processedDir)) fs.mkdirSync(processedDir, { recursive: true });
-if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-
-// Serve static files from the "output" directory
+const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
 app.use('/output', express.static(outputDir));
+
+
+// Ensure processed and output directories exist
+if (!fs.existsSync(processedDir)) {
+    fs.mkdirSync(processedDir, { recursive: true });
+}
+if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+}
 
 
 // Helper function to download files with timeout and retry logic
@@ -176,10 +178,10 @@ async function trimVideo(videoUrl, duration) {
             .input(videoUrl)
             .outputOptions([
                 `-t ${duration}`, 
-                '-r 23', 
+                '-r 15', 
                 '-c:v libx264', 
                 '-preset fast',
-                '-crf 23',
+                '-crf 22',
                 '-vf setsar=1/1' // Ensure the SAR is set, but no scaling is applied
             ])
             .on('end', () => {
@@ -216,6 +218,8 @@ const extractDominantColor = async (imagePath) => {
     const palette = await Vibrant.from(imagePath).getPalette();
     return palette.Vibrant.hex; // Get the hex value of the dominant color
 };
+
+
 
 // Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
@@ -269,6 +273,7 @@ const finalFilter = `${scaleAndPad},${zoomEffect}`;
         }
     });
 }
+
 
 
 
@@ -366,7 +371,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '22')
             // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
@@ -545,9 +550,14 @@ async function convertVideoToStandardFormat(inputVideoPath, duration, resolution
 
     return new Promise((resolve, reject) => {
         ffmpeg()
-            .input(inputVideoPath)
-            .outputOptions('-vf', scaleOptions)
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+    .input(inputVideoPath)
+    .outputOptions('-vf', scaleOptions)
+    .outputOptions(
+        '-c:v', 'libx264', 
+        '-preset', 'fast', 
+        '-crf', '23',
+        '-threads', '6' // Utilize 6 threads for processing
+    )
             .on('end', () => {
                 console.log(`Converted video to standard format: ${outputVideoPath}`);
                 resolve(outputVideoPath);
@@ -657,7 +667,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 23 -an -y "${normalizedPath}"`;
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 15 -an -threads 6 -y "${normalizedPath}"`;
 
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
@@ -679,7 +689,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         const filterComplex = `concat=n=${normalizedFiles.length}:v=1:a=0`;
 
         // Add pixel format and color range settings for PC and mobile, and include verbose logging
-        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -loglevel verbose -y "${outputPath}"`;
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -threads 6 -loglevel verbose -y "${outputPath}"`;
 
         console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
 
@@ -787,27 +797,28 @@ app.post('/add-audio', async (req, res) => {
 
     // Prepare the FFmpeg command based on the available audio sources
     let ffmpegCommand;
-    const commonSettings = `-ar 44100 -bufsize 1000k -threads 2`;
+    const commonSettings = `-ar 44100 -bufsize 1000k -threads 6`;
 
-    if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
-      // Video, content, and background audio
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (hasVideoAudio && contentAudioExists) {
-      // Video and content audio only
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (contentAudioExists && backgroundAudioExists) {
-      // Content and background audio only (no audio in video)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (contentAudioExists) {
-      // Content audio only (no audio in video or background)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else if (backgroundAudioExists) {
-      // Background audio only (no content or video audio)
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    } else {
-      // No audio at all, just output the video
-      ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest "${outputFilePath}"`;
-    }
+if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
+  // Video, content, and background audio
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else if (hasVideoAudio && contentAudioExists) {
+  // Video and content audio only
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else if (contentAudioExists && backgroundAudioExists) {
+  // Content and background audio only (no audio in video)
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else if (contentAudioExists) {
+  // Content audio only (no audio in video or background)
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else if (backgroundAudioExists) {
+  // Background audio only (no content or video audio)
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+} else {
+  // No audio at all, just output the video
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+}
+
 
     // Execute the FFmpeg command
     await execPromise(ffmpegCommand);
@@ -832,9 +843,6 @@ app.post('/add-audio', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while adding audio to the video.' });
   }
 });
-
-
-
 
 
 // Download endpoint for processed media
@@ -870,6 +878,7 @@ app.get('/download/merged/:filename', (req, res) => {
         res.status(404).send('File not found');
     }
 });
+
 
 // Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
