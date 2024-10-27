@@ -915,10 +915,10 @@ app.post('/apply-subtitles', async (req, res) => {
         }
 
         const videoId = uuidv4();
-        const videoFile = path.join(outputDir, `${videoId}.mp4`);
+        const videoFile = path.join(outputDir, ${videoId}.mp4);
 
         // Step 1: Download the video from the link
-        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+        const downloadPath = path.join(outputDir, ${videoId}-input.mp4);
         const response = await axios({
             method: 'get',
             url: videoLink,
@@ -938,11 +938,8 @@ app.post('/apply-subtitles', async (req, res) => {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
             
-            // Set response headers to force download
-            res.setHeader('Content-Type', 'video/mp4');
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
-
-            return res.download(videoFile);
+            const videoUrl = ${req.protocol}://${req.get('host')}/output/${videoId}.mp4;
+            return res.json({ videoUrl });
         }
 
         // Validate subtitle-related input
@@ -970,7 +967,7 @@ app.post('/apply-subtitles', async (req, res) => {
         console.log("Font Path being used:", fontPath);
 
         // Step 4: Generate the ASS file from the provided content
-        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
+        const subtitleFile = path.join(outputDir, ${videoId}.ass);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
         
         // Log the generated ASS content
@@ -979,10 +976,10 @@ app.post('/apply-subtitles', async (req, res) => {
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });  // Ensure UTF-8 encoding
 
         // Step 5: Apply subtitles to the video using FFmpeg
-        console.log(`Running FFmpeg command to apply subtitles with subtitle file: ${subtitleFile}`);
+        console.log(Running FFmpeg command to apply subtitles with subtitle file: ${subtitleFile});
         ffmpeg(downloadPath)
             .outputOptions([
-                `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
+                -vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}',
                 '-pix_fmt yuv420p', // Ensures compatibility with most players
                 '-color_range pc'   // Keeps the color range consistent
             ])
@@ -990,14 +987,12 @@ app.post('/apply-subtitles', async (req, res) => {
                 console.log("FFmpeg command:", cmd);
             })
             .on('end', () => {
-                console.log("Subtitle processing completed.");
+                const videoUrl = ${req.protocol}://${req.get('host')}/output/${videoId}.mp4;
+                console.log("Subtitle processing completed. Video URL:", videoUrl);
 
-                // Set response headers to force download
-                res.setHeader('Content-Type', 'video/mp4');
-                res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
-
-                // Send the file as a downloadable response
-                res.download(videoFile);
+                // Set Content-Disposition header to force download
+                res.setHeader('Content-Disposition', attachment; filename=${videoId}.mp4);
+                res.json({ videoUrl });
 
                 // Clean up temporary files (except the output video)
                 fs.unlinkSync(downloadPath);
@@ -1014,8 +1009,6 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
-
-
 
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
