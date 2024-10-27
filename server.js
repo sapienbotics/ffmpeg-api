@@ -990,7 +990,7 @@ app.post('/apply-subtitles', async (req, res) => {
                 const videoUrl = ${req.protocol}://${req.get('host')}/output/${videoId}.mp4;
                 console.log("Subtitle processing completed. Video URL:", videoUrl);
 
-                // Set Content-Disposition header to force download
+                // Set Content-Disposition header to force downloads
                 res.setHeader('Content-Disposition', attachment; filename=${videoId}.mp4);
                 res.json({ videoUrl });
 
