@@ -178,10 +178,10 @@ async function trimVideo(videoUrl, duration) {
             .input(videoUrl)
             .outputOptions([
                 `-t ${duration}`, 
-                '-r 15', 
+                '-r 30', 
                 '-c:v libx264', 
                 '-preset fast',
-                '-crf 22',
+                '-crf 23',
                 '-vf setsar=1/1' // Ensure the SAR is set, but no scaling is applied
             ])
             .on('end', () => {
@@ -371,7 +371,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '22')
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
             // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
@@ -667,7 +667,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 15 -an -threads 6 -y "${normalizedPath}"`;
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 30 -an -threads 6 -y "${normalizedPath}"`;
 
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
