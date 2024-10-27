@@ -1101,12 +1101,13 @@ app.get('/output/:videoId.mp4', (req, res) => {
     if (fs.existsSync(videoPath)) {
         // Set Content-Disposition header to force download with a given filename
         res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
-        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Type', 'video/mp4'); // Use 'video/mp4' for accurate MIME type
         res.sendFile(videoPath);
     } else {
         res.status(404).json({ error: 'Video not found.' });
     }
 });
+
 
 
 module.exports = app; // Ensure you export your app to give
