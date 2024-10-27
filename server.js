@@ -1016,15 +1016,19 @@ app.get('/download/:videoId.mp4', (req, res) => {
     const videoId = req.params.videoId;
     const videoPath = path.join(outputDir, `${videoId}.mp4`);
 
+    console.log(`Looking for video file at: ${videoPath}`); // Logging for debugging
+
     if (fs.existsSync(videoPath)) {
+        console.log(`File found! Sending: ${videoPath}`);
         res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
         res.setHeader('Content-Type', 'video/mp4');
         res.sendFile(videoPath);
     } else {
-        console.error("Video not found for ID:", videoId);
+        console.error(`Video not found at path: ${videoPath}`);
         res.status(404).json({ error: 'Video not found.' });
     }
 });
+
 
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
