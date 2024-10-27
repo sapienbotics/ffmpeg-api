@@ -937,9 +937,12 @@ app.post('/apply-subtitles', async (req, res) => {
         if (includeSubtitles !== "true") {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
-            
-            const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-            return res.json({ videoUrl });
+
+            // Set response headers to force download
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+
+            return res.download(videoFile);  // Direct download response
         }
 
         // Validate subtitle-related input
@@ -969,10 +972,10 @@ app.post('/apply-subtitles', async (req, res) => {
         // Step 4: Generate the ASS file from the provided content
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
-        
+
         // Log the generated ASS content
         console.log("Generated ASS file content:\n", assContent);
-        
+
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });  // Ensure UTF-8 encoding
 
         // Step 5: Apply subtitles to the video using FFmpeg
@@ -987,12 +990,12 @@ app.post('/apply-subtitles', async (req, res) => {
                 console.log("FFmpeg command:", cmd);
             })
             .on('end', () => {
-                const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-                console.log("Subtitle processing completed. Video URL:", videoUrl);
-
-                // Set Content-Disposition header to force download
+                // Set response headers to force download
+                res.setHeader('Content-Type', 'video/mp4');
                 res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-                res.json({ videoUrl });
+
+                // Send the file as a downloadable response
+                return res.download(videoFile);
 
                 // Clean up temporary files (except the output video)
                 fs.unlinkSync(downloadPath);
