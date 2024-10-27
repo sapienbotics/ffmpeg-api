@@ -1079,6 +1079,7 @@ function pad(num, size) {
     return s.substr(s.length - size);
 }
 
+
 // Serve video files with 'Content-Disposition' set to 'attachment' for forced download
 app.get('/output/:videoId.mp4', (req, res) => {
     const videoId = req.params.videoId;
@@ -1086,14 +1087,15 @@ app.get('/output/:videoId.mp4', (req, res) => {
 
     // Ensure the video file exists
     if (fs.existsSync(videoPath)) {
-        // Set Content-Disposition header to force download with a given filename
-        res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
-        res.setHeader('Content-Type', 'video/mp4');
+        // Set headers to force download
+        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
+        res.setHeader('Content-Type', 'application/octet-stream');  // Use generic binary data type for forcing download
         res.sendFile(videoPath);
     } else {
         res.status(404).json({ error: 'Video not found.' });
     }
 });
+
 
 
 module.exports = app; // Ensure you export your app to give
