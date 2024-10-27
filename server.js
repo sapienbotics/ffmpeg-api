@@ -886,16 +886,27 @@ app.post('/apply-subtitles', async (req, res) => {
         const {
             "video-link": videoLink,
             content,
-            subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght',
+            subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght', // Default font
             subtitle_size: fontSize = 40,
-            subtitle_color: subtitleColor = '#FFFFFF',
-            back_color: backColor = '#000000',
-            opacity = 1,
-            subtitles_position: position = 2,
+            subtitle_color: subtitleColor = '#FFFFFF', // White by default
+            back_color: backColor = '#000000', // Black background
+            opacity = 1,               // Fully opaque by default
+            subtitles_position: position = 2, // Default position (bottom center)
             include_subtitles: includeSubtitles
         } = req.body;
 
-        // Validate input
+        console.log("Received input variables:", {
+            videoLink,
+            content,
+            fontName,
+            fontSize,
+            subtitleColor,
+            backColor,
+            opacity,
+            position,
+            includeSubtitles
+        });
+
         if (!videoLink) {
             console.error("Error: Video link is required.");
             return res.status(400).json({ error: "Video link is required." });
@@ -905,7 +916,6 @@ app.post('/apply-subtitles', async (req, res) => {
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
 
-        // Download the video
         const response = await axios({
             method: 'get',
             url: videoLink,
@@ -945,19 +955,20 @@ app.post('/apply-subtitles', async (req, res) => {
             });
         });
 
-        const fontPath = path.join(__dirname, 'fonts', fontName + '.ttf');
+        const fontPath = path.join(__dirname, 'fonts', `${fontName}.ttf`);
         console.log("Font Path being used:", fontPath);
 
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
-        
+
+        console.log("Generated ASS file content:\n", assContent);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
         console.log(`Running FFmpeg command to apply subtitles with subtitle file: ${subtitleFile}`);
         ffmpeg(downloadPath)
             .outputOptions([
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
-                '-pix_fmt yuv420p',
+                '-pix_fmt yuv420p', 
                 '-color_range pc'
             ])
             .on('start', (cmd) => {
@@ -967,9 +978,11 @@ app.post('/apply-subtitles', async (req, res) => {
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
                 console.log("Subtitle processing completed. Video URL:", videoUrl);
 
+                // Set Content-Disposition header to force download
                 res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
                 res.json({ videoUrl });
 
+                // Clean up temporary files
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
