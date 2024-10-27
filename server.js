@@ -1096,19 +1096,14 @@ app.get('/output/:videoId.mp4', (req, res) => {
 
     // Ensure the video file exists
     if (fs.existsSync(videoPath)) {
-        // Use res.download to force the file download
-        res.download(videoPath, `${videoId}.mp4`, (err) => {
-            if (err) {
-                console.error("Error during file download:", err.message);
-                res.status(500).json({ error: 'Error during file download' });
-            }
-        });
+        // Set Content-Disposition header to force download with a given filename
+        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.sendFile(videoPath);
     } else {
         res.status(404).json({ error: 'Video not found.' });
     }
 });
-
-
 
 
 module.exports = app; // Ensure you export your app to give
