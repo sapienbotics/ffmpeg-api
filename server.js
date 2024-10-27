@@ -895,6 +895,24 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
+        console.log("Received input variables:", {
+            videoLink,
+            content,
+            fontName,
+            fontSize,
+            subtitleColor,
+            backColor,
+            opacity,
+            position,
+            includeSubtitles
+        });
+
+        // Validate input
+        if (!videoLink) {
+            console.error("Error: Video link is required.");
+            return res.status(400).json({ error: "Video link is required." });
+        }
+
         const videoId = uuidv4();
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
@@ -917,7 +935,7 @@ app.post('/apply-subtitles', async (req, res) => {
         if (includeSubtitles !== "true") {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
-            const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`; // Use output here
+            const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
             return res.json({ downloadUrl });
         }
 
@@ -968,18 +986,25 @@ app.post('/apply-subtitles', async (req, res) => {
                 console.log("Subtitle processing completed. Video saved to:", videoFile);
 
                 // Confirm the file was created and return the download URL
-               if (fs.existsSync(videoFile)) {
-            const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`; // Consistent with output directory
-            console.log("Returning download URL:", downloadUrl);
-            res.json({ downloadUrl });
-        } else {
-            console.error("Error: Output file not found after processing.");
-            res.status(500).json({ error: 'Failed to generate output video.' });
-        }
+                if (fs.existsSync(videoFile)) {
+                    const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+                    console.log("Returning download URL:", downloadUrl);
+                    res.json({ downloadUrl });
+                } else {
+                    console.error("Error: Output file not found after processing.");
+                    res.status(500).json({ error: 'Failed to generate output video.' });
+                }
 
-        // Clean up temporary files (except the output video)
-        fs.unlinkSync(downloadPath);
-        fs.unlinkSync(subtitleFile);
+                // Clean up temporary files (except the output video)
+                fs.unlinkSync(downloadPath);
+                fs.unlinkSync(subtitleFile);
+            })
+            .on('error', (err) => {
+                console.error("FFmpeg error:", err.message);
+                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+            })
+            .save(videoFile);
+
     } catch (error) {
         console.error("Processing error:", error.message);
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
@@ -1006,7 +1031,6 @@ app.get('/output/:videoId.mp4', (req, res) => {
         res.status(404).json({ error: 'Video not found.' });
     }
 });
-
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
     const assHeader = `
