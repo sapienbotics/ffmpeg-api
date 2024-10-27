@@ -20,9 +20,13 @@ const execPromise = util.promisify(exec);
 
 const storageDir = path.join(__dirname, 'storage', 'processed');
 const processedDir = path.join(storageDir, 'media');
-const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
-app.use('/output', express.static(outputDir));
+const outputDir = path.join(__dirname, 'output'); // Output directory for storing processed videos
 
+// Middleware to force download for /output files
+app.use('/output', (req, res, next) => {
+    res.setHeader('Content-Disposition', 'attachment');
+    next();
+}, express.static(outputDir));
 
 // Ensure processed and output directories exist
 if (!fs.existsSync(processedDir)) {
@@ -31,6 +35,7 @@ if (!fs.existsSync(processedDir)) {
 if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
+
 
 
 // Helper function to download files with timeout and retry logic
@@ -935,7 +940,7 @@ app.post('/apply-subtitles', async (req, res) => {
         if (includeSubtitles !== "true") {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
-            const downloadUrl = `${req.protocol}://${req.get('host')}/download/${videoId}.mp4`;
+            const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
             return res.json({ downloadUrl });
         }
 
@@ -987,7 +992,7 @@ app.post('/apply-subtitles', async (req, res) => {
 
                 // Confirm the file was created and return the download URL
                 if (fs.existsSync(videoFile)) {
-                    const downloadUrl = `${req.protocol}://${req.get('host')}/download/${videoId}.mp4`;
+                    const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
                     console.log("Returning download URL:", downloadUrl);
                     res.json({ downloadUrl });
                 } else {
@@ -1011,23 +1016,6 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-// Serve video files with 'Content-Disposition' set to 'attachment' for forced download
-app.get('/download/:videoId.mp4', (req, res) => {
-    const videoId = req.params.videoId;
-    const videoPath = path.join(outputDir, `${videoId}.mp4`);
-
-    console.log(`Looking for video file at: ${videoPath}`); // Logging for debugging
-
-    if (fs.existsSync(videoPath)) {
-        console.log(`File found! Sending: ${videoPath}`);
-        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
-        res.setHeader('Content-Type', 'video/mp4');
-        res.sendFile(videoPath);
-    } else {
-        console.error(`Video not found at path: ${videoPath}`);
-        res.status(404).json({ error: 'Video not found.' });
-    }
-});
 
 
 
