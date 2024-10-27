@@ -1005,18 +1005,22 @@ Format: Layer, Start, End, Style, Text
     let events = '';
 
     for (let i = 0; i < totalSubtitles; i++) {
+        // Split content into chunks and add a line break if needed
         const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
+        const chunkWithLineBreaks = chunk.replace(/(.{40})/g, '$1\\N'); // Insert line break every 40 characters
+        
         const endTime = startTime + durationPerSubtitle;
         if (endTime > adjustedDuration) {
             break;
         }
 
-        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
+        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunkWithLineBreaks}\n`;
         startTime = endTime;
     }
 
     return assHeader + events;
 }
+
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
