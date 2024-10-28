@@ -207,7 +207,7 @@ async function trimVideo(videoUrl, duration) {
             .input(videoUrl)
             .outputOptions([
                 `-t ${duration}`, 
-                '-r 30', 
+                '-r 25', 
                 '-c:v libx264', 
                 '-preset fast',
                 '-crf 23',
@@ -269,7 +269,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
 
             // Step 4: Define padding and stable zoom effect
-            const zoomFactor = 1.2; // Maximum zoom level, keeping it subtle for smoothness
+            const zoomFactor = 1.5; // Maximum zoom level, keeping it subtle for smoothness
             const zoomIncrement = (zoomFactor - 1) / (duration * 30); // Smooth zoom increment per frame
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
             const zoomEffect = `zoompan=z='pzoom+${zoomIncrement}':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
@@ -279,7 +279,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 .input(finalImagePath)
                 .loop(duration)
                 .outputOptions('-vf', `${scaleAndPad},${zoomEffect}`)
-                .outputOptions('-r', '30')  // Frame rate
+                .outputOptions('-r', '25')  // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
                 .outputOptions('-threads', '6')  // Speed up with multiple threads
                 .outputOptions('-pix_fmt', 'yuv420p') // Ensures compatibility
@@ -693,7 +693,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 30 -an -threads 6 -y "${normalizedPath}"`;
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 25 -an -threads 6 -y "${normalizedPath}"`;
 
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
