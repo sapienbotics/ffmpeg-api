@@ -28,25 +28,29 @@ const storageDir = path.join(__dirname, 'storage', 'processed');
 const processedDir = path.join(storageDir, 'media');
 const outputDir = path.join(__dirname, 'output'); // Output directory for storing processed videos
 
-// Middleware to force download for /output files
+// Middleware to serve and secure download links for /output files
 app.use('/output', (req, res, next) => {
-    // Check if the requested file is a video
-    const videoRegex = /\.(mp4|mkv|avi|mov)$/; // Add more extensions if needed
+    const videoRegex = /\.(mp4|mkv|avi|mov)$/; // Customize with allowed file types
     if (videoRegex.test(req.url)) {
         const filePath = path.join(outputDir, req.url);
-        const stat = fs.statSync(filePath);
-
-        // Ensure the file exists and is accessible
-        if (stat && stat.isFile()) {
-            res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.url)}"`); // Set attachment for download
-            res.setHeader('Content-Type', 'video/mp4'); // Set to the appropriate MIME type
-        } else {
-            console.error(`File not found or inaccessible: ${filePath}`);
+        try {
+            const stat = fs.statSync(filePath);
+            if (stat && stat.isFile()) {
+                res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.url)}"`);
+                res.setHeader('Content-Type', 'video/mp4');
+                res.setHeader('X-Content-Type-Options', 'nosniff');
+                res.setHeader('Cache-Control', 'no-store');
+            } else {
+                return res.status(404).send('File not found');
+            }
+        } catch (err) {
+            console.error(`Error accessing file: ${err.message}`);
             return res.status(404).send('File not found');
         }
     }
     next();
 }, express.static(outputDir));
+
 
 // Ensure processed and output directories exist
 if (!fs.existsSync(processedDir)) {
