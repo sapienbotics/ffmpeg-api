@@ -9,11 +9,17 @@ const util = require('util');
 const { promisify } = require('util');
 const Vibrant = require('node-vibrant');
 const sharp = require('sharp'); // Add sharp for image conversion
-
-
+const cors = require('cors'); // Import CORS middleware
 
 const app = express();
 app.use(express.json());
+
+// CORS setup
+app.use(cors({
+    origin: 'https://your-tool-url.com', // Replace with your actual tool URL
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Promisify exec for easier use with async/await
 const execPromise = util.promisify(exec);
@@ -29,10 +35,10 @@ app.use('/output', (req, res, next) => {
     if (videoRegex.test(req.url)) {
         const filePath = path.join(outputDir, req.url);
         const stat = fs.statSync(filePath);
-        
+
         // Ensure the file exists and is accessible
         if (stat && stat.isFile()) {
-            res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.url)}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.url)}"`); // Set attachment for download
             res.setHeader('Content-Type', 'video/mp4'); // Set to the appropriate MIME type
         } else {
             console.error(`File not found or inaccessible: ${filePath}`);
@@ -42,7 +48,6 @@ app.use('/output', (req, res, next) => {
     next();
 }, express.static(outputDir));
 
-
 // Ensure processed and output directories exist
 if (!fs.existsSync(processedDir)) {
     fs.mkdirSync(processedDir, { recursive: true });
@@ -50,8 +55,6 @@ if (!fs.existsSync(processedDir)) {
 if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
-
-
 
 // Helper function to download files with timeout and retry logic
 const downloadFile = async (url, outputPath, timeout = 30000) => {
@@ -61,6 +64,9 @@ const downloadFile = async (url, outputPath, timeout = 30000) => {
             method: 'GET',
             responseType: 'stream',
             timeout, // Timeout added here
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3', // Mimic a browser request
+            },
         });
 
         return new Promise((resolve, reject) => {
@@ -81,7 +87,6 @@ const downloadFile = async (url, outputPath, timeout = 30000) => {
         throw error; // Re-throw error for handling in the calling function
     }
 };
-
 
 // Helper function to retry downloading files if they fail
 const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 10000) => {
