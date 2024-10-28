@@ -899,7 +899,6 @@ app.get('/download/merged/:filename', (req, res) => {
     }
 });
 
-
 // Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
@@ -934,7 +933,7 @@ app.post('/apply-subtitles', async (req, res) => {
         }
 
         const videoId = uuidv4();
-        const videoFile = path.join(outputDir, `${videoId}.mp4`);
+        const videoFile = path.join(outputDir, `${videoId}-with-subtitles.mp4`); // Use a specific filename for clarity
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
 
         // Step 1: Download the video from the link
@@ -955,7 +954,7 @@ app.post('/apply-subtitles', async (req, res) => {
         if (includeSubtitles !== "true") {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
-            const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+            const downloadUrl = `${req.protocol}://${req.get('host')}/download/merged/${videoId}-with-subtitles.mp4`; // Modify the URL format here
             return res.json({ downloadUrl });
         }
 
@@ -1007,7 +1006,7 @@ app.post('/apply-subtitles', async (req, res) => {
 
                 // Confirm the file was created and return the download URL
                 if (fs.existsSync(videoFile)) {
-                    const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+                    const downloadUrl = `${req.protocol}://${req.get('host')}/download/merged/${videoId}-with-subtitles.mp4`; // Modify the URL format here
                     console.log("Returning download URL:", downloadUrl);
                     res.json({ downloadUrl });
                 } else {
