@@ -24,9 +24,15 @@ const outputDir = path.join(__dirname, 'output'); // Output directory for storin
 
 // Middleware to force download for /output files
 app.use('/output', (req, res, next) => {
-    res.setHeader('Content-Disposition', 'attachment');
+    // Check if the requested file is a video
+    const videoRegex = /\.(mp4|mkv|avi|mov)$/; // Add more extensions if needed
+    if (videoRegex.test(req.url)) {
+        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.url)}"`);
+        res.setHeader('Content-Type', 'video/mp4'); // Set to the appropriate MIME type
+    }
     next();
 }, express.static(outputDir));
+
 
 // Ensure processed and output directories exist
 if (!fs.existsSync(processedDir)) {
