@@ -16,7 +16,7 @@ app.use(express.json());
 
 // CORS setup
 app.use(cors({
-    origin: 'https://your-tool-url.com', // Replace with your actual tool URL
+    origin: 'https://ffmpeg-api-production.up.railway.app', // Replace with your actual tool URL
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -963,7 +963,7 @@ app.post('/apply-subtitles', async (req, res) => {
         if (includeSubtitles !== "true") {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
-            const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}-with-subtitles.mp4`; // Modify the URL format here
+            const downloadUrl = `https://${req.get('host')}/output/${videoId}-with-subtitles.mp4`; // Modify the URL format here
             return res.json({ downloadUrl });
         }
 
@@ -1015,7 +1015,7 @@ app.post('/apply-subtitles', async (req, res) => {
 
                 // Confirm the file was created and return the download URL
                 if (fs.existsSync(videoFile)) {
-                    const downloadUrl = `${req.protocol}://${req.get('host')}/output/${videoId}-with-subtitles.mp4`; // Modify the URL format here
+                    const downloadUrl = `https://${req.get('host')}/output/${videoId}-with-subtitles.mp4`; // Modify the URL format here
                     console.log("Returning download URL:", downloadUrl);
                     res.json({ downloadUrl });
                 } else {
