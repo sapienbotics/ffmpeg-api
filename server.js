@@ -268,11 +268,11 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define padding and smooth zoom filter options
+            // Step 4: Define padding and stable zoom effect
             const zoomFactor = 1.2; // Maximum zoom level, keeping it subtle for smoothness
-            const zoomIncrement = (zoomFactor - 1) / (duration * 30); // Calculate smooth zoom increment per frame
+            const zoomIncrement = (zoomFactor - 1) / (duration * 30); // Smooth zoom increment per frame
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            const zoomEffect = `zoompan=z='min(pzoom+${zoomIncrement}, ${zoomFactor})':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
+            const zoomEffect = `zoompan=z='pzoom+${zoomIncrement}':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
 
             // Step 5: Convert image to video with stable zoom effect
             ffmpeg()
@@ -282,6 +282,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 .outputOptions('-r', '30')  // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
                 .outputOptions('-threads', '6')  // Speed up with multiple threads
+                .outputOptions('-pix_fmt', 'yuv420p') // Ensures compatibility
                 .on('end', () => {
                     console.log('Image converted to video with stable zoom.');
                     resolve(outputFilePath);
