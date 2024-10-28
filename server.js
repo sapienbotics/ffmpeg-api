@@ -250,7 +250,7 @@ const extractDominantColor = async (imagePath) => {
 
 
 
-// Use this in your image-to-video processing with zoom in effect
+// Use this in your image-to-video processing with a stable zoom effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -268,17 +268,13 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define padding and zoom filter options
-const zoomFactor = 1.5; // Maximum zoom level
-const zoomSpeed = (zoomFactor - 1) / (duration * 30); // Calculate zoom speed for smooth transition
-const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration * 30}:s=${width}x${height}:fps=30`;
+            // Step 4: Define padding and smooth zoom filter options
+            const zoomFactor = 1.2; // Maximum zoom level, keeping it subtle for smoothness
+            const zoomIncrement = (zoomFactor - 1) / (duration * 30); // Calculate smooth zoom increment per frame
+            const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            const zoomEffect = `zoompan=z='min(pzoom+${zoomIncrement}, ${zoomFactor})':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
 
-// Combine scale and zoom effect for final processing
-const finalFilter = `${scaleAndPad},${zoomEffect}`;
-
-
-            // Step 5: Convert image to video with zoom effect
+            // Step 5: Convert image to video with stable zoom effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
@@ -287,7 +283,7 @@ const finalFilter = `${scaleAndPad},${zoomEffect}`;
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
                 .outputOptions('-threads', '6')  // Speed up with multiple threads
                 .on('end', () => {
-                    console.log('Image converted to video with zoom.');
+                    console.log('Image converted to video with stable zoom.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
