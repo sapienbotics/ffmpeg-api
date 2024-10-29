@@ -267,15 +267,15 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define padding and a continuously stable zoom effect
+            // Step 4: Define padding and zoom effect with fixed center
             const zoomFactor = 1.5; // Maximum zoom level
             const zoomSpeed = (zoomFactor - 1) / (duration * 30); // Smooth zoom per frame
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            
-            // Updated zoom expression for a continuous zoom effect
+
+            // Updated zoom expression for a stable center point
             const zoomEffect = `zoompan=z='1+${zoomSpeed}*on':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
 
-            // Step 5: Convert image to video with a stable zoom effect
+            // Step 5: Convert image to video with stable zoom effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
