@@ -250,7 +250,6 @@ const extractDominantColor = async (imagePath) => {
 
 
 
-// Use this in your image-to-video processing with smooth and stable zoom-in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -268,15 +267,15 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define padding and smooth zoom effect
-            const zoomFactor = 1.5; // Set a reasonable zoom level
-            const zoomIncrement = (zoomFactor - 1) / (duration * 30); // Smooth zoom increment per frame
+            // Step 4: Define padding and a continuously stable zoom effect
+            const zoomFactor = 1.5; // Maximum zoom level
+            const zoomSpeed = (zoomFactor - 1) / (duration * 30); // Smooth zoom per frame
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            
+            // Updated zoom expression for a continuous zoom effect
+            const zoomEffect = `zoompan=z='1+${zoomSpeed}*on':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
 
-            // Define zoom effect using a gradual increase until it reaches zoomFactor
-            const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomIncrement},zoom)':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
-
-            // Step 5: Convert image to video with smooth zoom effect
+            // Step 5: Convert image to video with a stable zoom effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
@@ -301,6 +300,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 // Function to get audio duration using ffmpeg
