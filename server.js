@@ -258,27 +258,34 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
+            // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
+
+            // Step 2: Extract the dominant color for padding
             const dominantColor = await extractDominantColor(finalImagePath);
+
+            // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            const zoomFactor = 1.3; // Lower zoom level for reduced shaking
-            const zoomSpeed = (zoomFactor - 1) / (duration * 30);
+            // Step 4: Define padding and zoom effect with fixed center
+            const zoomFactor = 1.5; // Maximum zoom level
+            const zoomSpeed = (zoomFactor - 1) / (duration * 30); // Smooth zoom per frame
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Smoother zoom expression with gradual easing
-            const zoomEffect = `zoompan=z='1+${zoomSpeed}*on*on':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
+            // Updated zoom expression for a stable center point
+            const zoomEffect = `zoompan=z='1+${zoomSpeed}*on':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
 
+            // Step 5: Convert image to video with stable zoom effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
                 .outputOptions('-vf', `${scaleAndPad},${zoomEffect}`)
-                .outputOptions('-r', '30')
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
-                .outputOptions('-threads', '6')
-                .outputOptions('-pix_fmt', 'yuv420p')
+                .outputOptions('-r', '30')  // Frame rate
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
+                .outputOptions('-threads', '6')  // Speed up with multiple threads
+                .outputOptions('-pix_fmt', 'yuv420p') // Ensures compatibility
                 .on('end', () => {
-                    console.log('Image converted to video with a stabilized zoom effect.');
+                    console.log('Image converted to video with stable zoom.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
