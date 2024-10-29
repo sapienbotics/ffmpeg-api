@@ -250,7 +250,7 @@ const extractDominantColor = async (imagePath) => {
 
 
 
-// Use this in your image-to-video processing with smooth, stable zoom effect
+// Use this in your image-to-video processing with smooth, visible zoom effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -268,15 +268,15 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define padding and stable zoom effect
-            const zoomFactor = 1.5; // Maximum zoom level
-            const zoomIncrement = (zoomFactor - 1) / (duration * 30); // Smooth zoom increment per frame
+            // Step 4: Define padding and visible zoom effect
+            const zoomFactor = 2.0; // Increase maximum zoom level for visibility
+            const zoomIncrement = (zoomFactor - 1) / (duration * 30); // Increased zoom increment per frame
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
             
-            // Adjusted zoom effect to reduce shakiness
+            // Updated zoom effect for more noticeable zoom
             const zoomEffect = `zoompan=z='min(zoom+${zoomIncrement},${zoomFactor})':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
 
-            // Step 5: Convert image to video with smooth zoom effect
+            // Step 5: Convert image to video with a stable, visible zoom effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
