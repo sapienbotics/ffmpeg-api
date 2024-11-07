@@ -9,47 +9,19 @@ const util = require('util');
 const { promisify } = require('util');
 const Vibrant = require('node-vibrant');
 const sharp = require('sharp'); // Add sharp for image conversion
-const cors = require('cors'); // Import CORS middleware
+
+
 
 const app = express();
 app.use(express.json());
-
-// CORS setup
-app.use(cors({
-    origin: 'https://ffmpeg-api-production.up.railway.app', // Replace with your actual tool URL
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
 // Promisify exec for easier use with async/await
 const execPromise = util.promisify(exec);
 
 const storageDir = path.join(__dirname, 'storage', 'processed');
 const processedDir = path.join(storageDir, 'media');
-const outputDir = path.join(__dirname, 'output'); // Output directory for storing processed videos
-
-// Middleware to serve and secure download links for /output files
-app.use('/output', (req, res, next) => {
-    const videoRegex = /\.(mp4|mkv|avi|mov)$/; // Customize with allowed file types
-    if (videoRegex.test(req.url)) {
-        const filePath = path.join(outputDir, req.url);
-        try {
-            const stat = fs.statSync(filePath);
-            if (stat && stat.isFile()) {
-                res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.url)}"`);
-                res.setHeader('Content-Type', 'video/mp4');
-                res.setHeader('X-Content-Type-Options', 'nosniff');
-                res.setHeader('Cache-Control', 'no-store');
-            } else {
-                return res.status(404).send('File not found');
-            }
-        } catch (err) {
-            console.error(`Error accessing file: ${err.message}`);
-            return res.status(404).send('File not found');
-        }
-    }
-    next();
-}, express.static(outputDir));
+const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
+app.use('/output', express.static(outputDir));
 
 
 // Ensure processed and output directories exist
@@ -60,6 +32,7 @@ if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
 
+
 // Helper function to download files with timeout and retry logic
 const downloadFile = async (url, outputPath, timeout = 30000) => {
     try {
@@ -68,9 +41,6 @@ const downloadFile = async (url, outputPath, timeout = 30000) => {
             method: 'GET',
             responseType: 'stream',
             timeout, // Timeout added here
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3', // Mimic a browser request
-            },
         });
 
         return new Promise((resolve, reject) => {
@@ -91,6 +61,7 @@ const downloadFile = async (url, outputPath, timeout = 30000) => {
         throw error; // Re-throw error for handling in the calling function
     }
 };
+
 
 // Helper function to retry downloading files if they fail
 const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 10000) => {
@@ -207,10 +178,10 @@ async function trimVideo(videoUrl, duration) {
             .input(videoUrl)
             .outputOptions([
                 `-t ${duration}`, 
-                '-r 25', 
+                '-r 15', 
                 '-c:v libx264', 
                 '-preset fast',
-                '-crf 23',
+                '-crf 22',
                 '-vf setsar=1/1' // Ensure the SAR is set, but no scaling is applied
             ])
             .on('end', () => {
@@ -250,6 +221,7 @@ const extractDominantColor = async (imagePath) => {
 
 
 
+// Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -258,27 +230,35 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
+            // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
+
+            // Step 2: Extract the dominant color for padding
             const dominantColor = await extractDominantColor(finalImagePath);
+
+            // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            const zoomFactor = 1.3; // Lower zoom level for reduced shaking
-            const zoomSpeed = (zoomFactor - 1) / (duration * 30);
-            const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            // Step 4: Define padding and zoom filter options
+const zoomFactor = 1.5; // Maximum zoom level
+const zoomSpeed = (zoomFactor - 1) / (duration * 30); // Calculate zoom speed for smooth transition
+const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration * 30}:s=${width}x${height}:fps=30`;
 
-            // Smoother zoom expression with gradual easing
-            const zoomEffect = `zoompan=z='1+${zoomSpeed}*on*on':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=${width}x${height}:fps=30`;
+// Combine scale and zoom effect for final processing
+const finalFilter = `${scaleAndPad},${zoomEffect}`;
 
+
+            // Step 5: Convert image to video with zoom effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
                 .outputOptions('-vf', `${scaleAndPad},${zoomEffect}`)
-                .outputOptions('-r', '30')
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
-                .outputOptions('-threads', '6')
-                .outputOptions('-pix_fmt', 'yuv420p')
+                .outputOptions('-r', '30')  // Frame rate
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
+                .outputOptions('-threads', '6')  // Speed up with multiple threads
                 .on('end', () => {
-                    console.log('Image converted to video with a stabilized zoom effect.');
+                    console.log('Image converted to video with zoom.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
@@ -293,6 +273,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 
@@ -390,7 +371,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '22')
             // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
@@ -686,7 +667,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 25 -an -threads 6 -y "${normalizedPath}"`;
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 15 -an -threads 6 -y "${normalizedPath}"`;
 
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
@@ -864,6 +845,9 @@ if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
 });
 
 
+
+
+
 // Download endpoint for processed media
 app.get('/download/:filename', (req, res) => {
     const fileName = req.params.filename;
@@ -913,34 +897,22 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
-        console.log("Received input variables:", {
-            videoLink,
-            content,
-            fontName,
-            fontSize,
-            subtitleColor,
-            backColor,
-            opacity,
-            position,
-            includeSubtitles
-        });
-
         // Validate input
         if (!videoLink) {
-            console.error("Error: Video link is required.");
             return res.status(400).json({ error: "Video link is required." });
         }
 
         const videoId = uuidv4();
-        const videoFile = path.join(outputDir, `${videoId}-with-subtitles.mp4`); // Use a specific filename for clarity
-        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+        const videoFile = path.join(outputDir, `${videoId}.mp4`);
 
         // Step 1: Download the video from the link
+        const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
         const response = await axios({
             method: 'get',
             url: videoLink,
             responseType: 'stream'
         });
+
         const writer = fs.createWriteStream(downloadPath);
         response.data.pipe(writer);
 
@@ -951,15 +923,18 @@ app.post('/apply-subtitles', async (req, res) => {
 
         // If subtitles are disabled, skip subtitle generation
         if (includeSubtitles !== "true") {
-            console.log("Subtitles are disabled, returning the original video.");
+            // Rename the downloaded file to match the videoFile path for consistent output
             fs.renameSync(downloadPath, videoFile);
-            const downloadUrl = `https://${req.get('host')}/output/${videoId}-with-subtitles.mp4`; // Modify the URL format here
-            return res.json({ downloadUrl });
+            
+            // Set response headers to force download
+            res.setHeader('Content-Type', 'video/mp4');
+            res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+
+            return res.download(videoFile);  // Direct download response
         }
 
         // Validate subtitle-related input
         if (!content || position === undefined) {
-            console.error("Error: Content and subtitle position are required for subtitles.");
             return res.status(400).json({ error: "Content and subtitle position are required for subtitles." });
         }
 
@@ -968,63 +943,48 @@ app.post('/apply-subtitles', async (req, res) => {
         await new Promise((resolve, reject) => {
             ffmpeg.ffprobe(downloadPath, (err, metadata) => {
                 if (err) {
-                    console.error("Error during ffprobe:", err);
                     return reject(err);
                 }
                 videoLengthInSeconds = Math.ceil(metadata.format.duration);
-                console.log("Video length in seconds:", videoLengthInSeconds);
                 resolve();
             });
         });
 
         // Step 3: Log the font path for debugging
-        const fontPath = path.join(__dirname, 'fonts', `${fontName}.ttf`);
-        console.log("Font Path being used:", fontPath);
+        const fontPath = path.join(__dirname, 'fonts', fontName + '.ttf');
+        console.log("Font Path: ", fontPath);
 
         // Step 4: Generate the ASS file from the provided content
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
-        
-        console.log("Generated ASS file content:\n", assContent);
-        
-        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
+        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });  // Ensure UTF-8 encoding
 
         // Step 5: Apply subtitles to the video using FFmpeg
-        console.log(`Running FFmpeg command to apply subtitles with subtitle file: ${subtitleFile}`);
         ffmpeg(downloadPath)
-            .outputOptions([
-                `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
-                '-pix_fmt yuv420p', // Ensures compatibility with most players
-                '-color_range pc'   // Keeps the color range consistent
-            ])
-            .on('start', (cmd) => {
-                console.log("FFmpeg command:", cmd);
-            })
+    .outputOptions([
+        `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
+        '-pix_fmt yuv420p', // Ensures compatibility with most players
+        '-color_range pc',   // Keeps the color range consistent
+        '-threads 6'        // Utilize 6 threads for processing
+    ])
             .on('end', () => {
-                console.log("Subtitle processing completed. Video saved to:", videoFile);
+                // Set response headers to force download
+                res.setHeader('Content-Type', 'video/mp4');
+                res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
 
-                // Confirm the file was created and return the download URL
-                if (fs.existsSync(videoFile)) {
-                    const downloadUrl = `https://${req.get('host')}/output/${videoId}-with-subtitles.mp4`; // Modify the URL format here
-                    console.log("Returning download URL:", downloadUrl);
-                    res.json({ downloadUrl });
-                } else {
-                    console.error("Error: Output file not found after processing.");
-                    res.status(500).json({ error: 'Failed to generate output video.' });
-                }
+                // Send the file as a downloadable response
+                res.download(videoFile);
 
-                // Clean up temporary files (except the output video)
+                // Clean up temporary files
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
             .on('error', (err) => {
-                console.error("FFmpeg error:", err.message);
                 res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
             })
             .save(videoFile);
 
     } catch (error) {
-        console.error("Processing error:", error.message);
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
@@ -1041,7 +1001,7 @@ PlayDepth: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},10,10,40
+Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},10,10,30
 
 [Events]
 Format: Layer, Start, End, Style, Text
@@ -1065,16 +1025,12 @@ Format: Layer, Start, End, Style, Text
             break;
         }
 
-        // Corrected Dialogue line without unnecessary zeros
         events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
         startTime = endTime;
     }
 
     return assHeader + events;
 }
-
-
-
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
@@ -1108,8 +1064,26 @@ function pad(num, size) {
     return s.substr(s.length - size);
 }
 
+// Serve video files with 'Content-Disposition' set to 'attachment' for forced download
+app.get('/output/:videoId.mp4', (req, res) => {
+    const videoId = req.params.videoId;
+    const videoPath = path.join(outputDir, `${videoId}.mp4`);
 
-module.exports = app; // Ensure you export your app to give
+    // Ensure the video file exists
+    if (fs.existsSync(videoPath)) {
+        // Set Content-Disposition header to force download with a given filename
+        res.setHeader('Content-Disposition', `attachment; filename=${videoId}.mp4`);
+        res.setHeader('Content-Type', 'video/mp4');
+        res.sendFile(videoPath);
+    } else {
+        res.status(404).json({ error: 'Video not found.' });
+    }
+});
+
+
+module.exports = app; // Ensure you export your app
+
+
 
 
 // Start the server
