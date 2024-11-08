@@ -272,14 +272,13 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const frameRate = 30;
             const totalFrames = duration * frameRate;
             const zoomIncrement = (zoomFactor - 1) / totalFrames;
-
             console.log(`Zoom factor: ${zoomFactor}, Total Frames: ${totalFrames}, Zoom Increment: ${zoomIncrement}`);
 
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
             console.log(`Scale and Pad filter: ${scaleAndPad}`);
 
-            // Zoom effect with logging for diagnostic tracking
-            const zoomEffect = `zoompan=z='1+0.003*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=2:s=360x640:fps=30`;
+            // Updated zoom effect with stabilization adjustments
+            const zoomEffect = `zoompan=z='1+${zoomIncrement}*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=${frameRate}`;
             console.log(`Zoom Effect filter: ${zoomEffect}`);
 
             // Combine filters with final logging
@@ -292,7 +291,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 .loop(1)
                 .outputOptions('-vf', finalFilter)
                 .outputOptions('-r', frameRate.toString())
-                .outputOptions('-t', duration)
+                .outputOptions('-t', duration.toString())
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-pix_fmt', 'yuv420p')
                 .outputOptions('-threads', '4')
@@ -318,6 +317,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 // Function to get audio duration using ffmpeg
