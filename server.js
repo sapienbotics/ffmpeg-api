@@ -896,8 +896,8 @@ app.post('/apply-subtitles', async (req, res) => {
             content,
             subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght',
             subtitle_size: fontSize = 40,
-            subtitle_color: subtitleColor = '#FFFFFF',
-            back_color: backColor = '#000000',
+            subtitle_color: subtitleColor = '&H00FFFFFF', // Hexadecimal format expected by .ass
+            back_color: backColor = '&H33000000',         // Background color with alpha
             opacity = 1,
             subtitles_position: position = 2,
             include_subtitles: includeSubtitles
@@ -953,10 +953,6 @@ app.post('/apply-subtitles', async (req, res) => {
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Log subtitle file path and contents to debug
-        console.log("Generated Subtitle File Path:", subtitleFile);
-        console.log("Generated Subtitle Content:", assContent);
-
         // Apply subtitles using FFmpeg
         ffmpeg(downloadPath)
             .outputOptions([
@@ -991,27 +987,24 @@ app.post('/apply-subtitles', async (req, res) => {
 });
 
 
-// Generates the subtitle file in .ass format
-function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position) {
-    const assHeader = `
+
+function generateAss(content, fontName, fontSize, primaryColor, backColor, opacity, position, duration) {
+    return `
 [Script Info]
 Title: Subtitles
 ScriptType: v4.00+
+PlayDepth: 0
 
 [V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${convertHexToAssColorWithOpacity(backgroundColor, opacity)},1,3,0,${position},10,10,40
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, OutlineColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,${fontName},${fontSize},${primaryColor},${backColor},&H00000000,0,0,0,0,100,100,0,0,1,1,1,${position},10,10,10,1
 
 [Events]
 Format: Layer, Start, End, Style, Text
+${content.map((line, index) => `Dialogue: 0,${startTime(index)},${endTime(index + 1)},Default,${line}`).join('\n')}
 `;
-
-    const events = content.split(' ').map((word, i) => (
-        `Dialogue: 0,0:${i}:${i * 2},0:${i + 1}:${i * 2},Default,${word}`
-    )).join('\n');
-
-    return assHeader + events;
 }
+
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
