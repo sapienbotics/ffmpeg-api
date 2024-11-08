@@ -23,14 +23,12 @@ const processedDir = path.join(storageDir, 'media');
 const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
 app.use('/output', express.static(outputDir));
 
-// Security and CORS Headers
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'self'");
     res.setHeader('Access-Control-Allow-Origin', '*');  // Adjust for specific origins if needed
     next();
 });
-
 
 
 // Ensure processed and output directories exist
@@ -889,7 +887,6 @@ app.get('/download/merged/:filename', (req, res) => {
 });
 
 
-// Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
         const {
@@ -904,7 +901,6 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
-        // Validate input
         if (!videoLink) {
             return res.status(400).json({ error: "Video link is required." });
         }
@@ -923,15 +919,14 @@ app.post('/apply-subtitles', async (req, res) => {
         });
 
         if (includeSubtitles !== "true") {
-            // No subtitles, send original video
+            // No subtitles: directly send file as download
             fs.renameSync(downloadPath, videoFile);
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
             res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
-            res.json({ videoUrl });
-            return;
+            return res.json({ videoUrl });
         }
 
-        // Generate subtitles and apply them to the video
+        // Generate subtitles
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
         fs.writeFileSync(subtitleFile, assContent);
@@ -946,7 +941,6 @@ app.post('/apply-subtitles', async (req, res) => {
                 res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
                 res.json({ videoUrl });
 
-                // Cleanup temporary files
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
@@ -956,6 +950,7 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
+
 
 
 
@@ -1036,13 +1031,11 @@ function pad(num, size) {
 }
 
 
-// Serve video files with 'Content-Disposition' set to 'attachment' for forced download
 app.get('/output/:videoId.mp4', (req, res) => {
     const videoId = req.params.videoId;
     const videoPath = path.join(outputDir, `${videoId}.mp4`);
 
     if (fs.existsSync(videoPath)) {
-        // Force download with the following headers
         res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
         res.setHeader('Content-Type', 'video/mp4');
         res.sendFile(videoPath);
@@ -1050,6 +1043,7 @@ app.get('/output/:videoId.mp4', (req, res) => {
         res.status(404).json({ error: 'Video not found.' });
     }
 });
+
 
 
 
