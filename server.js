@@ -247,11 +247,6 @@ const extractDominantColor = async (imagePath) => {
 };
 
 
-
-const ffmpeg = require('fluent-ffmpeg');
-const path = require('path');
-const { downloadAndConvertImage, extractDominantColor } = require('./your-utils-file'); // Adjust based on your setup
-
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
