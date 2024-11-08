@@ -253,6 +253,8 @@ async function extractDominantColor(imagePath) {
 
 
 
+
+// Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -261,41 +263,35 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
-            // Step 1: Download and convert image
+            // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
-            console.log(`Image downloaded and saved to: ${finalImagePath}`);
 
             // Step 2: Extract the dominant color for padding
             const dominantColor = await extractDominantColor(finalImagePath);
-            console.log(`Dominant color extracted: ${dominantColor}`);
 
-            // Step 3: Parse resolution (e.g., "1920:1080")
+            // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
-            console.log(`Target video resolution set to: ${width}x${height}`);
 
-            const zoomEffect = `zoompan=z='if(gte(t,1),min(1.5,1.05+0.02*t),1)':d=60:s=${width}x${height}:fps=30`;  // Set video duration
-const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -y -vf "${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}" -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`;
+            // Step 4: Define padding and zoom filter options
+const zoomFactor = 1.5; // Maximum zoom level
+const zoomSpeed = (zoomFactor - 1) / (duration * 30); // Calculate zoom speed for smooth transition
+const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration * 30}:s=${width}x${height}:fps=30`;
+
+// Combine scale and zoom effect for final processing
+const finalFilter = `${scaleAndPad},${zoomEffect}`;
 
 
-            console.log(`FFmpeg command: ${ffmpegCommand}`);
-
-            // Convert image to video with zoompan effect
+            // Step 5: Convert image to video with zoom effect
             ffmpeg()
                 .input(finalImagePath)
-                .loop(1)
-                .outputOptions('-vf', zoomEffect)
-                .outputOptions('-r', '30')
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
-                .outputOptions('-pix_fmt', 'yuv420p')
-                .outputOptions('-threads', '4')
-                .on('start', (commandLine) => {
-                    console.log(`FFmpeg command: ${commandLine}`);
-                })
-                .on('progress', (progress) => {
-                    console.log(`Processing: ${progress.percent}% done at time ${progress.timemark}`);
-                })
+                .loop(duration)
+                .outputOptions('-vf', `${scaleAndPad},${zoomEffect}`)
+                .outputOptions('-r', '30')  // Frame rate
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
+                .outputOptions('-threads', '6')  // Speed up with multiple threads
                 .on('end', () => {
-                    console.log('Image successfully converted to video with smooth zoom effect.');
+                    console.log('Image converted to video with zoom.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
@@ -310,6 +306,7 @@ const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -y -vf "${zoomEffect}
         }
     });
 }
+
 
 
 
