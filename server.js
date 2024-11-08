@@ -896,8 +896,8 @@ app.post('/apply-subtitles', async (req, res) => {
             content,
             subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght',
             subtitle_size: fontSize = 40,
-            subtitle_color: subtitleColor = '&H00FFFFFF', // Hexadecimal format expected by .ass
-            back_color: backColor = '&H33000000',         // Background color with alpha
+            subtitle_color: subtitleColor = '#FFFFFF',
+            back_color: backColor = '#000000',
             opacity = 1,
             subtitles_position: position = 2,
             include_subtitles: includeSubtitles
@@ -926,51 +926,33 @@ app.post('/apply-subtitles', async (req, res) => {
             writer.on('error', reject);
         });
 
+        // If subtitles are not included, send the video file back without processing
         if (includeSubtitles !== "true") {
             fs.renameSync(downloadPath, videoFile);
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
             return res.json({ videoUrl });
         }
 
+        // Ensure content is provided if subtitles are required
         if (!content) {
             return res.status(400).json({ error: "Content is required for subtitles." });
         }
 
-        // Get video duration for subtitle timing
-        let videoLengthInSeconds = 0;
-        await new Promise((resolve, reject) => {
-            ffmpeg.ffprobe(downloadPath, (err, metadata) => {
-                if (err) {
-                    return reject(err);
-                }
-                videoLengthInSeconds = Math.ceil(metadata.format.duration);
-                resolve();
-            });
-        });
-
-        // Generate .ass subtitle content
+        // Generate subtitle file content
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
-        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
+        const assContent = generateAssFromText(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Apply subtitles using FFmpeg
+        // Process video with subtitles
         ffmpeg(downloadPath)
             .outputOptions([
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
-                '-pix_fmt yuv420p',
-                '-color_range pc'
+                '-pix_fmt yuv420p'
             ])
-            .on('start', (cmd) => {
-                console.log("FFmpeg command:", cmd);
-            })
             .on('end', () => {
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-                console.log("Subtitle processing completed. Video URL:", videoUrl);
-
                 res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
                 res.json({ videoUrl });
-
-                // Clean up intermediate files
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
@@ -981,27 +963,27 @@ app.post('/apply-subtitles', async (req, res) => {
             .save(videoFile);
 
     } catch (error) {
-        console.error("Processing error:", error.message);
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
 
+// Helper function to generate ASS content from plain text
+function generateAssFromText(text, fontName, fontSize, color, backColor, opacity, position) {
+    const primaryColor = `&H${color.slice(1).toUpperCase()}`;
+    const backgroundColor = `&H${backColor.slice(1).toUpperCase()}${Math.round(opacity * 255).toString(16)}`;
 
-
-function generateAss(content, fontName, fontSize, primaryColor, backColor, opacity, position, duration) {
     return `
 [Script Info]
 Title: Subtitles
 ScriptType: v4.00+
-PlayDepth: 0
 
 [V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, OutlineColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${fontName},${fontSize},${primaryColor},${backColor},&H00000000,0,0,0,0,100,100,0,0,1,1,1,${position},10,10,10,1
+Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
+Style: Default,${fontName},${fontSize},${primaryColor},${backgroundColor},1,3,0,${position},10,10,10
 
 [Events]
 Format: Layer, Start, End, Style, Text
-${content.map((line, index) => `Dialogue: 0,${startTime(index)},${endTime(index + 1)},Default,${line}`).join('\n')}
+Dialogue: 0,0:0:0.00,0:0:5.00,Default,0,0,0,${text}
 `;
 }
 
