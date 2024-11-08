@@ -248,6 +248,10 @@ const extractDominantColor = async (imagePath) => {
 
 
 
+const ffmpeg = require('fluent-ffmpeg');
+const path = require('path');
+const { downloadAndConvertImage, extractDominantColor } = require('./your-utils-file'); // Adjust based on your setup
+
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -264,27 +268,25 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const dominantColor = await extractDominantColor(finalImagePath);
             console.log(`Dominant color extracted: ${dominantColor}`);
 
-            // Step 3: Parse the resolution (e.g., "1920:1080")
+            // Step 3: Parse the resolution (e.g., "1920x1080")
             const [width, height] = resolution.split(':').map(Number);
             console.log(`Target video resolution set to: ${width}x${height}`);
 
-            // Using zoompan filter for smoother zoom effect
-            const zoomEffect = `zoompan=z='min(1.5,1.05+0.02*t)':d=${duration}:s=${width}x${height}:fps=30`;
+            // Smooth zoom effect using zoompan filter
+            const zoomEffect = `zoompan=z='min(1.5,1.05+0.02*t)':d=${duration * 30}:s=${width}x${height}:fps=30`;
 
-            // FFmpeg command with zoompan filter
-            const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -y -vf ${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor} -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`;
-
-            console.log(`FFmpeg command: ${ffmpegCommand}`);
-
-            // Convert image to video with zoompan effect
-            ffmpeg()
+            // Adjusted FFmpeg command to handle smoother zoom and padding
+            const ffmpegCommand = ffmpeg()
                 .input(finalImagePath)
                 .loop(1)
-                .outputOptions('-vf', zoomEffect)
-                .outputOptions('-r', '30')
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
-                .outputOptions('-pix_fmt', 'yuv420p')
-                .outputOptions('-threads', '4')
+                .outputOptions('-y') // Automatically overwrite output file
+                .outputOptions('-vf', `${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`)
+                .outputOptions('-r', '30') // Set frame rate to 30 fps
+                .outputOptions('-c:v', 'libx264') // Use H.264 codec
+                .outputOptions('-preset', 'fast') // Encoding speed
+                .outputOptions('-crf', '23') // Constant Rate Factor for quality
+                .outputOptions('-pix_fmt', 'yuv420p') // Pixel format for compatibility
+                .outputOptions('-threads', '4') // Use multiple threads for faster processing
                 .on('start', (commandLine) => {
                     console.log(`FFmpeg command: ${commandLine}`);
                 })
@@ -301,12 +303,15 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 })
                 .save(outputFilePath);
 
+            console.log(`Starting conversion with FFmpeg command: ${ffmpegCommand}`);
+
         } catch (error) {
             console.error(`Image download or conversion failed: ${error.message}`);
             reject(error);
         }
     });
 }
+
 
 
 
