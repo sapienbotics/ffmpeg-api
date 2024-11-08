@@ -265,30 +265,30 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
 
             // Step 4: Define padding and zoom filter options
-            const zoomFactor = 1.5; // Maximum zoom level
+            const zoomFactor = 1.5; // Desired final zoom level
             const frameRate = 30;
-            const totalFrames = duration * frameRate; // Total frames for smooth zoom transition
-            const zoomSpeed = (zoomFactor - 1) / totalFrames; // Smooth incremental zoom per frame
+            const totalFrames = duration * frameRate; // Total frames over the duration
+            const zoomIncrement = (zoomFactor - 1) / totalFrames; // Smooth zoom increment per frame
 
-            // Smooth scaling and padding filter
+            // Adjust scaling and padding to fit exact output resolution
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
             
-            // Updated zoom filter with gradual zoom increment
-            const zoomEffect = `zoompan=z='min(${zoomFactor},zoom+${zoomSpeed})':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=${frameRate}`;
+            // Improved zoompan filter for smooth zoom with retained zoom effect
+            const zoomEffect = `zoompan=z='1+${zoomIncrement}*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=${frameRate}`;
             
-            // Combine scaling/padding with zoom effect
+            // Combine scale/pad with zoom effect for final filter
             const finalFilter = `${scaleAndPad},${zoomEffect}`;
 
-            // Step 5: Convert image to video with stable zoom effect
+            // Step 5: Convert image to video with optimized zoom effect
             ffmpeg()
                 .input(finalImagePath)
-                .loop(1) // Ensures video duration matches loop effect
+                .loop(1) // Single loop over the full duration to avoid re-initialization
                 .outputOptions('-vf', finalFilter)
-                .outputOptions('-r', frameRate.toString())  // Consistent frame rate
+                .outputOptions('-r', frameRate.toString())  // Frame rate consistency
                 .outputOptions('-t', duration)  // Set exact video duration
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
-                .outputOptions('-pix_fmt', 'yuv420p') // Ensures compatibility with media players
-                .outputOptions('-threads', '4') // Optimized threads for stability
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality settings
+                .outputOptions('-pix_fmt', 'yuv420p') // Compatibility across media players
+                .outputOptions('-threads', '4') // Balanced thread count for stability
                 .on('end', () => {
                     console.log('Image converted to video with zoom.');
                     resolve(outputFilePath);
@@ -305,8 +305,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
-
 
 
 
@@ -956,7 +954,7 @@ app.post('/apply-subtitles', async (req, res) => {
         if (includeSubtitles !== "true") {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
-            const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+            const videoUrl = `https://${req.get('host')}/output/${videoId}.mp4`;
             return res.json({ videoUrl });
         }
 
