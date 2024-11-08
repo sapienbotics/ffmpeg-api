@@ -269,10 +269,10 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             console.log(`Target video resolution set to: ${width}x${height}`);
 
             // Using zoompan filter for smoother zoom effect
-            const zoomEffect = `zoompan=z='min(1.5,1.05+0.02*t)':d=1:s=${width}x${height}:fps=30`;
+            const zoomEffect = `zoompan=z='min(1.5,1.05+0.02*t)':d=${duration}:s=${width}x${height}:fps=30`;
 
             // FFmpeg command with zoompan filter
-            const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -y -t ${duration} -vf ${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor} -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`;
+            const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -y -vf ${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor} -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`;
 
             console.log(`FFmpeg command: ${ffmpegCommand}`);
 
@@ -282,7 +282,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 .loop(1)
                 .outputOptions('-vf', zoomEffect)
                 .outputOptions('-r', '30')
-                .outputOptions('-t', duration.toString())
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-pix_fmt', 'yuv420p')
                 .outputOptions('-threads', '4')
