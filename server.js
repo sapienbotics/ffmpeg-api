@@ -888,7 +888,7 @@ app.get('/download/merged/:filename', (req, res) => {
 });
 
 
-// Endpoint to apply subtitles to a video
+// Main endpoint for subtitle application
 app.post('/apply-subtitles', async (req, res) => {
     try {
         const {
@@ -903,8 +903,8 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
-        if (!videoLink) {
-            return res.status(400).json({ error: "Video link is required." });
+        if (!videoLink || !content) {
+            return res.status(400).json({ error: "Video link and content are required." });
         }
 
         const videoId = uuidv4();
@@ -917,33 +917,35 @@ app.post('/apply-subtitles', async (req, res) => {
             url: videoLink,
             responseType: 'stream'
         });
-
         const writer = fs.createWriteStream(downloadPath);
         response.data.pipe(writer);
-
         await new Promise((resolve, reject) => {
             writer.on('finish', resolve);
             writer.on('error', reject);
         });
 
-        // If subtitles are not included, send the video file back without processing
+        // Handle the case when subtitles are not needed
         if (includeSubtitles !== "true") {
             fs.renameSync(downloadPath, videoFile);
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
             return res.json({ videoUrl });
         }
 
-        // Ensure content is provided if subtitles are required
-        if (!content) {
-            return res.status(400).json({ error: "Content is required for subtitles." });
-        }
-
-        // Generate subtitle file content
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
-        const assContent = generateAssFromText(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
+        const videoLengthInSeconds = 60; // Placeholder, needs actual video duration
+        const assContent = generateAss(
+            Array.isArray(content) ? content : [content],
+            fontName,
+            fontSize,
+            subtitleColor,
+            backColor,
+            opacity,
+            position,
+            videoLengthInSeconds
+        );
+
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        // Process video with subtitles
         ffmpeg(downloadPath)
             .outputOptions([
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
@@ -967,25 +969,21 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-// Helper function to generate ASS content from plain text
-function generateAssFromText(text, fontName, fontSize, color, backColor, opacity, position) {
-    const primaryColor = `&H${color.slice(1).toUpperCase()}`;
-    const backgroundColor = `&H${backColor.slice(1).toUpperCase()}${Math.round(opacity * 255).toString(16)}`;
-
-    return `
-[Script Info]
+// Helper function to generate .ass subtitle content
+function generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds) {
+    return `[Script Info]
 Title: Subtitles
 ScriptType: v4.00+
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Default,${fontName},${fontSize},${primaryColor},${backgroundColor},1,3,0,${position},10,10,10
+Style: Default,${fontName},${fontSize},&H${subtitleColor.slice(1)},&H${backColor.slice(1)},1,3,0,${position},10,10,10
 
 [Events]
 Format: Layer, Start, End, Style, Text
-Dialogue: 0,0:0:0.00,0:0:5.00,Default,0,0,0,${text}
-`;
+${content.map((text, index) => `Dialogue: 0,0:${pad(index, 2)},0:${pad(index + 1, 2)},Default,${text}`).join('\n')}`;
 }
+
 
 
 // Converts hex color to ASS format (&HAABBGGRR)
@@ -1023,6 +1021,7 @@ app.get('/output/:videoId.mp4', (req, res) => {
 
 
 
+// Helper function to pad subtitle times
 function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
