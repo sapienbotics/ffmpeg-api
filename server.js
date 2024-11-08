@@ -23,10 +23,11 @@ const processedDir = path.join(storageDir, 'media');
 const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
 app.use('/output', express.static(outputDir));
 
+// Security and CORS Headers
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'self'");
-    res.setHeader('Access-Control-Allow-Origin', '*');  // Adjust for specific origins if needed
+    res.setHeader('Access-Control-Allow-Origin', '*');
     next();
 });
 
@@ -887,6 +888,7 @@ app.get('/download/merged/:filename', (req, res) => {
 });
 
 
+// Endpoint to apply subtitles to a video
 app.post('/apply-subtitles', async (req, res) => {
     try {
         const {
@@ -909,27 +911,35 @@ app.post('/apply-subtitles', async (req, res) => {
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
 
-        // Download the video file
-        const response = await axios({ url: videoLink, responseType: 'stream' });
+        // Download the video
+        const response = await axios({
+            method: 'get',
+            url: videoLink,
+            responseType: 'stream'
+        });
+
         const writer = fs.createWriteStream(downloadPath);
         response.data.pipe(writer);
+
         await new Promise((resolve, reject) => {
             writer.on('finish', resolve);
             writer.on('error', reject);
         });
 
         if (includeSubtitles !== "true") {
-            // No subtitles: directly send file as download
             fs.renameSync(downloadPath, videoFile);
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-            res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
             return res.json({ videoUrl });
         }
 
-        // Generate subtitles
+        if (!content) {
+            return res.status(400).json({ error: "Content is required for subtitles." });
+        }
+
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
-        fs.writeFileSync(subtitleFile, assContent);
+
+        fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
         ffmpeg(downloadPath)
             .outputOptions([
@@ -940,26 +950,26 @@ app.post('/apply-subtitles', async (req, res) => {
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
                 res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
                 res.json({ videoUrl });
-
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
-            .on('error', (err) => res.status(500).json({ error: 'Failed to apply subtitles', details: err.message }))
+            .on('error', (err) => {
+                console.error("FFmpeg error:", err.message);
+                res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+            })
             .save(videoFile);
+
     } catch (error) {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
 
-
-
-
-function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
+// Generates the subtitle file in .ass format
+function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position) {
     const assHeader = `
 [Script Info]
 Title: Subtitles
 ScriptType: v4.00+
-PlayDepth: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, BackColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
@@ -969,34 +979,12 @@ Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${
 Format: Layer, Start, End, Style, Text
 `;
 
-    const words = content.split(' ');
-    const totalWords = words.length;
-    const wordsPerSubtitle = 4;
-
-    const adjustedDuration = Math.max(0, videoLengthInSeconds);
-    const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
-    const durationPerSubtitle = adjustedDuration / totalSubtitles;
-
-    let startTime = 0;
-    let events = '';
-
-    for (let i = 0; i < totalSubtitles; i++) {
-        const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
-        const endTime = startTime + durationPerSubtitle;
-        if (endTime > adjustedDuration) {
-            break;
-        }
-
-        // Corrected Dialogue line without unnecessary zeros
-        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
-        startTime = endTime;
-    }
+    const events = content.split(' ').map((word, i) => (
+        `Dialogue: 0,0:${i}:${i * 2},0:${i + 1}:${i * 2},Default,${word}`
+    )).join('\n');
 
     return assHeader + events;
 }
-
-
-
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
@@ -1007,7 +995,7 @@ function convertHexToAssColor(hex) {
     return `&H00${b}${g}${r}`.toUpperCase();
 }
 
-// Converts hex color to ASS format with opacity for background (&HAABBGGRR)
+// Converts hex color to ASS format with opacity (&HAABBGGRR)
 function convertHexToAssColorWithOpacity(hex, opacity) {
     const alpha = Math.round((1 - opacity) * 255).toString(16).padStart(2, '0').toUpperCase();
     const color = hex.replace('#', '');
@@ -1017,26 +1005,12 @@ function convertHexToAssColorWithOpacity(hex, opacity) {
     return `&H${alpha}${b}${g}${r}`.toUpperCase();
 }
 
-function formatTimeAss(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    const millis = Math.floor((seconds - Math.floor(seconds)) * 100);
-    return `${pad(hours, 1)}:${pad(minutes, 2)}:${pad(secs, 2)}.${pad(millis, 2)}`;
-}
-
-function pad(num, size) {
-    const s = "0000" + num;
-    return s.substr(s.length - size);
-}
-
-
+// Serve video files with 'Content-Disposition' for download
 app.get('/output/:videoId.mp4', (req, res) => {
-    const videoId = req.params.videoId;
-    const videoPath = path.join(outputDir, `${videoId}.mp4`);
+    const videoPath = path.join(outputDir, `${req.params.videoId}.mp4`);
 
     if (fs.existsSync(videoPath)) {
-        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${req.params.videoId}.mp4"`);
         res.setHeader('Content-Type', 'video/mp4');
         res.sendFile(videoPath);
     } else {
@@ -1045,12 +1019,12 @@ app.get('/output/:videoId.mp4', (req, res) => {
 });
 
 
-
-
+function pad(num, size) {
+    const s = "0000" + num;
+    return s.substr(s.length - size);
+}
 
 module.exports = app; // Ensure you export your app to give
-
-
 
 
 // Start the server
