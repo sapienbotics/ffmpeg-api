@@ -23,6 +23,14 @@ const processedDir = path.join(storageDir, 'media');
 const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
 app.use('/output', express.static(outputDir));
 
+// Security and CORS Headers
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'self'");
+    res.setHeader('Access-Control-Allow-Origin', '*');  // Adjust if you need specific CORS rules
+    next();
+});
+
 
 // Ensure processed and output directories exist
 if (!fs.existsSync(processedDir)) {
@@ -968,6 +976,7 @@ app.post('/apply-subtitles', async (req, res) => {
                 console.log("Subtitle processing completed. Video URL:", videoUrl);
 
                 res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
+                res.setHeader('Content-Type', 'video/mp4');
                 res.json({ videoUrl });
 
                 fs.unlinkSync(downloadPath);
