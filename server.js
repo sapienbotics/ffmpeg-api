@@ -282,6 +282,9 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
 
             console.log(`Zoom effect filter: ${zoomEffect}`);
 
+            // Add logging to monitor FFmpeg's execution
+            console.log(`Final FFmpeg command: ffmpeg -loop 1 -i ${finalImagePath} -y -t ${duration} -vf ${zoomEffect} -r ${frameRate} -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`);
+
             // Convert image to video
             ffmpeg()
                 .input(finalImagePath)
