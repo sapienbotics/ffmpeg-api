@@ -247,6 +247,7 @@ const extractDominantColor = async (imagePath) => {
 };
 
 
+
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -267,29 +268,25 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
             console.log(`Target video resolution set to: ${width}x${height}`);
 
-            // Step 4: Define padding and stabilized zoom filter
-            const zoomFactor = 1.05; // Small factor for subtle zoom
+            // Define start and end zoom scales
+            const startScale = 1;
+            const endScale = 1.05; // Final zoom factor, adjustable as needed
+
+            // Frame rate setting
             const frameRate = 30;
-            const totalFrames = duration * frameRate;
-            const zoomIncrement = (zoomFactor - 1) / totalFrames;
-            console.log(`Zoom factor: ${zoomFactor}, Total Frames: ${totalFrames}, Zoom Increment: ${zoomIncrement}`);
 
-            const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            console.log(`Scale and Pad filter: ${scaleAndPad}`);
+            // Define scaling and padding filter without shaking
+            const zoomEffect = `scale='iw*${startScale}+(iw*${endScale}-${startScale})*t/${duration}':` +
+                `'ih*${startScale}+(ih*${endScale}-${startScale})*t/${duration}',` +
+                `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Stabilized zoom effect with centered x and y calculations
-            const zoomEffect = `zoompan=z='1+${zoomIncrement}*on':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${width}x${height}:fps=${frameRate}`;
-            console.log(`Zoom Effect filter: ${zoomEffect}`);
+            console.log(`Zoom effect filter: ${zoomEffect}`);
 
-            // Combine filters
-            const finalFilter = `${scaleAndPad},${zoomEffect}`;
-            console.log(`Combined filter applied: ${finalFilter}`);
-
-            // Step 5: Convert image to video
+            // Convert image to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(1)
-                .outputOptions('-vf', finalFilter)
+                .outputOptions('-vf', zoomEffect)
                 .outputOptions('-r', frameRate.toString())
                 .outputOptions('-t', duration.toString())
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
@@ -317,7 +314,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 
 
