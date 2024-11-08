@@ -23,13 +23,13 @@ const processedDir = path.join(storageDir, 'media');
 const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
 app.use('/output', express.static(outputDir));
 
-// Security and CORS Headers
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Security-Policy', "default-src 'self'");
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Security-Policy', "default-src 'self';");
+    res.setHeader('Access-Control-Allow-Origin', '*');  // Adjust if specific CORS rules are needed
     next();
 });
+
 
 
 // Ensure processed and output directories exist
@@ -936,20 +936,45 @@ app.post('/apply-subtitles', async (req, res) => {
             return res.status(400).json({ error: "Content is required for subtitles." });
         }
 
-        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
-        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position);
+        // Get video duration for subtitle timing
+        let videoLengthInSeconds = 0;
+        await new Promise((resolve, reject) => {
+            ffmpeg.ffprobe(downloadPath, (err, metadata) => {
+                if (err) {
+                    return reject(err);
+                }
+                videoLengthInSeconds = Math.ceil(metadata.format.duration);
+                resolve();
+            });
+        });
 
+        // Generate .ass subtitle content
+        const subtitleFile = path.join(outputDir, `${videoId}.ass`);
+        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
+        // Log subtitle file path and contents to debug
+        console.log("Generated Subtitle File Path:", subtitleFile);
+        console.log("Generated Subtitle Content:", assContent);
+
+        // Apply subtitles using FFmpeg
         ffmpeg(downloadPath)
             .outputOptions([
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
-                '-pix_fmt yuv420p'
+                '-pix_fmt yuv420p',
+                '-color_range pc'
             ])
+            .on('start', (cmd) => {
+                console.log("FFmpeg command:", cmd);
+            })
             .on('end', () => {
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
+                console.log("Subtitle processing completed. Video URL:", videoUrl);
+
                 res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
                 res.json({ videoUrl });
+
+                // Clean up intermediate files
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
@@ -960,9 +985,11 @@ app.post('/apply-subtitles', async (req, res) => {
             .save(videoFile);
 
     } catch (error) {
+        console.error("Processing error:", error.message);
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
+
 
 // Generates the subtitle file in .ass format
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position) {
@@ -1005,18 +1032,20 @@ function convertHexToAssColorWithOpacity(hex, opacity) {
     return `&H${alpha}${b}${g}${r}`.toUpperCase();
 }
 
-// Serve video files with 'Content-Disposition' for download
 app.get('/output/:videoId.mp4', (req, res) => {
-    const videoPath = path.join(outputDir, `${req.params.videoId}.mp4`);
+    const videoId = req.params.videoId;
+    const videoPath = path.join(outputDir, `${videoId}.mp4`);
 
     if (fs.existsSync(videoPath)) {
-        res.setHeader('Content-Disposition', `attachment; filename="${req.params.videoId}.mp4"`);
+        // Set Content-Disposition header for download
+        res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
         res.setHeader('Content-Type', 'video/mp4');
-        res.sendFile(videoPath);
+        res.download(videoPath); // Use res.download for direct download
     } else {
         res.status(404).json({ error: 'Video not found.' });
     }
 });
+
 
 
 function pad(num, size) {
