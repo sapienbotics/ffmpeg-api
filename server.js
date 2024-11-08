@@ -255,42 +255,55 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
-            // Step 1: Download the image (and convert if necessary)
+            // Step 1: Download the image
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
+            console.log(`Image downloaded and saved to: ${finalImagePath}`);
 
             // Step 2: Extract the dominant color for padding
             const dominantColor = await extractDominantColor(finalImagePath);
+            console.log(`Dominant color extracted: ${dominantColor}`);
 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
+            console.log(`Target video resolution set to: ${width}x${height}`);
 
-            // Step 4: Define padding and zoom filter options
-            const zoomFactor = 1.5; // Desired final zoom level
+            // Step 4: Define padding and zoom filter options with logging
+            const zoomFactor = 1.5;
             const frameRate = 30;
-            const totalFrames = duration * frameRate; // Total frames over the duration
-            const zoomIncrement = (zoomFactor - 1) / totalFrames; // Smooth zoom increment per frame
+            const totalFrames = duration * frameRate;
+            const zoomIncrement = (zoomFactor - 1) / totalFrames;
 
-            // Adjust scaling and padding to fit exact output resolution
+            console.log(`Zoom factor: ${zoomFactor}, Total Frames: ${totalFrames}, Zoom Increment: ${zoomIncrement}`);
+
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            
-            // Improved zoompan filter for smooth zoom with retained zoom effect
-            const zoomEffect = `zoompan=z='1+${zoomIncrement}*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=${frameRate}`;
-            
-            // Combine scale/pad with zoom effect for final filter
-            const finalFilter = `${scaleAndPad},${zoomEffect}`;
+            console.log(`Scale and Pad filter: ${scaleAndPad}`);
 
-            // Step 5: Convert image to video with optimized zoom effect
+            // Zoom effect with logging for diagnostic tracking
+            const zoomEffect = `zoompan=z='1+${zoomIncrement}*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=${frameRate}`;
+            console.log(`Zoom Effect filter: ${zoomEffect}`);
+
+            // Combine filters with final logging
+            const finalFilter = `${scaleAndPad},${zoomEffect}`;
+            console.log(`Combined filter applied: ${finalFilter}`);
+
+            // Step 5: Convert image to video with optimized zoom effect and debugging logs
             ffmpeg()
                 .input(finalImagePath)
-                .loop(1) // Single loop over the full duration to avoid re-initialization
+                .loop(1)
                 .outputOptions('-vf', finalFilter)
-                .outputOptions('-r', frameRate.toString())  // Frame rate consistency
-                .outputOptions('-t', duration)  // Set exact video duration
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality settings
-                .outputOptions('-pix_fmt', 'yuv420p') // Compatibility across media players
-                .outputOptions('-threads', '4') // Balanced thread count for stability
+                .outputOptions('-r', frameRate.toString())
+                .outputOptions('-t', duration)
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+                .outputOptions('-pix_fmt', 'yuv420p')
+                .outputOptions('-threads', '4')
+                .on('start', (commandLine) => {
+                    console.log(`FFmpeg command: ${commandLine}`);
+                })
+                .on('progress', (progress) => {
+                    console.log(`Processing: ${progress.percent}% done at time ${progress.timemark}`);
+                })
                 .on('end', () => {
-                    console.log('Image converted to video with zoom.');
+                    console.log('Image successfully converted to video with zoom effect.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
@@ -305,7 +318,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 
 // Function to get audio duration using ffmpeg
