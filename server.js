@@ -273,11 +273,9 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
             console.log(`Target video resolution set to: ${width}x${height}`);
 
-            // FFmpeg zoompan filter with adjusted parameters
-            const zoomEffect = `zoompan=z='if(gte(t,1),min(1.5,1.05+0.02*t),1)':d=${duration * 30}:s=${width}x${height}:fps=30`;
+            const zoomEffect = `zoompan=z='if(gte(t,1),min(1.5,1.05+0.02*t),1)':d=60:s=${width}x${height}:fps=30`;  // Set video duration
+const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -y -vf "${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}" -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`;
 
-            // FFmpeg command with zoompan filter
-            const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -vf ${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor} -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 -y ${outputFilePath}`;
 
             console.log(`FFmpeg command: ${ffmpegCommand}`);
 
