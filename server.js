@@ -23,6 +23,14 @@ const processedDir = path.join(storageDir, 'media');
 const outputDir = path.join(__dirname, 'output'); // Added output directory for storing processed videos
 app.use('/output', express.static(outputDir));
 
+// Security and CORS Headers
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'self'");
+    res.setHeader('Access-Control-Allow-Origin', '*');  // Adjust if you need specific CORS rules
+    next();
+});
+
 
 // Ensure processed and output directories exist
 if (!fs.existsSync(processedDir)) {
@@ -984,7 +992,6 @@ app.post('/apply-subtitles', async (req, res) => {
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
-
 
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
