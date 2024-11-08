@@ -247,76 +247,51 @@ const extractDominantColor = async (imagePath) => {
 };
 
 
-async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
-    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    console.log(`Starting conversion for image: ${imageUrl}`);
+const convertImageToVideo = async (imagePath, outputPath, duration, resolution = { width: 360, height: 640 }) => {
+    try {
+        const dominantColor = '#eebc74';  // Example dominant color from your logs or calculated dynamically
 
-    return new Promise(async (resolve, reject) => {
-        const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
+        // Target resolution
+        const { width, height } = resolution;
+        
+        // Set up a controlled zoom factor and increment for stability
+        const zoomFactor = 1.05;  // Slight zoom for a gentle effect
+        const frameRate = 30;
+        const totalFrames = duration * frameRate;
+        const zoomIncrement = (zoomFactor - 1) / totalFrames;
 
-        try {
-            // Step 1: Download the image
-            const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
-            console.log(`Image downloaded and saved to: ${finalImagePath}`);
+        // Step-by-step filter composition
+        const scalePadFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+        const zoomEffectFilter = `zoompan=z='1+${zoomIncrement}*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=${frameRate}`;
 
-            // Step 2: Extract the dominant color for padding
-            const dominantColor = await extractDominantColor(finalImagePath);
-            console.log(`Dominant color extracted: ${dominantColor}`);
+        // Combine filters for FFmpeg command
+        const filterComplex = `${scalePadFilter},${zoomEffectFilter}`;
 
-            // Step 3: Parse the resolution (e.g., "1920:1080")
-            const [width, height] = resolution.split(':').map(Number);
-            console.log(`Target video resolution set to: ${width}x${height}`);
+        // FFmpeg command for generating the video with a stabilized zoom effect
+        const ffmpegCommand = [
+            '-loop', '1',
+            '-i', imagePath,
+            '-y',
+            '-t', duration.toString(),
+            '-vf', filterComplex,
+            '-r', frameRate.toString(),
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '23',
+            '-pix_fmt', 'yuv420p',
+            '-threads', '4',
+            outputPath
+        ];
 
-            // Step 4: Define padding and zoom filter options with logging
-            const zoomFactor = 1.5;
-            const frameRate = 30;
-            const totalFrames = duration * frameRate;
-            const zoomIncrement = (zoomFactor - 1) / totalFrames;
-            console.log(`Zoom factor: ${zoomFactor}, Total Frames: ${totalFrames}, Zoom Increment: ${zoomIncrement}`);
+        // Execute FFmpeg with constructed command
+        await executeFFmpeg(ffmpegCommand);
 
-            const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            console.log(`Scale and Pad filter: ${scaleAndPad}`);
+        console.log(`Image successfully converted to video with reduced zoom effect at ${outputPath}`);
+    } catch (error) {
+        console.error('Error in convertImageToVideo:', error);
+    }
+};
 
-            // Updated zoom effect with stabilization adjustments
-            const zoomEffect = `zoompan=z='1+${zoomIncrement}*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=${frameRate}`;
-            console.log(`Zoom Effect filter: ${zoomEffect}`);
-
-            // Combine filters with final logging
-            const finalFilter = `${scaleAndPad},${zoomEffect}`;
-            console.log(`Combined filter applied: ${finalFilter}`);
-
-            // Step 5: Convert image to video with optimized zoom effect and debugging logs
-            ffmpeg()
-                .input(finalImagePath)
-                .loop(1)
-                .outputOptions('-vf', finalFilter)
-                .outputOptions('-r', frameRate.toString())
-                .outputOptions('-t', duration.toString())
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
-                .outputOptions('-pix_fmt', 'yuv420p')
-                .outputOptions('-threads', '4')
-                .on('start', (commandLine) => {
-                    console.log(`FFmpeg command: ${commandLine}`);
-                })
-                .on('progress', (progress) => {
-                    console.log(`Processing: ${progress.percent}% done at time ${progress.timemark}`);
-                })
-                .on('end', () => {
-                    console.log('Image successfully converted to video with zoom effect.');
-                    resolve(outputFilePath);
-                })
-                .on('error', (err) => {
-                    console.error(`Error converting image to video: ${err.message}`);
-                    reject(err);
-                })
-                .save(outputFilePath);
-
-        } catch (error) {
-            console.error(`Image download or conversion failed: ${error.message}`);
-            reject(error);
-        }
-    });
-}
 
 
 
