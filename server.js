@@ -267,8 +267,8 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
             console.log(`Target video resolution set to: ${width}x${height}`);
 
-            // Step 4: Define padding and zoom filter options
-            const zoomFactor = 1.1;
+            // Step 4: Define padding and stabilized zoom filter
+            const zoomFactor = 1.05; // Small factor for subtle zoom
             const frameRate = 30;
             const totalFrames = duration * frameRate;
             const zoomIncrement = (zoomFactor - 1) / totalFrames;
@@ -277,11 +277,11 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
             console.log(`Scale and Pad filter: ${scaleAndPad}`);
 
-            // Adjusted zoom effect with gradual increment per frame
-            const zoomEffect = `zoompan=z='min(${zoomFactor},1+${zoomIncrement}*on)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${frameRate}:s=${width}x${height}:fps=${frameRate}`;
+            // Stabilized zoom effect with centered x and y calculations
+            const zoomEffect = `zoompan=z='1+${zoomIncrement}*on':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d=1:s=${width}x${height}:fps=${frameRate}`;
             console.log(`Zoom Effect filter: ${zoomEffect}`);
 
-            // Combine filters with final logging
+            // Combine filters
             const finalFilter = `${scaleAndPad},${zoomEffect}`;
             console.log(`Combined filter applied: ${finalFilter}`);
 
@@ -302,7 +302,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                     console.log(`Processing: ${progress.percent}% done at time ${progress.timemark}`);
                 })
                 .on('end', () => {
-                    console.log('Image successfully converted to video with zoom effect.');
+                    console.log('Image successfully converted to video with smooth zoom effect.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
