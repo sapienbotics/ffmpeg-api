@@ -275,9 +275,9 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Frame rate setting
             const frameRate = 30;
 
-            // Define scaling and padding filter without shaking
-            const zoomEffect = `scale='iw*${startScale}+(iw*${endScale}-${startScale})*t/${duration}':` +
-                `'ih*${startScale}+(ih*${endScale}-${startScale})*t/${duration}',` +
+            // Apply linear zoom and padding filter
+            const zoomEffect = `scale='iw*${startScale}+(iw*${endScale}-iw)*t/${duration}':` +
+                `'ih*${startScale}+(ih*${endScale}-ih)*t/${duration}',` +
                 `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
             console.log(`Zoom effect filter: ${zoomEffect}`);
