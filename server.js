@@ -238,19 +238,11 @@ const createFileList = (mediaSequence, outputDir) => {
     return fileListPath;
 };
 
-// Function to extract the dominant color of an image using Vibrant
-async function extractDominantColor(imagePath) {
-    try {
-        const vibrant = new Vibrant(imagePath);
-        const palette = await vibrant.getPalette();
-        const dominantColor = palette.Vibrant.hex;  // or use another color variant based on your preference
-        return dominantColor;
-    } catch (error) {
-        console.error(`Failed to extract dominant color: ${error.message}`);
-        throw error;
-    }
-}
-
+// Function to extract dominant color from an image
+const extractDominantColor = async (imagePath) => {
+    const palette = await Vibrant.from(imagePath).getPalette();
+    return palette.Vibrant.hex; // Get the hex value of the dominant color
+};
 
 
 
