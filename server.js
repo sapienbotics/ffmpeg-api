@@ -240,13 +240,6 @@ const createFileList = (mediaSequence, outputDir) => {
 
 
 
-// Function to extract dominant color from an image
-const extractDominantColor = async (imagePath) => {
-    const palette = await Vibrant.from(imagePath).getPalette();
-    return palette.Vibrant.hex; // Get the hex value of the dominant color
-};
-
-
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -267,11 +260,11 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
             console.log(`Target video resolution set to: ${width}x${height}`);
 
-            // FFmpeg zoompan filter
-            const zoomEffect = `zoompan=z='min(1.5,1.05+0.02*t)':d=${duration}:s=${width}x${height}:fps=30`;
+            // FFmpeg zoompan filter with adjusted parameters
+            const zoomEffect = `zoompan=z='if(gte(t,1),min(1.5,1.05+0.02*t),1)':d=${duration * 30}:s=${width}x${height}:fps=30`;
 
             // FFmpeg command with zoompan filter
-            const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -y -vf ${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor} -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`;
+            const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -vf ${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor} -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 -y ${outputFilePath}`;
 
             console.log(`FFmpeg command: ${ffmpegCommand}`);
 
