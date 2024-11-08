@@ -279,7 +279,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             console.log(`Scale and Pad filter: ${scaleAndPad}`);
 
             // Zoom effect with logging for diagnostic tracking
-            const zoomEffect = `zoompan=z='1+${zoomIncrement}*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=1:s=${width}x${height}:fps=${frameRate}`;
+            const zoomEffect = `zoompan=z='1+0.003*on':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=2:s=360x640:fps=30`;
             console.log(`Zoom Effect filter: ${zoomEffect}`);
 
             // Combine filters with final logging
