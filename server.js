@@ -268,28 +268,20 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
             console.log(`Target video resolution set to: ${width}x${height}`);
 
-            // Define start and end zoom scales
-            const startScale = 1;
-            const endScale = 1.05; // Final zoom factor, adjustable as needed
+            // Using zoompan filter for smoother zoom effect
+            const zoomEffect = `zoompan=z='min(1.5,1.05+0.02*t)':d=1:s=${width}x${height}:fps=30`;
 
-            // Frame rate setting
-            const frameRate = 30;
+            // FFmpeg command with zoompan filter
+            const ffmpegCommand = `ffmpeg -loop 1 -i ${finalImagePath} -y -t ${duration} -vf ${zoomEffect},pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor} -r 30 -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`;
 
-            // Apply a smooth linear zoom
-            const zoomEffect = `scale='iw*(1+(1.05-1)*t/${duration})':'ih*(1+(1.05-1)*t/${duration})',` +
-                `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            console.log(`FFmpeg command: ${ffmpegCommand}`);
 
-            console.log(`Zoom effect filter: ${zoomEffect}`);
-
-            // Add logging to monitor FFmpeg's execution
-            console.log(`Final FFmpeg command: ffmpeg -loop 1 -i ${finalImagePath} -y -t ${duration} -vf ${zoomEffect} -r ${frameRate} -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -threads 4 ${outputFilePath}`);
-
-            // Convert image to video
+            // Convert image to video with zoompan effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(1)
                 .outputOptions('-vf', zoomEffect)
-                .outputOptions('-r', frameRate.toString())
+                .outputOptions('-r', '30')
                 .outputOptions('-t', duration.toString())
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
                 .outputOptions('-pix_fmt', 'yuv420p')
