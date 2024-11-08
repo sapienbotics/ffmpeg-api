@@ -903,9 +903,7 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
-        // Validate input
         if (!videoLink) {
-            console.error("Error: Video link is required.");
             return res.status(400).json({ error: "Video link is required." });
         }
 
@@ -913,7 +911,6 @@ app.post('/apply-subtitles', async (req, res) => {
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
 
-        // Download the video
         const response = await axios({
             method: 'get',
             url: videoLink,
@@ -929,71 +926,53 @@ app.post('/apply-subtitles', async (req, res) => {
         });
 
         if (includeSubtitles !== "true") {
-            console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
             const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
             return res.json({ videoUrl });
         }
 
-        if (!content || position === undefined) {
-            console.error("Error: Content and subtitle position are required for subtitles.");
-            return res.status(400).json({ error: "Content and subtitle position are required for subtitles." });
-        }
-
         let videoLengthInSeconds = 0;
         await new Promise((resolve, reject) => {
             ffmpeg.ffprobe(downloadPath, (err, metadata) => {
-                if (err) {
-                    console.error("Error during ffprobe:", err);
-                    return reject(err);
-                }
+                if (err) return reject(err);
                 videoLengthInSeconds = Math.ceil(metadata.format.duration);
-                console.log("Video length in seconds:", videoLengthInSeconds);
                 resolve();
             });
         });
 
         const fontPath = path.join(__dirname, 'fonts', fontName + '.ttf');
-        console.log("Font Path being used:", fontPath);
-
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
         const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
-        
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
-        console.log(`Running FFmpeg command to apply subtitles with subtitle file: ${subtitleFile}`);
         ffmpeg(downloadPath)
             .outputOptions([
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
                 '-pix_fmt yuv420p',
                 '-color_range pc'
             ])
-            .on('start', (cmd) => {
-                console.log("FFmpeg command:", cmd);
-            })
             .on('end', () => {
                 const videoUrl = `${req.protocol}://${req.get('host')}/output/${videoId}.mp4`;
-                console.log("Subtitle processing completed. Video URL:", videoUrl);
 
                 res.setHeader('Content-Disposition', `attachment; filename="${videoId}.mp4"`);
                 res.setHeader('Content-Type', 'video/mp4');
+                res.setHeader('X-Content-Type-Options', 'nosniff');
+                res.setHeader('Content-Security-Policy', "default-src 'self'");
+
                 res.json({ videoUrl });
 
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
             })
             .on('error', (err) => {
-                console.error("FFmpeg error:", err.message);
                 res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
             })
             .save(videoFile);
 
     } catch (error) {
-        console.error("Processing error:", error.message);
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
     }
 });
-
 
 
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
