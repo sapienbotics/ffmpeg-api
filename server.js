@@ -183,7 +183,8 @@ async function removeAudio(videoUrl) {
 
     return new Promise((resolve, reject) => {
         console.log(`Removing audio from video: ${videoUrl}`);
-        execPromise(`ffmpeg -i ${videoUrl} -c:v copy -an "${outputFilePath}"`) // Using execPromise
+        execPromise(`ffmpeg -i ${videoUrl} -c:v copy -an -threads 6 "${outputFilePath}"`) // Added -threads 6
+ // Using execPromise
             .then(() => {
                 console.log(`Audio removed from video: ${outputFilePath}`);
                 resolve(outputFilePath);
@@ -209,7 +210,8 @@ async function trimVideo(videoUrl, duration) {
                 '-c:v libx264', 
                 '-preset fast',
                 '-crf 23',
-                '-vf setsar=1/1' // Ensure the SAR is set, but no scaling is applied
+                '-vf setsar=1/1', // Ensure the SAR is set, but no scaling is applied
+                '-threads 6' // Add threading option here
             ])
             .on('end', () => {
                 console.log(`Trimmed video created: ${outputFilePath}`);
@@ -339,7 +341,7 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
         }
 
         // Base command to merge video with content audio
-        let command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
+        let command = `ffmpeg -threads 6 -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
 
         if (backgroundAudioExists) {
             // Get durations of content audio and background audio
@@ -348,12 +350,12 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
 
             if (backgroundAudioDuration < contentAudioDuration) {
                 // Loop background audio if it is shorter than content audio
-                command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
+                command = `ffmpeg -threads 6 -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
                     "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
                     -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
             } else {
                 // No looping needed, merge normally
-                command = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
+                command = `ffmpeg -threads 6 -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
                     "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
                     -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
             }
@@ -397,6 +399,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
             .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+            .outputOptions('-threads', '6')
             // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
@@ -983,7 +986,8 @@ app.post('/apply-subtitles', async (req, res) => {
             .outputOptions([
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
                 '-pix_fmt yuv420p',
-                '-color_range pc'
+                '-color_range pc',
+                '-threads 6'
             ])
             .on('start', (cmd) => {
                 console.log("FFmpeg command:", cmd);
