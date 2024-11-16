@@ -263,36 +263,27 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects (including zoom, pan, and transitions)
+            // Step 4: Define possible effects (including zoom, transitions, and fade)
             const effects = [
-                // Stationary Effect
+                // Stationary Effect (Centered with padding)
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Zoom In Effect (Increased zoom increment for visibility)
-                `zoompan=z='if(lte(zoom,2.0),zoom+0.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Zoom In Effect (Controlled, smooth zoom)
+                `zoompan=z='if(lte(zoom,1.5),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Zoom Out Effect (Increased zoom decrement for visibility)
-                `zoompan=z='if(gte(zoom,1.0),zoom-0.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Zoom Out Effect (Controlled, smooth zoom)
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Ken Burns Effect
-                `zoompan=z='if(gte(on,1),zoom+0.1,zoom)':x='if(gte(on,1),x-10,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Ken Burns Effect (Slow zoom with slight movement)
+                `zoompan=z='if(gte(on,1),zoom+0.05,zoom)':x='if(gte(on,1),x-5,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Pan Left (Increased pan for visibility)
-                `zoompan=z='1.0':x='if(gte(on,1),x-20,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Color Saturation Shift (Slight increase in saturation for vividness)
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=1.2`, 
 
-                // Pan Right (Increased pan for visibility)
-                `zoompan=z='1.0':x='if(gte(on,1),x+20,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Fade-in and Fade-out Transition (Smooth appearance and disappearance)
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Color Saturation Shift
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=1.2`, // Increased saturation
-
-                // Slide In Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
-
-                // Slide Out Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
-
-                // Crossfade Transition
+                // Crossfade (Blend transition between images)
                 `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
             ];
 
