@@ -268,20 +268,20 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 // Stationary Effect
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Zoom In Effect
-                `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Zoom In Effect (Increased zoom increment for visibility)
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.1,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Zoom Out Effect
-                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Zoom Out Effect (Increased zoom decrement for visibility)
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.1,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
                 // Ken Burns Effect
-                `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                `zoompan=z='if(gte(on,1),zoom+0.1,zoom)':x='if(gte(on,1),x-5,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Pan Left
-                `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Pan Left (Increased pan for visibility)
+                `zoompan=z='1.0':x='if(gte(on,1),x-10,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Pan Right
-                `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Pan Right (Increased pan for visibility)
+                `zoompan=z='1.0':x='if(gte(on,1),x+10,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
                 // Color Saturation Shift
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.8`,
