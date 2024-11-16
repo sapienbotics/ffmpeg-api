@@ -284,7 +284,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 // Pan Right
                 `zoompan=z='1.0':x='if(gte(on,1),x+2,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-
                 // Color Saturation Shift
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.7`,
 
@@ -294,17 +293,18 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 // Slide Out Transition
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
 
-                // Crossfade (simulated by fading in/out)
+                // Crossfade Transition
                 `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
             ];
 
-            // Randomly select an effect
+            // Step 5: Randomly select an effect
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
+            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for randomness verification
 
-            // Step 5: Combine scale and effect for final processing
+            // Step 6: Combine scale and effect for final processing
             const finalFilter = `${randomEffect}`;
 
-            // Step 6: Convert image to video with the selected effect
+            // Step 7: Convert image to video with the selected effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
