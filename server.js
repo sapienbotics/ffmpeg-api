@@ -269,10 +269,10 @@ const effects = [
     `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
     // Slow Zoom In Effect (Stops at 1.2x zoom)
-    `zoompan=z='if(lte(zoom,1.2),zoom+0.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+    `zoompan=z='if(lte(zoom,1.3),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
     // Slow Zoom Out Effect (Stops at 1.0x zoom)
-    `zoompan=z='if(gte(zoom,1.0),zoom-0.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+    `zoompan=z='if(gte(zoom,1.0),zoom-0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
     // Fade-in and Fade-out Effect (Smooth fade transition)
     `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
