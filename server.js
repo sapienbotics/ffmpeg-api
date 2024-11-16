@@ -263,63 +263,53 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects (including zoom, pan, and transitions)
-            const effects = [
-                // Stationary Effect
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            // Step 4: Define a random effect selector function to vary the effects
+            const getRandomEffect = () => {
+                const effects = [
+                    // Stationary Effect (zoom + pad)
+                    `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Zoom In Effect
-                `zoompan=z='if(lte(zoom,1.5),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                    // Zoom In Effect
+                    `zoompan=z='if(lte(zoom,1.5),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Zoom Out Effect
-                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                    // Zoom Out Effect
+                    `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Ken Burns Effect
-                `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                    // Ken Burns Effect (pan + zoom)
+                    `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Pan Left
-                `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                    // Pan Left to Right
+                    `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Pan Right
-                `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                    // Pan Right to Left
+                    `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                ];
+                // Return a random effect from the list
+                return effects[Math.floor(Math.random() * effects.length)];
+            };
 
-                // Color Saturation Shift
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.8`,
+            // Step 5: Select a random effect
+            const selectedEffect = getRandomEffect();
 
-                // Slide In Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
+            console.log(`Selected effect for image: ${selectedEffect}`);
 
-                // Slide Out Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
+            // Step 6: Run FFmpeg to apply the selected effect and create the video
+            const ffmpegCommand = `ffmpeg -y -loop 1 -t ${duration} -i ${finalImagePath} -vf "${selectedEffect}" -c:v libx264 -r 30 -pix_fmt yuv420p ${outputFilePath}`;
+            console.log(`FFmpeg Command: ${ffmpegCommand}`);
 
-                // Crossfade Transition
-                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-            ];
-
-            // Step 5: Randomly select an effect for each image conversion
-            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
-
-            // Step 6: Apply the selected effect to the image and convert to video
-            ffmpeg()
-                .input(finalImagePath)
-                .loop(duration)
-                .outputOptions('-vf', randomEffect) // Apply selected effect
-                .outputOptions('-r', '30') // Frame rate
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
-                .outputOptions('-threads', '6') // Speed up with multiple threads
-                .on('end', () => {
-                    console.log('Image converted to video with effect.');
-                    resolve(outputFilePath);
-                })
-                .on('error', (err) => {
-                    console.error(`Error converting image to video: ${err.message}`);
+            const ffmpegExec = require('child_process').exec;
+            ffmpegExec(ffmpegCommand, (err, stdout, stderr) => {
+                if (err) {
+                    console.error(`Error during video conversion: ${stderr}`);
                     reject(err);
-                })
-                .save(outputFilePath);
+                } else {
+                    console.log(`Video created successfully at: ${outputFilePath}`);
+                    resolve(outputFilePath);
+                }
+            });
 
         } catch (error) {
-            console.error(`Image download or conversion failed: ${error.message}`);
+            console.error(`Error during image conversion: ${error}`);
             reject(error);
         }
     });
