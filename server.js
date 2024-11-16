@@ -280,20 +280,10 @@ const effects = [
     // Ken Burns Effect (Zoom with subtle movement)
     `zoompan=z='if(gte(on,1),zoom+0.03,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-    // Slide In/Out Effect (Slides from the edge of the frame)
-    `crop=iw/zoom:ih:y='ih/2-ih/zoom/2':x='if(gte(t,1),iw/2,iw/2-(iw/2)/zoom)'`,
-
-    // Wave or Ripple Effect (Simulates water ripples)
-    `wave=frequency=5:amplitude=10`,
-
-    // Zoom Bounce Effect (Adds a zoom effect that pulses in and out)
-    `zoompan=z='1+0.02*sin(2*PI*t)'`,
-
     // Edge Detection Effect (Outlines, creating an illustration-like effect)
     `edgedetect=low=0.1:high=0.4`,
 
 ];
-
 
 
             // Step 5: Apply multiple effects with proper proportions
