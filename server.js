@@ -257,43 +257,40 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
-            // Step 2: Extract the dominant color for padding
+            // Step 2: Extract the dominant color for padding (still used in some effects)
             const dominantColor = await extractDominantColor(finalImagePath);
 
-            // Step 3: Parse the resolution (e.g., "1920:1080")
-            const [width, height] = resolution.split(':').map(Number);
-
-            // Step 4: Define possible effects (including zoom, pan, and transitions)
+            // Step 3: Define possible effects (without resolution modification)
             const effects = [
-                // Stationary Effect
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                // Stationary Effect (No resolution scaling)
+                `pad=iw:ih:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Zoom In Effect
-                `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Zoom In Effect (Image will be used as is, no resolution scaling)
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=iwxih`,
 
                 // Zoom Out Effect
-                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=iwxih`,
 
                 // Ken Burns Effect
-                `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=iwxih`,
 
                 // Pan Left
-                `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=iwxih`,
 
                 // Pan Right
-                `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=iwxih`,
 
-                // Color Saturation Shift
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.8`,
+                // Color Saturation Shift (No resolution change)
+                `eq=saturation=0.8`,
 
-                // Slide In Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
+                // Slide In Transition (No resolution change)
+                `tpad=start_duration=1:color=${dominantColor}`,
 
-                // Slide Out Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
+                // Slide Out Transition (No resolution change)
+                `tpad=stop_duration=1:color=${dominantColor}`,
 
-                // Crossfade Transition
-                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+                // Crossfade Transition (No resolution change)
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30`
             ];
 
             // Step 5: Randomly select an effect for each image conversion
@@ -324,7 +321,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 
 // Function to get audio duration using ffmpeg
