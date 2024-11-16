@@ -264,15 +264,15 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define effects
+            // Step 4: Define possible effects (including zoom effects)
             const effects = [
                 // Stationary Effect
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Zoom In
+                // Zoom In Effect
                 `zoompan=z='if(lte(zoom,1.5),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Zoom Out
+                // Zoom Out Effect
                 `zoompan=z='if(gte(zoom,1.0),zoom-0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
                 // Ken Burns Effect
@@ -297,18 +297,15 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
             ];
 
-            // Step 5: Randomly select an effect
+            // Step 5: Randomly select an effect for each image conversion
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for randomness verification
+            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
 
-            // Step 6: Combine scale and effect for final processing
-            const finalFilter = `${randomEffect}`;
-
-            // Step 7: Convert image to video with the selected effect
+            // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', finalFilter)
+                .outputOptions('-vf', randomEffect) // Apply selected effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
