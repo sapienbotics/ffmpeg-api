@@ -263,33 +263,30 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects (including zoom, transitions, and fade)
+            // Step 4: Define possible effects with improved parameters
             const effects = [
                 // Stationary Effect (Centered with padding)
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Zoom In Effect (Controlled, smooth zoom)
+                // Smooth Zoom In Effect
                 `zoompan=z='if(lte(zoom,1.5),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Zoom Out Effect (Controlled, smooth zoom)
+                // Smooth Zoom Out Effect
                 `zoompan=z='if(gte(zoom,1.0),zoom-0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Ken Burns Effect (Slow zoom with slight movement)
-                `zoompan=z='if(gte(on,1),zoom+0.05,zoom)':x='if(gte(on,1),x-5,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Ken Burns Effect (Zoom with subtle movement)
+                `zoompan=z='if(gte(on,1),zoom+0.03,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Color Saturation Shift (Slight increase in saturation for vividness)
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=1.2`, 
+                // Slight Color Saturation Enhancement
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=1.1`,
 
-                // Fade-in and Fade-out Transition (Smooth appearance and disappearance)
-                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-                // Crossfade (Blend transition between images)
+                // Fade-in and Fade-out Transition
                 `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
             ];
 
             // Step 5: Randomly select an effect for each image conversion
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
+            console.log(`Selected effect for image: ${randomEffect}`);
 
             // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
@@ -298,6 +295,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 .outputOptions('-vf', randomEffect) // Apply selected effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
+                .outputOptions('-pix_fmt', 'yuv420p') // Ensure compatibility
                 .outputOptions('-threads', '6') // Speed up with multiple threads
                 .on('end', () => {
                     console.log('Image converted to video with effect.');
