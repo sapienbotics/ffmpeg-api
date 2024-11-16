@@ -266,26 +266,43 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
 
             // Step 4: Define effects
             const effects = [
+                // Stationary Effect
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+
                 // Zoom In
                 `zoompan=z='if(lte(zoom,1.5),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
                 // Zoom Out
                 `zoompan=z='if(gte(zoom,1.0),zoom-0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Ken Burns Effect
+                `zoompan=z='if(gte(on,1),zoom+0.02,zoom)':x='if(gte(on,1),x-2,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
                 // Pan Left
                 `zoompan=z='1.0':x='if(gte(on,1),x-2,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
                 // Pan Right
                 `zoompan=z='1.0':x='if(gte(on,1),x+2,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-                // Rotate
-                `rotate=PI/180*t:ow=rotw(iw):oh=roth(ih),scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-                // Blur In
-                `boxblur=luma_radius=10:luma_power=1,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+
+
+                // Color Saturation Shift
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.7`,
+
+                // Slide In Transition
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
+
+                // Slide Out Transition
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
+
+                // Crossfade (simulated by fading in/out)
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
             ];
 
             // Randomly select an effect
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
 
             // Step 5: Combine scale and effect for final processing
-            const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            const finalFilter = `${scaleAndPad},${randomEffect}`;
+            const finalFilter = `${randomEffect}`;
 
             // Step 6: Convert image to video with the selected effect
             ffmpeg()
