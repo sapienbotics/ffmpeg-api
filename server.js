@@ -257,42 +257,48 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
-            // Step 2: Use your existing function to extract the dominant color
-            const dominantColor = await extractDominantColor(finalImagePath); // Your function here
+            // Step 2: Extract the dominant color for padding
+            const dominantColor = await extractDominantColor(finalImagePath);
 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define dynamic effects
+            // Step 4: Define possible effects (including zoom, pan, and transitions)
             const effects = [
-                // Dynamic Zoom In
-                `zoompan=z='zoom+0.05':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-                
-                // Dynamic Zoom Out
-                `zoompan=z='zoom-0.02':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-                
+                // Stationary Effect
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+
+                // Zoom In Effect (Increased zoom increment for visibility)
+                `zoompan=z='if(lte(zoom,2.0),zoom+0.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Zoom Out Effect (Increased zoom decrement for visibility)
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
                 // Ken Burns Effect
-                `zoompan=z='if(on%2,zoom+0.02,zoom-0.02)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-                
-                // Rotation with Zoom
-                `rotate='PI/4*t':zoompan=z='zoom+0.03':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-                
-                // Fade in/out with Zoom
-                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,zoompan=z='zoom+0.02':d=${duration * 30}`,
-                
-                // Motion Blur
-                `gblur=sigma=5,zoompan=z='zoom-0.01':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}`,
-                
-                // Perspective Shift
-                `perspective=x0=0:y0=0:x1=W:y1=0:x2=W:y2=H:x3=0:y3=H`,
-                
-                // Centered with Color Padding
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+                `zoompan=z='if(gte(on,1),zoom+0.1,zoom)':x='if(gte(on,1),x-10,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Pan Left (Increased pan for visibility)
+                `zoompan=z='1.0':x='if(gte(on,1),x-20,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Pan Right (Increased pan for visibility)
+                `zoompan=z='1.0':x='if(gte(on,1),x+20,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Color Saturation Shift
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=1.2`, // Increased saturation
+
+                // Slide In Transition
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
+
+                // Slide Out Transition
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
+
+                // Crossfade Transition
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
             ];
 
             // Step 5: Randomly select an effect for each image conversion
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`);
+            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
 
             // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
