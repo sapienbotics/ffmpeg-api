@@ -247,8 +247,6 @@ const extractDominantColor = async (imagePath) => {
 };
 
 
-
-// Use this in your image-to-video processing with zoom in effect
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -266,26 +264,39 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define padding and zoom filter options
-const zoomFactor = 1.5; // Maximum zoom level
-const zoomSpeed = (zoomFactor - 1) / (duration * 30); // Calculate zoom speed for smooth transition
-const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-const zoomEffect = `zoompan=z='if(lte(zoom,${zoomFactor}),zoom+${zoomSpeed},zoom)':x='(iw-(iw/zoom))/2':y='(ih-(ih/zoom))/2':d=${duration * 30}:s=${width}x${height}:fps=30`;
+            // Step 4: Define effects
+            const effects = [
+                // Zoom In
+                `zoompan=z='if(lte(zoom,1.5),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Zoom Out
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Pan Left
+                `zoompan=z='1.0':x='if(gte(on,1),x-2,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Pan Right
+                `zoompan=z='1.0':x='if(gte(on,1),x+2,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Rotate
+                `rotate=PI/180*t:ow=rotw(iw):oh=roth(ih),scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                // Blur In
+                `boxblur=luma_radius=10:luma_power=1,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            ];
 
-// Combine scale and zoom effect for final processing
-const finalFilter = `${scaleAndPad},${zoomEffect}`;
+            // Randomly select an effect
+            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
 
+            // Step 5: Combine scale and effect for final processing
+            const scaleAndPad = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            const finalFilter = `${scaleAndPad},${randomEffect}`;
 
-            // Step 5: Convert image to video with zoom effect
+            // Step 6: Convert image to video with the selected effect
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', `${scaleAndPad},${zoomEffect}`)
-                .outputOptions('-r', '30')  // Frame rate
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')  // Video codec and quality
-                .outputOptions('-threads', '6')  // Speed up with multiple threads
+                .outputOptions('-vf', finalFilter)
+                .outputOptions('-r', '30') // Frame rate
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
+                .outputOptions('-threads', '6') // Speed up with multiple threads
                 .on('end', () => {
-                    console.log('Image converted to video with zoom.');
+                    console.log('Image converted to video with effect.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
@@ -300,7 +311,6 @@ const finalFilter = `${scaleAndPad},${zoomEffect}`;
         }
     });
 }
-
 
 
 
