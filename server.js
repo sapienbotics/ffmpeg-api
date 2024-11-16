@@ -269,10 +269,10 @@ const effects = [
     `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
     // Slow Zoom In Effect (Stops at 1.2x zoom)
-    `zoompan=z='if(lte(zoom,1.3),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+    `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
     // Slow Zoom Out Effect (Stops at 1.0x zoom)
-    `zoompan=z='if(gte(zoom,1.0),zoom-0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+    `zoompan=z='if(gte(zoom,1.0),zoom-0.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
     // Fade-in and Fade-out Effect (Smooth fade transition)
     `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
@@ -281,8 +281,33 @@ const effects = [
     `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=1.1`,
 
     // Ken Burns Effect (Zoom with subtle movement)
-    `zoompan=z='if(lte(zoom,1.2),zoom+0.03,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`
+    `zoompan=z='if(gte(on,1),zoom+0.03,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+    // Pixelation Effect (Retro, pixelated look)
+    `scale=iw/10:ih/10,scale=iw*10:ih*10`,
+
+    // Slide In/Out Effect (Slides from the edge of the frame)
+    `crop=iw/zoom:ih:y='ih/2-ih/zoom/2':x='if(gte(t,1),iw/2,iw/2-(iw/2)/zoom)'`,
+
+    // Glow Effect (Creates a glowing image by overlaying a blurred version)
+    `split[original][copy];[copy]boxblur=2:1[blurred];[original][blurred]overlay`,
+
+    // Wave or Ripple Effect (Simulates water ripples)
+    `wave=frequency=5:amplitude=10`,
+
+    // Light Leaks Effect (Random bursts of light across the image)
+    `colorchannelmixer=.8:.2:.2:.2:.7:.3:.3:.3:.7`,
+
+    // Zoom Bounce Effect (Adds a zoom effect that pulses in and out)
+    `zoompan=z='1+0.02*sin(2*PI*t)'`,
+
+    // Edge Detection Effect (Outlines, creating an illustration-like effect)
+    `edgedetect=low=0.1:high=0.4`,
+
+    // Ghosting Effect (Leaves faint trails to create a ghosting effect)
+    `blend=all_expr='A*0.7+B*0.3'`
 ];
+
 
 
             // Step 5: Apply multiple effects with proper proportions
