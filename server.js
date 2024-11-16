@@ -268,23 +268,23 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 // Stationary Effect (Centered with padding)
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Smooth Zoom In Effect
-                `zoompan=z='if(lte(zoom,1.5),zoom+0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Slow Zoom In Effect (Stops at 1.2x zoom)
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Smooth Zoom Out Effect
-                `zoompan=z='if(gte(zoom,1.0),zoom-0.02,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Slow Zoom Out Effect (Stops at 1.0x zoom)
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-                // Ken Burns Effect (Zoom with subtle movement)
-                `zoompan=z='if(gte(on,1),zoom+0.03,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Fade-in and Fade-out Effect (Smooth fade transition)
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
                 // Slight Color Saturation Enhancement
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=1.1`,
 
-                // Fade-in and Fade-out Transition
-                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+                // Ken Burns Effect (Zoom with subtle movement)
+                `zoompan=z='if(gte(on,1),zoom+0.03,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`
             ];
 
-            // Step 5: Randomly select an effect for each image conversion
+            // Step 5: Apply multiple effects with proper proportions
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
             console.log(`Selected effect for image: ${randomEffect}`);
 
