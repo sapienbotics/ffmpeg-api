@@ -272,7 +272,7 @@ const effects = [
    // `zoompan=z='if(lte(zoom,1.2),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
     // Slow Zoom Out Effect (Stops at 0.8x zoom)
-     `zoompan=z='if(eq(on,0),1,if(gte(zoom,0.8),zoom-0.005,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},
+     `zoompan=z='if(eq(on,0),1.4,if(gte(zoom,1),zoom-0.005,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},
 scale=${width}:${height}:force_original_aspect_ratio=decrease,
 pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
