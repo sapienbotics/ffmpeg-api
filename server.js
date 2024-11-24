@@ -280,7 +280,7 @@ const effects = [
     // Ken Burns Effect (Zoom with subtle movement)
    // `zoompan=z='if(gte(on,1),zoom+0.005,zoom)':x='if(gte(on,1),x+3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width} ${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-`zoompan=z='1.05 + 0.05*sin(2*PI*t/${duration})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},
+`zoompan=z='if(lte(on,1),1.05,1.05 + 0.05 * cos(on * 0.2))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},
     scale=${width}:${height}:force_original_aspect_ratio=decrease,
     pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
 ];
