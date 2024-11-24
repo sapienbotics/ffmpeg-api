@@ -286,7 +286,7 @@ pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
    //`zoompan=z='if(gte(on,1),zoom+0.005,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width} ${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
 // bounce-in-effect
-   `zoompan=z='if(lte(on,1),1.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+   `zoompan=z='if(lte(on,1),1.05,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
 
 ];
