@@ -113,8 +113,11 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
         // Step 1: Get MIME type
         const response = await axios.head(imageUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'
-            }
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
+    'Authorization': 'Key 7904caba-be1b-4247-99e1-067c34eafbff:10e47c286bede63c2b1feafcc88d9562',
+    'Referer': 'https://fal.media', // If Referer restrictions apply
+}
+
         });
         let mimeType = response.headers['content-type'];
         console.log(`Initial MIME type of the image: ${mimeType}`);
