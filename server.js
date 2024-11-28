@@ -111,14 +111,21 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 async function downloadAndConvertImage(imageUrl, outputFilePath) {
     try {
         // Step 1: Get MIME type
-        const response = await axios.head(imageUrl);
+        const response = await axios.head(imageUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'
+            }
+        });
         let mimeType = response.headers['content-type'];
         console.log(`Initial MIME type of the image: ${mimeType}`);
 
         // Step 2: Download the image
         const imageResponse = await axios({
             url: imageUrl,
-            responseType: 'arraybuffer' // Get raw image data as buffer
+            responseType: 'arraybuffer', // Get raw image data as buffer
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'
+            }
         });
 
         let buffer = imageResponse.data;
@@ -158,6 +165,7 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
         throw error;
     }
 }
+
 
 
 
@@ -293,6 +301,7 @@ const effects = [
 `zoompan=z='if(lte(zoom,1.2),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
 
 ];
+
 
 
             // Step 5: Apply multiple effects with proper proportions
