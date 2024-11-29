@@ -112,13 +112,22 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
     try {
         console.log(`Attempting to download image from: ${imageUrl}`);
         
-        // Step 1: Make a GET request to download the image
+        // Step 1: Make a GET request to download the image with headers from the successful cURL
         const response = await axios.get(imageUrl, {
             responseType: 'arraybuffer',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
-                'Referer': 'https://fal.media',
-                'Authorization': 'Key 7904caba-be1b-4247-99e1-067c34eafbff:10e47c286bede63c2b1feafcc88d9562'
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'accept-language': 'en-US,en;q=0.9,en-IN;q=0.8',
+                'priority': 'u=0, i',
+                'sec-ch-ua': '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'sec-fetch-dest': 'document',
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-site': 'none',
+                'sec-fetch-user': '?1',
+                'upgrade-insecure-requests': '1',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
             }
         });
 
@@ -130,7 +139,11 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
         // Step 2: Check MIME type and convert if necessary
         if (mimeType === 'image/webp') {
             console.log('Converting WebP image to JPEG...');
-            finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
+            finalOutputPath = outputFilePath.replace(/(\.[a-z]+)$/i, '_converted.jpg');
+            buffer = await sharp(buffer).toFormat('jpeg').toBuffer();
+        } else if (mimeType === 'image/png') {
+            console.log('Converting PNG image to JPEG...');
+            finalOutputPath = outputFilePath.replace(/(\.[a-z]+)$/i, '_converted.jpg');
             buffer = await sharp(buffer).toFormat('jpeg').toBuffer();
         } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
             throw new Error(`Unsupported MIME type: ${mimeType}`);
