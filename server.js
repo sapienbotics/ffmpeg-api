@@ -109,69 +109,59 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 
 // Function to download and convert image if needed
 async function downloadAndConvertImage(imageUrl, outputFilePath) {
-    try {
-        // Step 1: Get MIME type
-        const response = await axios.head(imageUrl, {
-            headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
-    'Authorization': 'Key 7904caba-be1b-4247-99e1-067c34eafbff:10e47c286bede63c2b1feafcc88d9562',
-    'Referer': 'https://fal.media', // If Referer restrictions apply
-}
+  try {
+    console.log(`Downloading image from: ${imageUrl}`);
+    
+    // Step 1: Fetch MIME type using HEAD request
+    const response = await axios.head(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
+        'Authorization': 'Key 7904caba-be1b-4247-99e1-067c34eafbff:10e47c286bede63c2b1feafcc88d9562',
+        'Referer': 'https://fal.media',
+      },
+    });
 
-        });
-        let mimeType = response.headers['content-type'];
-        console.log(`Initial MIME type of the image: ${mimeType}`);
+    let mimeType = response.headers['content-type'];
+    console.log(`Initial MIME type: ${mimeType}`);
 
-        // Step 2: Download the image
-        const imageResponse = await axios({
-            url: imageUrl,
-            responseType: 'arraybuffer', // Get raw image data as buffer
-            headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
-    'Authorization': 'Key 7904caba-be1b-4247-99e1-067c34eafbff:10e47c286bede63c2b1feafcc88d9562',
-    'Referer': 'https://fal.media', // If Referer restrictions apply
-}
-        });
+    // Step 2: Download the image
+    const imageResponse = await axios({
+      url: imageUrl,
+      responseType: 'arraybuffer', // Raw image data
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
+        'Authorization': 'Key 7904caba-be1b-4247-99e1-067c34eafbff:10e47c286bede63c2b1feafcc88d9562',
+        'Referer': 'https://fal.media',
+      },
+    });
 
-        let buffer = imageResponse.data;
-        let finalOutputPath = outputFilePath;
+    let buffer = imageResponse.data;
+    let finalOutputPath = outputFilePath;
 
-        // Step 3: Convert if necessary or inspect the image if MIME type is unsupported
-        if (mimeType === 'image/webp') {
-            // Convert webp to jpg
-            finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
-            buffer = await sharp(buffer).toFormat('jpg').toBuffer();
-            const { info } = await sharp(buffer).metadata();
-            console.log(`Converted image format: ${info.format}`); // Should log 'jpeg'
-            console.log('Converted webp image to jpg.');
-        } else if (mimeType === 'application/octet-stream') {
-            // Attempt to infer MIME type using sharp
-            const metadata = await sharp(buffer).metadata();
-            console.log(`Inferred image format using sharp: ${metadata.format}`);
+    // Step 3: Process and convert the image if necessary
+    const metadata = await sharp(buffer).metadata();
+    console.log(`Detected image format: ${metadata.format}`);
 
-            if (['jpeg', 'png'].includes(metadata.format)) {
-                // Convert and proceed
-                finalOutputPath = outputFilePath.replace('.jpg', `_${metadata.format}.jpg`);
-                buffer = await sharp(buffer).toFormat('jpg').toBuffer();
-            } else {
-                throw new Error(`Unsupported inferred MIME type: ${metadata.format}`);
-            }
-        } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
-            throw new Error(`Unsupported MIME type: ${mimeType}`);
-        }
-
-        // Step 4: Save the image
-        fs.writeFileSync(finalOutputPath, buffer);
-        console.log(`Image successfully written to ${finalOutputPath}`);
-        return finalOutputPath;
-
-    } catch (error) {
-        console.error(`Failed to download or convert image: ${error.message}`);
-        throw error;
+    if (['jpeg', 'png'].includes(metadata.format)) {
+      console.log('Image format supported. No conversion required.');
+    } else {
+      // Convert unsupported formats to JPEG
+      finalOutputPath = outputFilePath.replace(/(\.\w+)$/, '_converted.jpg');
+      buffer = await sharp(buffer).toFormat('jpeg').toBuffer();
+      console.log('Converted image to JPEG format.');
     }
+
+    // Step 4: Save the image
+    fs.writeFileSync(finalOutputPath, buffer);
+    console.log(`Image successfully written to ${finalOutputPath}`);
+    return finalOutputPath;
+  } catch (error) {
+    console.error(`Failed to download or convert image: ${error.message}`);
+    throw error;
+  }
 }
 
-
+module.exports = downloadAndConvertImage;
 
 
 // Function to cleanup files
