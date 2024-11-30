@@ -107,37 +107,60 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 };
 
 
-const downloadAndConvertImage = async (imageUrl, outputPath, retries = 3) => {
-    console.log("Downloading image from:", imageUrl);
+// Function to download and convert image if needed
+async function downloadAndConvertImage(imageUrl, outputFilePath) {
+    //const API_KEY = process.env.FAL_API_KEY; // Load API key from env
+    const defaultHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Authorization': `Key 42aeb342-5317-4584-8b55-bf91baf65c66:3726449da5c4d6fc249239c6c141a99c`,
+        'Referer': 'https://fal.media',
+    };
+
     try {
-        const response = await axios.get(imageUrl, {
-            headers: {
-                'Accept': 'image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
-            },
-            responseType: 'stream',
+        // Step 1: Get MIME type
+        const response = await axios.head(imageUrl, { headers: defaultHeaders });
+        const mimeType = response.headers['content-type'];
+        console.log(`Initial MIME type of the image: ${mimeType}`);
+
+        // Step 2: Download the image
+        const imageResponse = await axios({
+            url: imageUrl,
+            responseType: 'arraybuffer',
+            headers: defaultHeaders,
         });
-        console.log("Step 1: Image download initiated");
-        const writer = fs.createWriteStream(outputPath);
-        response.data.pipe(writer);
-        await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
-        });
-        console.log("Step 2: Image saved to", outputPath);
-    } catch (error) {
-        if (retries > 0) {
-            console.log(`Retrying download... Attempts left: ${retries}`);
-            await downloadAndConvertImage(imageUrl, outputPath, retries - 1);
-        } else {
-            console.error("Error downloading image after multiple attempts:", error.message);
+
+        let buffer = imageResponse.data;
+        let finalOutputPath = outputFilePath;
+
+        // Step 3: Convert if necessary
+        if (mimeType === 'image/webp') {
+            console.log('Converting webp to jpg...');
+            finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
+            buffer = await sharp(buffer).toFormat('jpg').toBuffer();
+        } else if (mimeType === 'application/octet-stream') {
+            const metadata = await sharp(buffer).metadata();
+            console.log(`Inferred image format using sharp: ${metadata.format}`);
+            if (!metadata.format) throw new Error("Failed to infer image format from buffer.");
+            if (['jpeg', 'png'].includes(metadata.format)) {
+                console.log(`Converting ${metadata.format} to jpg...`);
+                finalOutputPath = outputFilePath.replace('.jpg', `_converted.${metadata.format}`);
+                buffer = await sharp(buffer).toFormat('jpg').toBuffer();
+            } else {
+                throw new Error(`Unsupported inferred MIME type: ${metadata.format}`);
+            }
+        } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
+            throw new Error(`Unsupported MIME type: ${mimeType}`);
         }
+
+        // Step 4: Save the image
+        fs.writeFileSync(finalOutputPath, buffer);
+        console.log(`Image successfully written to ${finalOutputPath}`);
+        return finalOutputPath;
+    } catch (error) {
+        console.error(`Failed to download or convert image: ${error.message}`);
+        throw error;
     }
-};
+}
 
 
 
