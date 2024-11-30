@@ -109,31 +109,39 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 
 async function downloadAndConvertImage(imageUrl, outputFilePath) {
     try {
-        console.log(`Attempting to download image from: ${imageUrl}`);
+        console.log(`[START] downloadAndConvertImage`);
+        console.log(`[INFO] Input image URL: ${imageUrl}`);
+        console.log(`[INFO] Output file path: ${outputFilePath}`);
         
-        // Step 1: Use Puppeteer to open the page and get the image URL
+        // Step 1: Launch Puppeteer and extract image source URL
+        console.log(`[STEP 1] Launching Puppeteer browser...`);
         const browser = await puppeteer.launch({ headless: true });
+        console.log(`[INFO] Puppeteer browser launched.`);
+
         const page = await browser.newPage();
-
-        // Go to the image URL, this may be a URL where an image is rendered dynamically
+        console.log(`[INFO] Navigating to image URL: ${imageUrl}`);
         await page.goto(imageUrl, { waitUntil: 'networkidle2' });
+        console.log(`[INFO] Page loaded successfully.`);
 
-        // Extract the image URL from the page (assuming the image is the first <img> tag)
+        console.log(`[INFO] Extracting image source URL...`);
         const imageSrc = await page.evaluate(() => {
             const img = document.querySelector('img');
             return img ? img.src : null;
         });
 
-        // Close Puppeteer browser after scraping the image URL
+        console.log(`[INFO] Closing Puppeteer browser...`);
         await browser.close();
+        console.log(`[INFO] Puppeteer browser closed.`);
 
         if (!imageSrc) {
+            console.error(`[ERROR] Image not found at ${imageUrl}`);
             throw new Error(`Image not found at ${imageUrl}`);
         }
 
-        console.log(`Image source URL extracted: ${imageSrc}`);
+        console.log(`[SUCCESS] Image source URL extracted: ${imageSrc}`);
 
-        // Step 2: Use Axios to download the image from the extracted source URL
+        // Step 2: Download the image using Axios
+        console.log(`[STEP 2] Downloading image from source URL: ${imageSrc}`);
         const response = await axios.get(imageSrc, {
             responseType: 'arraybuffer',
             headers: {
@@ -143,36 +151,49 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
             }
         });
 
+        console.log(`[INFO] Image downloaded successfully.`);
         const mimeType = response.headers['content-type'];
-        console.log(`MIME type: ${mimeType}`);
+        console.log(`[INFO] Detected MIME type: ${mimeType}`);
+
         let buffer = response.data;
         let finalOutputPath = outputFilePath;
 
         // Step 3: Check MIME type and convert if necessary
+        console.log(`[STEP 3] Checking MIME type and performing conversion if required...`);
         if (mimeType === 'image/webp') {
-            console.log('Converting WebP image to JPEG...');
+            console.log(`[INFO] Detected WebP image. Converting to JPEG...`);
             finalOutputPath = outputFilePath.replace(/(\.[a-z]+)$/i, '_converted.jpg');
             buffer = await sharp(buffer).toFormat('jpeg').toBuffer();
+            console.log(`[INFO] WebP image converted to JPEG.`);
         } else if (mimeType === 'image/png') {
-            console.log('Converting PNG image to JPEG...');
+            console.log(`[INFO] Detected PNG image. Converting to JPEG...`);
             finalOutputPath = outputFilePath.replace(/(\.[a-z]+)$/i, '_converted.jpg');
             buffer = await sharp(buffer).toFormat('jpeg').toBuffer();
+            console.log(`[INFO] PNG image converted to JPEG.`);
         } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
+            console.error(`[ERROR] Unsupported MIME type: ${mimeType}`);
             throw new Error(`Unsupported MIME type: ${mimeType}`);
+        } else {
+            console.log(`[INFO] Image is already in a supported format. No conversion needed.`);
         }
 
         // Step 4: Save the image locally
+        console.log(`[STEP 4] Saving image locally at: ${finalOutputPath}`);
         fs.writeFileSync(finalOutputPath, buffer);
-        console.log(`Image successfully saved to: ${finalOutputPath}`);
+        console.log(`[SUCCESS] Image successfully saved to: ${finalOutputPath}`);
+        
+        console.log(`[END] downloadAndConvertImage`);
         return finalOutputPath;
 
     } catch (error) {
-        console.error(`Error downloading or converting image: ${error.message}`);
+        console.error(`[ERROR] An error occurred: ${error.message}`);
         throw error;
     }
 }
 
-module.exports = downloadAndConvertImage;
+
+//module.exports = downloadAndConvertImage;
+
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
     for (const filePath of filePaths) {
