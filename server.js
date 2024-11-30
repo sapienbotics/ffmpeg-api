@@ -107,10 +107,20 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 };
 
 
-const downloadAndConvertImage = async (imageUrl, outputPath) => {
+const downloadAndConvertImage = async (imageUrl, outputPath, retries = 3) => {
     console.log("Downloading image from:", imageUrl);
     try {
-        const response = await axios.get(imageUrl, { responseType: 'stream' });
+        const response = await axios.get(imageUrl, {
+            headers: {
+                'Accept': 'image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
+            },
+            responseType: 'stream',
+        });
         console.log("Step 1: Image download initiated");
         const writer = fs.createWriteStream(outputPath);
         response.data.pipe(writer);
@@ -120,9 +130,15 @@ const downloadAndConvertImage = async (imageUrl, outputPath) => {
         });
         console.log("Step 2: Image saved to", outputPath);
     } catch (error) {
-        console.error("Error downloading image:", error.message);
+        if (retries > 0) {
+            console.log(`Retrying download... Attempts left: ${retries}`);
+            await downloadAndConvertImage(imageUrl, outputPath, retries - 1);
+        } else {
+            console.error("Error downloading image after multiple attempts:", error.message);
+        }
     }
 };
+
 
 
 // Function to cleanup files
