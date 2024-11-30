@@ -107,92 +107,23 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 };
 
 
-async function downloadAndConvertImage(imageUrl, outputFilePath) {
+const downloadAndConvertImage = async (imageUrl, outputPath) => {
+    console.log("Downloading image from:", imageUrl);
     try {
-        console.log(`[START] downloadAndConvertImage`);
-        console.log(`[INFO] Input image URL: ${imageUrl}`);
-        console.log(`[INFO] Output file path: ${outputFilePath}`);
-        
-        // Step 1: Launch Puppeteer and extract image source URL
-        console.log(`[STEP 1] Launching Puppeteer browser...`);
-        const browser = await puppeteer.launch({ headless: true });
-        console.log(`[INFO] Puppeteer browser launched.`);
-
-        const page = await browser.newPage();
-        console.log(`[INFO] Navigating to image URL: ${imageUrl}`);
-        await page.goto(imageUrl, { waitUntil: 'networkidle2' });
-        console.log(`[INFO] Page loaded successfully.`);
-
-        console.log(`[INFO] Extracting image source URL...`);
-        const imageSrc = await page.evaluate(() => {
-            const img = document.querySelector('img');
-            return img ? img.src : null;
+        const response = await axios.get(imageUrl, { responseType: 'stream' });
+        console.log("Step 1: Image download initiated");
+        const writer = fs.createWriteStream(outputPath);
+        response.data.pipe(writer);
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
         });
-
-        console.log(`[INFO] Closing Puppeteer browser...`);
-        await browser.close();
-        console.log(`[INFO] Puppeteer browser closed.`);
-
-        if (!imageSrc) {
-            console.error(`[ERROR] Image not found at ${imageUrl}`);
-            throw new Error(`Image not found at ${imageUrl}`);
-        }
-
-        console.log(`[SUCCESS] Image source URL extracted: ${imageSrc}`);
-
-        // Step 2: Download the image using Axios
-        console.log(`[STEP 2] Downloading image from source URL: ${imageSrc}`);
-        const response = await axios.get(imageSrc, {
-            responseType: 'arraybuffer',
-            headers: {
-                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'accept-language': 'en-US,en;q=0.9,en-IN;q=0.8',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        });
-
-        console.log(`[INFO] Image downloaded successfully.`);
-        const mimeType = response.headers['content-type'];
-        console.log(`[INFO] Detected MIME type: ${mimeType}`);
-
-        let buffer = response.data;
-        let finalOutputPath = outputFilePath;
-
-        // Step 3: Check MIME type and convert if necessary
-        console.log(`[STEP 3] Checking MIME type and performing conversion if required...`);
-        if (mimeType === 'image/webp') {
-            console.log(`[INFO] Detected WebP image. Converting to JPEG...`);
-            finalOutputPath = outputFilePath.replace(/(\.[a-z]+)$/i, '_converted.jpg');
-            buffer = await sharp(buffer).toFormat('jpeg').toBuffer();
-            console.log(`[INFO] WebP image converted to JPEG.`);
-        } else if (mimeType === 'image/png') {
-            console.log(`[INFO] Detected PNG image. Converting to JPEG...`);
-            finalOutputPath = outputFilePath.replace(/(\.[a-z]+)$/i, '_converted.jpg');
-            buffer = await sharp(buffer).toFormat('jpeg').toBuffer();
-            console.log(`[INFO] PNG image converted to JPEG.`);
-        } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
-            console.error(`[ERROR] Unsupported MIME type: ${mimeType}`);
-            throw new Error(`Unsupported MIME type: ${mimeType}`);
-        } else {
-            console.log(`[INFO] Image is already in a supported format. No conversion needed.`);
-        }
-
-        // Step 4: Save the image locally
-        console.log(`[STEP 4] Saving image locally at: ${finalOutputPath}`);
-        fs.writeFileSync(finalOutputPath, buffer);
-        console.log(`[SUCCESS] Image successfully saved to: ${finalOutputPath}`);
-        
-        console.log(`[END] downloadAndConvertImage`);
-        return finalOutputPath;
-
+        console.log("Step 2: Image saved to", outputPath);
     } catch (error) {
-        console.error(`[ERROR] An error occurred: ${error.message}`);
-        throw error;
+        console.error("Error downloading image:", error.message);
     }
-}
+};
 
-
-//module.exports = downloadAndConvertImage;
 
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
