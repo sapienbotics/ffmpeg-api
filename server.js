@@ -108,56 +108,36 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 
 
 // Function to download and convert image if needed
-async function downloadAndConvertImage(imageUrl, outputFilePath) {
-    //const API_KEY = process.env.FAL_API_KEY; // Load API key from env
-    const defaultHeaders = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Authorization': `Key 42aeb342-5317-4584-8b55-bf91baf65c66:3726449da5c4d6fc249239c6c141a99c`,
-        'Referer': 'https://fal.media',
+async function downloadImage(imageUrl, outputFilePath) {
+    const headers = {
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'accept-language': 'en-US,en;q=0.9,en-IN;q=0.8',
+        'priority': 'u=0, i',
+        'sec-ch-ua': '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'sec-fetch-user': '?1',
+        'upgrade-insecure-requests': '1',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
     };
 
     try {
-        // Step 1: Get MIME type
-        const response = await axios.head(imageUrl, { headers: defaultHeaders });
-        const mimeType = response.headers['content-type'];
-        console.log(`Initial MIME type of the image: ${mimeType}`);
-
-        // Step 2: Download the image
-        const imageResponse = await axios({
+        // Step 1: Download the image
+        const response = await axios({
             url: imageUrl,
-            responseType: 'arraybuffer',
-            headers: defaultHeaders,
+            method: 'GET',
+            responseType: 'arraybuffer', // Get image as buffer
+            headers: headers
         });
 
-        let buffer = imageResponse.data;
-        let finalOutputPath = outputFilePath;
-
-        // Step 3: Convert if necessary
-        if (mimeType === 'image/webp') {
-            console.log('Converting webp to jpg...');
-            finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
-            buffer = await sharp(buffer).toFormat('jpg').toBuffer();
-        } else if (mimeType === 'application/octet-stream') {
-            const metadata = await sharp(buffer).metadata();
-            console.log(`Inferred image format using sharp: ${metadata.format}`);
-            if (!metadata.format) throw new Error("Failed to infer image format from buffer.");
-            if (['jpeg', 'png'].includes(metadata.format)) {
-                console.log(`Converting ${metadata.format} to jpg...`);
-                finalOutputPath = outputFilePath.replace('.jpg', `_converted.${metadata.format}`);
-                buffer = await sharp(buffer).toFormat('jpg').toBuffer();
-            } else {
-                throw new Error(`Unsupported inferred MIME type: ${metadata.format}`);
-            }
-        } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
-            throw new Error(`Unsupported MIME type: ${mimeType}`);
-        }
-
-        // Step 4: Save the image
-        fs.writeFileSync(finalOutputPath, buffer);
-        console.log(`Image successfully written to ${finalOutputPath}`);
-        return finalOutputPath;
+        // Step 2: Save the image to a file
+        fs.writeFileSync(outputFilePath, response.data);
+        console.log(`Image successfully downloaded to ${outputFilePath}`);
     } catch (error) {
-        console.error(`Failed to download or convert image: ${error.message}`);
+        console.error(`Failed to download the image: ${error.message}`);
         throw error;
     }
 }
