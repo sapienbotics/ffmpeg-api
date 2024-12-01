@@ -108,7 +108,7 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 
 
 // Function to download and convert image if needed
-async function downloadImage(imageUrl, outputFilePath) {
+async function downloadAndConvertImage(imageUrl, outputFilePath) {
     const headers = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'accept-language': 'en-US,en;q=0.9,en-IN;q=0.8',
@@ -117,23 +117,56 @@ async function downloadImage(imageUrl, outputFilePath) {
     };
 
     try {
-        // Step 1: Download the image as a binary buffer
-        const response = await axios({
+        // Step 1: Get MIME type
+        const headResponse = await axios.head(imageUrl, { headers });
+        const mimeType = headResponse.headers['content-type'];
+        console.log(`Initial MIME type of the image: ${mimeType}`);
+
+        // Step 2: Download the image
+        const imageResponse = await axios({
             url: imageUrl,
             method: 'GET',
             responseType: 'arraybuffer', // Important for binary files
-            headers: headers
+            headers
         });
 
-        // Step 2: Save the image buffer to a file
-        fs.writeFileSync(outputFilePath, response.data);
-        console.log(`Image successfully downloaded to ${outputFilePath}`);
+        let buffer = imageResponse.data;
+        let finalOutputPath = outputFilePath;
+
+        // Step 3: Convert if necessary or inspect the image if MIME type is unsupported
+        if (mimeType === 'image/webp') {
+            // Convert webp to jpg
+            finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
+            buffer = await sharp(buffer).toFormat('jpg').toBuffer();
+            const { format } = await sharp(buffer).metadata();
+            console.log(`Converted image format: ${format}`); // Should log 'jpeg'
+        } else if (mimeType === 'application/octet-stream') {
+            // Attempt to infer MIME type using sharp
+            const metadata = await sharp(buffer).metadata();
+            console.log(`Inferred image format using sharp: ${metadata.format}`);
+
+            if (['jpeg', 'png'].includes(metadata.format)) {
+                // Convert and proceed
+                finalOutputPath = outputFilePath.replace('.jpg', `_${metadata.format}.jpg`);
+                buffer = await sharp(buffer).toFormat('jpg').toBuffer();
+            } else {
+                throw new Error(`Unsupported inferred MIME type: ${metadata.format}`);
+            }
+        } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
+            throw new Error(`Unsupported MIME type: ${mimeType}`);
+        }
+
+        // Step 4: Save the image
+        fs.writeFileSync(finalOutputPath, buffer);
+        console.log(`Image successfully written to ${finalOutputPath}`);
+        return finalOutputPath;
     } catch (error) {
         if (error.response) {
             console.error(`HTTP ${error.response.status}: ${error.response.statusText}`);
         } else {
             console.error(`Error: ${error.message}`);
         }
+        throw error;
     }
 }
 
@@ -226,85 +259,71 @@ const extractDominantColor = async (imagePath) => {
 };
 
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
+    const outputDir = path.resolve(__dirname, 'output'); // Define output directory
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    console.log(`Starting conversion for image: ${imageUrl}`);
+    console.log(`[START] Conversion process started for image: ${imageUrl}`);
 
     return new Promise(async (resolve, reject) => {
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
-            // Step 1: Download the image (and convert if necessary)
+            // Step 1: Download and convert the image
+            console.log(`[STEP 1] Attempting to download and convert image: ${imageUrl}`);
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
+            console.log(`[STEP 1 SUCCESS] Image downloaded and converted successfully: ${finalImagePath}`);
 
-            // Step 2: Extract the dominant color for padding
+            // Step 2: Extract the dominant color
+            console.log(`[STEP 2] Extracting dominant color from image: ${finalImagePath}`);
             const dominantColor = await extractDominantColor(finalImagePath);
+            console.log(`[STEP 2 SUCCESS] Dominant color extracted: ${dominantColor}`);
 
-            // Step 3: Parse the resolution (e.g., "1920:1080")
+            // Step 3: Parse resolution and validate
+            console.log(`[STEP 3] Parsing resolution: ${resolution}`);
             const [width, height] = resolution.split(':').map(Number);
+            if (isNaN(width) || isNaN(height)) {
+                throw new Error(`Invalid resolution provided: ${resolution}`);
+            }
+            console.log(`[STEP 3 SUCCESS] Resolution parsed: Width=${width}, Height=${height}`);
 
-            // Step 4: Define possible effects with improved parameters
-const effects = [
-    // Stationary Effect (Centered with padding)
-   `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Slow Zoom In Effect (Stops at 1.2x zoom)
-  `zoompan=z='if(lte(zoom,1.2),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-    // Slow Zoom Out Effect (Stops at 1x zoom)
-   `zoompan=z='if(eq(on,0),1.2,if(gte(zoom,1),zoom-0.005,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}, scale=${width} ${height}:force_original_aspect_ratio=decrease, pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Fade-in and Fade-out Effect (Smooth fade transition)
-   `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Ken Burns Effect (Zoom with subtle pan left movement)
-   `zoompan=z='if(gte(on,1),zoom+0.005,zoom)':x='if(gte(on,1),x+3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width} ${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-// Ken Burns Effect (Zoom with subtle pan right movement)
-   `zoompan=z='if(gte(on,1),zoom+0.005,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width} ${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-
-// Bounce-in-effect
-//`zoompan=z='if(lte(on,1),1.05,1.05 + 0.03 * cos(on * 0.2))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},
-   // scale=${width}:${height}:force_original_aspect_ratio=decrease,
-    //pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-//diagonal zoom in/out effect
-`zoompan=z='if(lte(zoom,1.2),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-
-];
-
-
-
-            // Step 5: Apply multiple effects with proper proportions
+            // Step 4: Select and log the random effect
+            console.log(`[STEP 4] Selecting a random effect for the video.`);
+            const effects = [
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            ];
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`);
+            console.log(`[STEP 4 SUCCESS] Selected effect: ${randomEffect}`);
 
-            // Step 6: Apply the selected effect to the image and convert to video
+            // Step 5: Apply the effect and convert image to video
+            console.log(`[STEP 5] Starting video creation with the selected effect.`);
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', randomEffect) // Apply selected effect
-                .outputOptions('-r', '30') // Frame rate
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
-                .outputOptions('-pix_fmt', 'yuv420p') // Ensure compatibility
-                .outputOptions('-threads', '6') // Speed up with multiple threads
+                .outputOptions('-vf', randomEffect)
+                .outputOptions('-r', '30')
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+                .outputOptions('-pix_fmt', 'yuv420p')
+                .outputOptions('-threads', '6')
+                .on('start', (commandLine) => {
+                    console.log(`[FFMPEG] Command: ${commandLine}`);
+                })
                 .on('end', () => {
-                    console.log('Image converted to video with effect.');
+                    console.log(`[SUCCESS] Video created successfully: ${outputFilePath}`);
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
-                    console.error(`Error converting image to video: ${err.message}`);
+                    console.error(`[FFMPEG ERROR] Error during video creation: ${err.message}`);
                     reject(err);
                 })
                 .save(outputFilePath);
 
         } catch (error) {
-            console.error(`Image download or conversion failed: ${error.message}`);
+            console.error(`[ERROR] Conversion process failed: ${error.message}`);
             reject(error);
         }
     });
 }
-
 
 
 // Function to get audio duration using ffmpeg
