@@ -108,19 +108,19 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 
 
 // Function to download and convert image if needed
+// Updated downloadAndConvertImage function
 async function downloadAndConvertImage(imageUrl, outputFilePath) {
     try {
-        // Step 1: Get MIME type
+        // Step 1: Get MIME type of the image
         const response = await axios.head(imageUrl);
         let mimeType = response.headers['content-type'];
-        console.log(`Initial MIME type of the image: ${mimeType}`);
+        console.log(`[INFO] Initial MIME type of the image: ${mimeType}`);
 
         // Step 2: Download the image
         const imageResponse = await axios({
             url: imageUrl,
             responseType: 'arraybuffer' // Get raw image data as buffer
         });
-
         let buffer = imageResponse.data;
         let finalOutputPath = outputFilePath;
 
@@ -130,15 +130,14 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
             finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
             buffer = await sharp(buffer).toFormat('jpg').toBuffer();
             const { info } = await sharp(buffer).metadata();
-            console.log(`Converted image format: ${info.format}`); // Should log 'jpeg'
-            console.log('Converted webp image to jpg.');
+            console.log(`[INFO] Converted image format: ${info.format}`); // Should log 'jpeg'
         } else if (mimeType === 'application/octet-stream') {
             // Attempt to infer MIME type using sharp
             const metadata = await sharp(buffer).metadata();
-            console.log(`Inferred image format using sharp: ${metadata.format}`);
+            console.log(`[INFO] Inferred image format using sharp: ${metadata.format}`);
 
             if (['jpeg', 'png'].includes(metadata.format)) {
-                // Convert and proceed
+                // Convert to jpg if necessary
                 finalOutputPath = outputFilePath.replace('.jpg', `_${metadata.format}.jpg`);
                 buffer = await sharp(buffer).toFormat('jpg').toBuffer();
             } else {
@@ -150,16 +149,13 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
 
         // Step 4: Save the image
         fs.writeFileSync(finalOutputPath, buffer);
-        console.log(`Image successfully written to ${finalOutputPath}`);
+        console.log(`[INFO] Image successfully written to: ${finalOutputPath}`);
         return finalOutputPath;
-
     } catch (error) {
-        console.error(`Failed to download or convert image: ${error.message}`);
+        console.error(`[ERROR] Failed to download or convert image: ${error.message}`);
         throw error;
     }
 }
-
-
 
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
@@ -247,6 +243,7 @@ const extractDominantColor = async (imagePath) => {
 };
 
 
+// Updated convertImageToVideo function
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`[INFO] Starting conversion for image: ${imageUrl}`);
@@ -277,13 +274,9 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 4: Select Effect
             console.log(`[INFO] Step 4: Selecting random effect.`);
             const effects = [
-                // Stationary Effect
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-                // Zoom In Effect
                 `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-                // Zoom Out Effect
                 `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-                // Additional Effects...
             ];
 
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
@@ -314,7 +307,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 
 // Function to get audio duration using ffmpeg
