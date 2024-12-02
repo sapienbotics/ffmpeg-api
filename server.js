@@ -476,51 +476,56 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     console.log(`[INFO] Starting media sequence processing with ${mediaSequence.length} items.`);
 
     async function processMedia(media, newDuration) {
-    const { url, duration } = media;
+        const { url, duration } = media;
 
-    console.log(`[DEBUG] Processing media: URL=${url}, Duration=${duration}`);
-    if (failedMediaUrls.has(url)) {
-        console.log(`[WARN] Skipping already failed media: ${url}`);
-        return true;
-    }
+        console.log(`[DEBUG] Processing media: URL=${url}, Duration=${duration}`);
+        if (failedMediaUrls.has(url)) {
+            console.log(`[WARN] Skipping already failed media: ${url}`);
+            return true;
+        }
 
-    let failed = false;
-    try {
-        const isValid = await validateMedia(url);
-        if (!isValid) {
-            console.error(`[ERROR] Unsupported media: ${url}`);
-            failed = true;
-        } else if (['.mp4', '.mov', '.avi', '.mkv'].includes(path.extname(url).toLowerCase())) {
-            console.log(`[INFO] Media Type: Video`);
-            // Video processing logic...
-        } else if (['.jpg', '.jpeg', '.png'].includes(path.extname(url).toLowerCase())) {
-            console.log(`[INFO] Media Type: Image`);
-            try {
-                const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
-                console.log(`[INFO] Image converted to video: ${videoPath}`);
-                videoPaths.push(videoPath);
-                totalValidDuration += newDuration || duration;
-                validMediaCount++;
-            } catch (err) {
-                console.error(`[ERROR] Image to video conversion failed for image: ${url} - ${err.message}`);
+        let failed = false;
+        try {
+            const isValid = await validateMedia(url);
+            console.log(`[DEBUG] Media validation result for ${url}: ${isValid}`);
+
+            if (!isValid) {
+                console.error(`[ERROR] Unsupported media: ${url}`);
+                failed = true;
+            } else if (['.mp4', '.mov', '.avi', '.mkv'].includes(path.extname(url).toLowerCase())) {
+                console.log(`[INFO] Media Type: Video`);
+                // Video processing logic...
+            } else if (['.jpg', '.jpeg', '.png'].includes(path.extname(url).toLowerCase())) {
+                console.log(`[INFO] Media Type: Image`);
+                console.log(`[DEBUG] Invoking convertImageToVideo for image: ${url}`);
+                try {
+                    const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
+                    console.log(`[INFO] Image converted to video successfully: ${videoPath}`);
+                    videoPaths.push(videoPath);
+                    totalValidDuration += newDuration || duration;
+                    validMediaCount++;
+                } catch (err) {
+                    console.error(`[ERROR] Image to video conversion failed for image: ${url} - ${err.message}`);
+                    failed = true;
+                }
+            } else {
+                console.error(`[ERROR] Unhandled media type: ${path.extname(url).toLowerCase()}`);
                 failed = true;
             }
+        } catch (error) {
+            console.error(`[ERROR] Unexpected error processing media (${url}): ${error.message}`);
+            failed = true;
         }
-    } catch (error) {
-        console.error(`[ERROR] Unexpected error processing media (${url}): ${error.message}`);
-        failed = true;
+
+        if (!failed) {
+            validMedia.push(media);
+        } else {
+            console.log(`[WARN] Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
+            failedMediaUrls.add(url);
+        }
+
+        return failed;
     }
-
-    if (!failed) {
-        validMedia.push(media);
-    } else {
-        console.log(`[WARN] Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
-        failedMediaUrls.add(url);
-    }
-
-    return failed;
-}
-
 
     // Initial media processing
     for (const [index, media] of mediaSequence.entries()) {
