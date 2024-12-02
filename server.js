@@ -107,7 +107,6 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 };
 
 
-// Function to download and convert image if needed
 // Updated downloadAndConvertImage function
 async function downloadAndConvertImage(imageUrl, outputFilePath) {
     try {
@@ -307,7 +306,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 // Function to get audio duration using ffmpeg
 const getAudioDuration = async (audioPath) => {
