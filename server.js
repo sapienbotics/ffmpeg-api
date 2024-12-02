@@ -255,23 +255,61 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
+            // Step 1: Download and Convert Image
             console.log(`[INFO] Step 1: Downloading and converting image.`);
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
             console.log(`[DEBUG] Image downloaded and converted. Path: ${finalImagePath}`);
 
+            // Step 2: Extract Dominant Color
             console.log(`[INFO] Step 2: Extracting dominant color.`);
             const dominantColor = await extractDominantColor(finalImagePath);
             console.log(`[DEBUG] Dominant color: ${dominantColor}`);
 
+            // Step 3: Parse resolution
             console.log(`[INFO] Step 3: Parsing resolution.`);
             const [width, height] = resolution.split(':').map(Number);
+            if (isNaN(width) || isNaN(height)) {
+                throw new Error(`[ERROR] Invalid resolution format: ${resolution}`);
+            }
             console.log(`[DEBUG] Parsed resolution - Width: ${width}, Height: ${height}`);
 
+            // Step 4: Select Effect
             console.log(`[INFO] Step 4: Selecting random effect.`);
-            const effects = [/* Provide your list of effects here */];
+            const effects = [
+                // Stationary Effect
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+
+                // Zoom In Effect
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Zoom Out Effect
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Ken Burns Effect
+                `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Pan Left
+                `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Pan Right
+                `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+
+                // Color Saturation Shift
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.8`,
+
+                // Slide In Transition
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
+
+                // Slide Out Transition
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
+
+                // Crossfade Transition
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+            ];
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
             console.log(`[DEBUG] Selected effect: ${randomEffect}`);
 
+            // Step 5: Apply Effect and Convert to Video
             console.log(`[INFO] Step 5: Applying effect and converting to video.`);
             ffmpeg()
                 .input(finalImagePath)
@@ -479,55 +517,63 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         console.log(`[DEBUG] Processing media: URL=${url}, Duration=${duration}`);
         if (failedMediaUrls.has(url)) {
             console.log(`[WARN] Skipping already failed media: ${url}`);
-            return true;
+            return true; // Skip processing if media has already failed
         }
 
         let failed = false;
         try {
+            // Validate media (generic validation)
             const isValid = await validateMedia(url);
             if (!isValid) {
                 console.error(`[ERROR] Unsupported media: ${url}`);
-                failed = true;
-            } else if (['.mp4', '.mov', '.avi', '.mkv'].includes(path.extname(url).toLowerCase())) {
-                console.log(`[INFO] Media Type: Video`);
-                const localVideoPath = path.join(outputDir, path.basename(url));
-                try {
-                    await downloadFile(url, localVideoPath);
-                    console.log(`[INFO] Video downloaded successfully: ${localVideoPath}`);
-                } catch (err) {
-                    console.error(`[ERROR] Download failed for video: ${url} - ${err.message}`);
-                    failed = true;
-                }
-
-                if (!failed) {
+                failed = true; // Mark as failed
+            } else {
+                // Process video type media
+                if (['.mp4', '.mov', '.avi', '.mkv'].includes(path.extname(url).toLowerCase())) {
+                    console.log(`[INFO] Media Type: Video`);
+                    const localVideoPath = path.join(outputDir, path.basename(url));
                     try {
-                        const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
-                        const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration || duration);
-                        videoPaths.push(trimmedVideoPath);
+                        await downloadFile(url, localVideoPath);
+                        console.log(`[INFO] Video downloaded successfully: ${localVideoPath}`);
+                    } catch (err) {
+                        console.error(`[ERROR] Download failed for video: ${url} - ${err.message}`);
+                        failed = true; // Mark as failed
+                    }
+
+                    if (!failed) {
+                        try {
+                            // Convert and trim video if necessary
+                            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
+                            const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration || duration);
+                            videoPaths.push(trimmedVideoPath);
+                            totalValidDuration += newDuration || duration;
+                            validMediaCount++;
+                        } catch (err) {
+                            console.error(`[ERROR] Conversion/Trimming failed for video: ${url} - ${err.message}`);
+                            failed = true; // Mark as failed
+                        }
+                    }
+                } 
+                // Process image type media
+                else if (['.jpg', '.jpeg', '.png'].includes(path.extname(url).toLowerCase())) {
+                    console.log(`[INFO] Media Type: Image`);
+                    try {
+                        const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
+                        videoPaths.push(videoPath);
                         totalValidDuration += newDuration || duration;
                         validMediaCount++;
                     } catch (err) {
-                        console.error(`[ERROR] Conversion/Trimming failed for video: ${url} - ${err.message}`);
-                        failed = true;
+                        console.error(`[ERROR] Image to video conversion failed for image: ${url} - ${err.message}`);
+                        failed = true; // Mark as failed
                     }
-                }
-            } else if (['.jpg', '.jpeg', '.png'].includes(path.extname(url).toLowerCase())) {
-                console.log(`[INFO] Media Type: Image`);
-                try {
-                    const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
-                    videoPaths.push(videoPath);
-                    totalValidDuration += newDuration || duration;
-                    validMediaCount++;
-                } catch (err) {
-                    console.error(`[ERROR] Image to video conversion failed for image: ${url} - ${err.message}`);
-                    failed = true;
                 }
             }
         } catch (error) {
             console.error(`[ERROR] Unexpected error processing media (${url}): ${error.message}`);
-            failed = true;
+            failed = true; // Mark as failed
         }
 
+        // Add valid media to list, or log the failure
         if (!failed) {
             validMedia.push(media);
         } else {
@@ -548,17 +594,18 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         }
     }
 
-    // Redistribution of duration
+    // Redistribution of duration (only if there are failed media)
     if (validMediaCount > 0 && totalFailedDuration > 0) {
         console.log(`[INFO] Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
         const additionalTimePerMedia = totalFailedDuration / validMediaCount;
 
+        // Adjust duration for valid media
         validMedia.forEach((media) => {
             const originalIndex = mediaSequence.indexOf(media);
             adjustedDurations[originalIndex] += additionalTimePerMedia;
         });
 
-        // Reprocessing valid media with updated durations
+        // Reprocess valid media with adjusted durations
         const reprocessValidMedia = [...validMedia];
         validMedia = [];
         videoPaths = [];
@@ -586,7 +633,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             return mergeResult.outputFileUrl;
         } catch (error) {
             console.error(`[ERROR] Error merging videos: ${error.message}`);
-            throw error;
+            throw error; // Throw error if merge fails
         }
     } else {
         console.error(`[ERROR] No valid media found for merging.`);
