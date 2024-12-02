@@ -246,6 +246,7 @@ const extractDominantColor = async (imagePath) => {
     return palette.Vibrant.hex; // Get the hex value of the dominant color
 };
 
+
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`[INFO] Starting conversion for image: ${imageUrl}`);
@@ -278,34 +279,13 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const effects = [
                 // Stationary Effect
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
                 // Zoom In Effect
                 `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
                 // Zoom Out Effect
                 `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Ken Burns Effect
-                `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Pan Left
-                `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Pan Right
-                `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Color Saturation Shift
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.8`,
-
-                // Slide In Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
-
-                // Slide Out Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
-
-                // Crossfade Transition
-                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+                // Additional Effects...
             ];
+
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
             console.log(`[DEBUG] Selected effect: ${randomEffect}`);
 
@@ -334,6 +314,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 // Function to get audio duration using ffmpeg
@@ -511,69 +492,51 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
     console.log(`[INFO] Starting media sequence processing with ${mediaSequence.length} items.`);
 
     async function processMedia(media, newDuration) {
-        const { url, duration } = media;
+    const { url, duration } = media;
 
-        console.log(`[DEBUG] Processing media: URL=${url}, Duration=${duration}`);
-        if (failedMediaUrls.has(url)) {
-            console.log(`[WARN] Skipping already failed media: ${url}`);
-            return true;
-        }
-
-        let failed = false;
-        try {
-            const isValid = await validateMedia(url);
-            if (!isValid) {
-                console.error(`[ERROR] Unsupported media: ${url}`);
-                failed = true;
-            } else if (['.mp4', '.mov', '.avi', '.mkv'].includes(path.extname(url).toLowerCase())) {
-                console.log(`[INFO] Media Type: Video`);
-                const localVideoPath = path.join(outputDir, path.basename(url));
-                try {
-                    await downloadFile(url, localVideoPath);
-                    console.log(`[INFO] Video downloaded successfully: ${localVideoPath}`);
-                } catch (err) {
-                    console.error(`[ERROR] Download failed for video: ${url} - ${err.message}`);
-                    failed = true;
-                }
-
-                if (!failed) {
-                    try {
-                        const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
-                        const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration || duration);
-                        videoPaths.push(trimmedVideoPath);
-                        totalValidDuration += newDuration || duration;
-                        validMediaCount++;
-                    } catch (err) {
-                        console.error(`[ERROR] Conversion/Trimming failed for video: ${url} - ${err.message}`);
-                        failed = true;
-                    }
-                }
-            } else if (['.jpg', '.jpeg', '.png'].includes(path.extname(url).toLowerCase())) {
-                console.log(`[INFO] Media Type: Image`);
-                try {
-                    const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
-                    videoPaths.push(videoPath);
-                    totalValidDuration += newDuration || duration;
-                    validMediaCount++;
-                } catch (err) {
-                    console.error(`[ERROR] Image to video conversion failed for image: ${url} - ${err.message}`);
-                    failed = true;
-                }
-            }
-        } catch (error) {
-            console.error(`[ERROR] Unexpected error processing media (${url}): ${error.message}`);
-            failed = true;
-        }
-
-        if (!failed) {
-            validMedia.push(media);
-        } else {
-            console.log(`[WARN] Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
-            failedMediaUrls.add(url);
-        }
-
-        return failed;
+    console.log(`[DEBUG] Processing media: URL=${url}, Duration=${duration}`);
+    if (failedMediaUrls.has(url)) {
+        console.log(`[WARN] Skipping already failed media: ${url}`);
+        return true;
     }
+
+    let failed = false;
+    try {
+        const isValid = await validateMedia(url);
+        if (!isValid) {
+            console.error(`[ERROR] Unsupported media: ${url}`);
+            failed = true;
+        } else if (['.mp4', '.mov', '.avi', '.mkv'].includes(path.extname(url).toLowerCase())) {
+            console.log(`[INFO] Media Type: Video`);
+            // Video processing logic...
+        } else if (['.jpg', '.jpeg', '.png'].includes(path.extname(url).toLowerCase())) {
+            console.log(`[INFO] Media Type: Image`);
+            try {
+                const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
+                console.log(`[INFO] Image converted to video: ${videoPath}`);
+                videoPaths.push(videoPath);
+                totalValidDuration += newDuration || duration;
+                validMediaCount++;
+            } catch (err) {
+                console.error(`[ERROR] Image to video conversion failed for image: ${url} - ${err.message}`);
+                failed = true;
+            }
+        }
+    } catch (error) {
+        console.error(`[ERROR] Unexpected error processing media (${url}): ${error.message}`);
+        failed = true;
+    }
+
+    if (!failed) {
+        validMedia.push(media);
+    } else {
+        console.log(`[WARN] Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
+        failedMediaUrls.add(url);
+    }
+
+    return failed;
+}
+
 
     // Initial media processing
     for (const [index, media] of mediaSequence.entries()) {
