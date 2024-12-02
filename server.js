@@ -242,66 +242,60 @@ const extractDominantColor = async (imagePath) => {
 };
 
 
-// Updated convertImageToVideo function
-async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
-    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    console.log(`[INFO] Starting conversion for image: ${imageUrl}`);
-    console.log(`[INFO] Parameters - Duration: ${duration}, Resolution: ${resolution}, Orientation: ${orientation}`);
-
+async function convertImageToVideo(imageUrl, duration, outputDir, randomEffect) {
     return new Promise(async (resolve, reject) => {
-        const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
-
         try {
-            // Step 1: Download and Convert Image
-            console.log(`[INFO] Step 1: Downloading and converting image.`);
-            const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
-            console.log(`[DEBUG] Image downloaded and converted. Path: ${finalImagePath}`);
+            console.log(`[INFO] Starting image-to-video conversion for URL: ${imageUrl}`);
 
-            // Step 2: Extract Dominant Color
-            console.log(`[INFO] Step 2: Extracting dominant color.`);
-            const dominantColor = await extractDominantColor(finalImagePath);
-            console.log(`[DEBUG] Dominant color: ${dominantColor}`);
-
-            // Step 3: Parse resolution
-            console.log(`[INFO] Step 3: Parsing resolution.`);
-            const [width, height] = resolution.split(':').map(Number);
-            if (isNaN(width) || isNaN(height)) {
-                throw new Error(`[ERROR] Invalid resolution format: ${resolution}`);
+            // Validate output directory exists or create it
+            if (!fs.existsSync(outputDir)) {
+                console.log(`[INFO] Output directory does not exist. Creating: ${outputDir}`);
+                fs.mkdirSync(outputDir, { recursive: true });
             }
-            console.log(`[DEBUG] Parsed resolution - Width: ${width}, Height: ${height}`);
 
-            // Step 4: Select Effect
-            console.log(`[INFO] Step 4: Selecting random effect.`);
-            const effects = [
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-                `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-            ];
+            // Set output file path
+            const outputFileName = `${path.basename(imageUrl).split('?')[0]}.mp4`; // Derive a base name with `.mp4` extension
+            const outputFilePath = path.join(outputDir, outputFileName);
+            console.log(`[DEBUG] Output file path: ${outputFilePath}`);
 
-            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`[DEBUG] Selected effect: ${randomEffect}`);
+            // Extract dominant color (if needed for effects)
+            let dominantColor = '#000000'; // Default color
+            try {
+                dominantColor = await extractDominantColor(imageUrl); // Assuming this function exists
+                console.log(`[DEBUG] Dominant color extracted: ${dominantColor}`);
+            } catch (colorError) {
+                console.warn(`[WARN] Failed to extract dominant color. Using default: ${dominantColor}`);
+            }
 
-            // Step 5: Apply Effect and Convert to Video
-            console.log(`[INFO] Step 5: Applying effect and converting to video.`);
+            // Log the random effect being applied
+            console.log(`[DEBUG] Applying effect: ${randomEffect || 'none'}`);
+
+            // FFmpeg command
             ffmpeg()
-                .input(finalImagePath)
-                .loop(duration)
-                .outputOptions('-vf', randomEffect)
-                .outputOptions('-r', '30')
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
-                .outputOptions('-pix_fmt', 'yuv420p')
-                .outputOptions('-threads', '6')
+                .input(imageUrl) // Input image
+                .loop(duration) // Loop for duration (in seconds)
+                .outputOptions('-vf', randomEffect || 'scale=720:1280,format=yuv420p') // Default effect if none provided
+                .outputOptions('-r', '30') // Frame rate
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Compression options
+                .outputOptions('-pix_fmt', 'yuv420p') // Ensure compatibility with most players
+                .outputOptions('-threads', '6') // Parallel processing
+                .on('start', (command) => {
+                    console.log(`[DEBUG] FFmpeg command started: ${command}`);
+                })
+                .on('progress', (progress) => {
+                    console.log(`[DEBUG] FFmpeg progress: ${JSON.stringify(progress)}`);
+                })
                 .on('end', () => {
-                    console.log(`[SUCCESS] Image successfully converted to video: ${outputFilePath}`);
-                    resolve(outputFilePath);
+                    console.log(`[SUCCESS] Video created successfully: ${outputFilePath}`);
+                    resolve(outputFilePath); // Resolve with the output path
                 })
                 .on('error', (err) => {
-                    console.error(`[ERROR] Image-to-video conversion failed: ${err.message}`);
-                    reject(err);
+                    console.error(`[ERROR] FFmpeg error during conversion: ${err.message}`);
+                    reject(new Error(`FFmpeg failed: ${err.message}`)); // Reject with error
                 })
-                .save(outputFilePath);
+                .save(outputFilePath); // Save the output video
         } catch (error) {
-            console.error(`[ERROR] Conversion process failed: ${error.message}`);
+            console.error(`[ERROR] Image-to-video conversion failed: ${error.message}`);
             reject(error);
         }
     });
