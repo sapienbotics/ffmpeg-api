@@ -248,84 +248,83 @@ const extractDominantColor = async (imagePath) => {
 
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    console.log(`Starting conversion for image: ${imageUrl}`);
+    console.log(`[INFO] Starting conversion for image: ${imageUrl}, Duration: ${duration}, Resolution: ${resolution}, Orientation: ${orientation}`);
 
     return new Promise(async (resolve, reject) => {
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
-            // Step 1: Download the image (and convert if necessary)
+            console.log(`[INFO] Step 1: Downloading and converting image.`);
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
+            console.log(`[INFO] Image downloaded and converted: ${finalImagePath}`);
 
-            // Step 2: Extract the dominant color for padding
+            console.log(`[INFO] Step 2: Extracting dominant color.`);
             const dominantColor = await extractDominantColor(finalImagePath);
+            console.log(`[INFO] Dominant color extracted: ${dominantColor}`);
 
-            // Step 3: Parse the resolution (e.g., "1920:1080")
+            console.log(`[INFO] Step 3: Parsing resolution.`);
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects with improved parameters
-const effects = [
-    // Stationary Effect (Centered with padding)
-   `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            console.log(`[INFO] Step 4: Defining effects.`);
+            const effects = [
+                // Stationary Effect
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-    // Slow Zoom In Effect (Stops at 1.2x zoom)
-  `zoompan=z='if(lte(zoom,1.2),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+                // Zoom In Effect
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-    // Slow Zoom Out Effect (Stops at 1x zoom)
-   `zoompan=z='if(eq(on,0),1.2,if(gte(zoom,1),zoom-0.005,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}, scale=${width} ${height}:force_original_aspect_ratio=decrease, pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                // Zoom Out Effect
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-    // Fade-in and Fade-out Effect (Smooth fade transition)
-   `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                // Ken Burns Effect
+                `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-    // Ken Burns Effect (Zoom with subtle pan left movement)
-   `zoompan=z='if(gte(on,1),zoom+0.005,zoom)':x='if(gte(on,1),x+3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width} ${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                // Pan Left
+                `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
-// Ken Burns Effect (Zoom with subtle pan right movement)
-   `zoompan=z='if(gte(on,1),zoom+0.005,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width} ${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                // Pan Right
+                `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
 
+                // Color Saturation Shift
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.8`,
 
-// Bounce-in-effect
-//`zoompan=z='if(lte(on,1),1.05,1.05 + 0.03 * cos(on * 0.2))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},
-   // scale=${width}:${height}:force_original_aspect_ratio=decrease,
-    //pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                // Slide In Transition
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
 
-//diagonal zoom in/out effect
-`zoompan=z='if(lte(zoom,1.2),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+                // Slide Out Transition
+                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
 
-];
+                // Crossfade Transition
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+            ];
 
-
-
-            // Step 5: Apply multiple effects with proper proportions
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`);
+            console.log(`[INFO] Selected effect for image: ${randomEffect}`);
 
-            // Step 6: Apply the selected effect to the image and convert to video
+            console.log(`[INFO] Step 6: Applying effect and converting to video.`);
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', randomEffect) // Apply selected effect
-                .outputOptions('-r', '30') // Frame rate
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
-                .outputOptions('-pix_fmt', 'yuv420p') // Ensure compatibility
-                .outputOptions('-threads', '6') // Speed up with multiple threads
+                .outputOptions('-vf', randomEffect)
+                .outputOptions('-r', '30')
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+                .outputOptions('-pix_fmt', 'yuv420p')
+                .outputOptions('-threads', '6')
                 .on('end', () => {
-                    console.log('Image converted to video with effect.');
+                    console.log(`[SUCCESS] Image converted to video successfully: ${outputFilePath}`);
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
-                    console.error(`Error converting image to video: ${err.message}`);
+                    console.error(`[ERROR] Error converting image to video: ${err.message}`);
                     reject(err);
                 })
                 .save(outputFilePath);
-
         } catch (error) {
-            console.error(`Image download or conversion failed: ${error.message}`);
+            console.error(`[ERROR] Image download or conversion failed: ${error.message}`);
             reject(error);
         }
     });
 }
-
 
 
 // Function to get audio duration using ffmpeg
@@ -400,23 +399,23 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
 
 
 const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
+    console.log(`[INFO] Starting media merge. Total media items: ${mediaArray.length}`);
     const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4'));
 
     if (validMedia.length === 0) {
-        throw new Error('No valid media to merge.');
+        throw new Error(`[ERROR] No valid media to merge.`);
     }
 
-    // Create a concat file
     const concatFilePath = path.join(outputDir, `concat_list_${Date.now()}.txt`);
     const concatFileContent = validMedia.map(media => `file '${media}'`).join('\n');
     fs.writeFileSync(concatFilePath, concatFileContent);
-
-    console.log(`Contents of concat file: ${concatFileContent}`);
+    console.log(`[INFO] Concat file created at ${concatFilePath} with contents: \n${concatFileContent}`);
 
     const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
-
-    // Parse the resolution (e.g., "640:360" -> width: 640, height: 360)
     const [width, height] = resolution.split(':');
+
+    console.log(`[INFO] Resolution parsed: Width=${width}, Height=${height}`);
+    console.log(`[INFO] Starting ffmpeg merge operation.`);
 
     return new Promise((resolve, reject) => {
         ffmpeg()
@@ -424,22 +423,22 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
             .inputOptions(['-f', 'concat', '-safe', '0'])
             .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
             .outputOptions('-threads', '6')
-            // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
-                console.log('Merging finished.');
+                console.log(`[SUCCESS] Media merged successfully. Output file: ${outputFilePath}`);
                 resolve({
                     status: 'success',
                     outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`,
                 });
             })
             .on('error', (err) => {
-                console.error(`Error merging media: ${err.message}`);
+                console.error(`[ERROR] Error merging media: ${err.message}`);
                 reject(err);
             })
             .save(outputFilePath);
     });
 };
+
 
 const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv'];
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
@@ -449,18 +448,18 @@ async function validateMedia(url) {
     const extension = path.extname(url).toLowerCase();
     console.log(`[DEBUG] Validating media URL: ${url}, FileType: ${extension}`);
 
-    // Check extension for video and image
-    if (ALLOWED_VIDEO_EXTENSIONS.includes(extension) || ALLOWED_IMAGE_EXTENSIONS.includes(extension)) {
-        return true;
-    }
-
-    // Check MIME type for images
     try {
+        if (ALLOWED_VIDEO_EXTENSIONS.includes(extension) || ALLOWED_IMAGE_EXTENSIONS.includes(extension)) {
+            console.log(`[INFO] Valid file extension detected.`);
+            return true;
+        }
+
         const response = await axios.head(url);
         const mimeType = response.headers['content-type'];
-        console.log(`[DEBUG] MIME type of media: ${mimeType}`);
+        console.log(`[DEBUG] MIME type detected: ${mimeType}`);
 
         if (ALLOWED_IMAGE_MIME_TYPES.includes(mimeType)) {
+            console.log(`[INFO] Valid MIME type detected.`);
             return true;
         } else {
             console.error(`[ERROR] Unsupported MIME type for media: ${url} - ${mimeType}`);
@@ -471,6 +470,7 @@ async function validateMedia(url) {
         return false;
     }
 }
+
 
 async function processMediaSequence(mediaSequence, orientation, resolution) {
     let videoPaths = [];
