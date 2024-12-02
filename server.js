@@ -415,39 +415,49 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
 };
 
 
-const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv'];
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
-const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
+const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv'];
+const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_VIDEO_MIME_TYPES = ['video/mp4', 'video/x-matroska', 'video/quicktime'];
 
 async function validateMedia(url) {
     console.log(`[INFO] Validating media URL: ${url}`);
-    const extension = path.extname(url).toLowerCase();
-    console.log(`[DEBUG] File extension detected: ${extension}`);
+    let extension = path.extname(url).toLowerCase(); // Check if extension is present in URL
 
     try {
-        if (ALLOWED_VIDEO_EXTENSIONS.includes(extension) || ALLOWED_IMAGE_EXTENSIONS.includes(extension)) {
-            console.log(`[INFO] Valid file extension.`);
-            return true;
+        if (!extension) { // If there's no extension, fetch MIME type
+            console.log(`[INFO] No file extension detected. Fetching MIME type...`);
+            const response = await axios.head(url);
+            const mimeType = response.headers['content-type'];
+            console.log(`[INFO] MIME type detected: ${mimeType}`);
+
+            if (ALLOWED_IMAGE_MIME_TYPES.includes(mimeType)) {
+                extension = mimeType.split('/')[1];  // Deriving extension from MIME type (e.g., image/png -> .png)
+                console.log(`[INFO] Derived extension: .${extension}`);
+                return true;
+            } else if (ALLOWED_VIDEO_MIME_TYPES.includes(mimeType)) {
+                extension = mimeType.split('/')[1];  // Deriving extension from MIME type (e.g., video/mp4 -> .mp4)
+                console.log(`[INFO] Derived extension: .${extension}`);
+                return true;
+            } else {
+                console.error(`[ERROR] Unsupported MIME type: ${mimeType}`);
+                return false;
+            }
         }
 
-        console.log(`[INFO] Fetching MIME type from URL.`);
-        const response = await axios.head(url);
-        const mimeType = response.headers['content-type'];
-        console.log(`[DEBUG] MIME type detected: ${mimeType}`);
-
-        if (ALLOWED_IMAGE_MIME_TYPES.includes(mimeType)) {
-            console.log(`[INFO] Valid MIME type.`);
+        // Check allowed file extensions
+        if (ALLOWED_IMAGE_EXTENSIONS.includes(extension) || ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
+            console.log(`[INFO] Valid extension: ${extension}`);
             return true;
         } else {
-            console.error(`[ERROR] Unsupported MIME type: ${mimeType}`);
+            console.error(`[ERROR] Unsupported file extension: ${extension}`);
             return false;
         }
     } catch (error) {
-        console.error(`[ERROR] Failed to validate media URL: ${error.message}`);
+        console.error(`[ERROR] Failed to validate media URL: ${url}. Error: ${error.message}`);
         return false;
     }
 }
-
 
 
 async function processMediaSequence(mediaSequence, orientation, resolution) {
@@ -583,7 +593,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
-
 
 
 // Function to convert video to a standard format and resolution
