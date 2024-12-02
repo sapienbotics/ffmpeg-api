@@ -107,18 +107,36 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 };
 
 
+// Utility to extract direct download link from Google Drive
+function getDriveDownloadLink(googleDriveUrl) {
+    const fileIdMatch = googleDriveUrl.match(/(?:id=|\/)([a-zA-Z0-9_-]+)/);
+    if (fileIdMatch && fileIdMatch[1]) {
+        return `https://drive.google.com/uc?export=download&id=${fileIdMatch[1]}`;
+    }
+    throw new Error('Invalid Google Drive URL');
+}
+
 async function downloadAndConvertImage(imageUrl, outputFilePath) {
     try {
-        // Step 1: Get MIME type of the image
-        const response = await axios.head(imageUrl);
-        let mimeType = response.headers['content-type'];
-        console.log(`[INFO] Initial MIME type of the image: ${mimeType}`);
+        let finalUrl = imageUrl;
 
-        // Step 2: Derive extension from MIME type if missing
+        // Check if URL is from Google Drive and convert to direct download link
+        if (imageUrl.includes("drive.google.com")) {
+            finalUrl = getDriveDownloadLink(imageUrl);
+            console.log(`[INFO] Converted Google Drive URL to direct download: ${finalUrl}`);
+        }
+
+        // Fetch MIME type from the final download link
+        console.log(`[INFO] Fetching MIME type for URL: ${finalUrl}`);
+        const response = await axios.head(finalUrl, { maxRedirects: 5 }); // Allow up to 5 redirects
+        let mimeType = response.headers['content-type'];
+        console.log(`[INFO] MIME type of the image: ${mimeType}`);
+
+        // If no extension, derive it from MIME type
         let extension = path.extname(imageUrl).toLowerCase();
-        if (!extension) {  // If URL does not contain extension
+        if (!extension) {
             if (mimeType === 'image/webp') {
-                extension = '.webp';  // Assign appropriate extension for WebP
+                extension = '.webp';
             } else if (mimeType === 'image/jpeg') {
                 extension = '.jpg';
             } else if (mimeType === 'image/png') {
@@ -127,32 +145,41 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
                 throw new Error(`Unsupported MIME type: ${mimeType}`);
             }
         }
+        console.log(`[INFO] Derived extension for image: ${extension}`);
 
-        // Save the image locally with the derived extension
         const localImagePath = outputFilePath.replace(/(.*)\.[^.]+$/, `$1${extension}`);
+        console.log(`[INFO] Local image path: ${localImagePath}`);
+
+        // Fetch the image file
+        console.log(`[INFO] Fetching image from URL: ${finalUrl}`);
         const imageResponse = await axios({
-            url: imageUrl,
-            responseType: 'arraybuffer' // Get raw image data as buffer
+            url: finalUrl,
+            responseType: 'arraybuffer',
+            maxRedirects: 5  // Ensure redirects are followed
         });
 
         let buffer = imageResponse.data;
+        console.log(`[INFO] Image fetched successfully. MIME type: ${mimeType}`);
 
-        // Step 3: Convert image if needed (e.g., from WebP to JPG)
+        // Optionally, convert WebP to JPG if necessary
         if (mimeType === 'image/webp') {
-            // Convert webp to jpg
+            console.log(`[INFO] Converting WebP to JPG...`);
             buffer = await sharp(buffer).toFormat('jpg').toBuffer();
         }
 
-        // Step 4: Save image to local file
+        // Write the image to a local file
         fs.writeFileSync(localImagePath, buffer);
         console.log(`[INFO] Image saved locally to: ${localImagePath}`);
 
         return localImagePath;
     } catch (error) {
         console.error(`[ERROR] Failed to download or convert image: ${error.message}`);
+        console.error(error.stack); // Detailed error stack for debugging
         throw error;
     }
 }
+
+
 
 // Function to cleanup files
 const cleanupFiles = async (filePaths) => {
