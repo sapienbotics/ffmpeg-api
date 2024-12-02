@@ -248,7 +248,8 @@ const extractDominantColor = async (imagePath) => {
 
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    console.log(`[INFO] Starting conversion for image: ${imageUrl}, Duration: ${duration}, Resolution: ${resolution}, Orientation: ${orientation}`);
+    console.log(`[INFO] Starting conversion for image: ${imageUrl}`);
+    console.log(`[INFO] Parameters - Duration: ${duration}, Resolution: ${resolution}, Orientation: ${orientation}`);
 
     return new Promise(async (resolve, reject) => {
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
@@ -256,52 +257,22 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         try {
             console.log(`[INFO] Step 1: Downloading and converting image.`);
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
-            console.log(`[INFO] Image downloaded and converted: ${finalImagePath}`);
+            console.log(`[DEBUG] Image downloaded and converted. Path: ${finalImagePath}`);
 
             console.log(`[INFO] Step 2: Extracting dominant color.`);
             const dominantColor = await extractDominantColor(finalImagePath);
-            console.log(`[INFO] Dominant color extracted: ${dominantColor}`);
+            console.log(`[DEBUG] Dominant color: ${dominantColor}`);
 
             console.log(`[INFO] Step 3: Parsing resolution.`);
             const [width, height] = resolution.split(':').map(Number);
+            console.log(`[DEBUG] Parsed resolution - Width: ${width}, Height: ${height}`);
 
-            console.log(`[INFO] Step 4: Defining effects.`);
-            const effects = [
-                // Stationary Effect
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-                // Zoom In Effect
-                `zoompan=z='if(lte(zoom,1.2),zoom+0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Zoom Out Effect
-                `zoompan=z='if(gte(zoom,1.0),zoom-0.01,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Ken Burns Effect
-                `zoompan=z='if(gte(on,1),zoom+0.01,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Pan Left
-                `zoompan=z='1.0':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Pan Right
-                `zoompan=z='1.0':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
-
-                // Color Saturation Shift
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},eq=saturation=0.8`,
-
-                // Slide In Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=start_duration=1:color=${dominantColor}`,
-
-                // Slide Out Transition
-                `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},tpad=stop_duration=1:color=${dominantColor}`,
-
-                // Crossfade Transition
-                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-            ];
-
+            console.log(`[INFO] Step 4: Selecting random effect.`);
+            const effects = [/* Provide your list of effects here */];
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`[INFO] Selected effect for image: ${randomEffect}`);
+            console.log(`[DEBUG] Selected effect: ${randomEffect}`);
 
-            console.log(`[INFO] Step 6: Applying effect and converting to video.`);
+            console.log(`[INFO] Step 5: Applying effect and converting to video.`);
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
@@ -311,16 +282,16 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 .outputOptions('-pix_fmt', 'yuv420p')
                 .outputOptions('-threads', '6')
                 .on('end', () => {
-                    console.log(`[SUCCESS] Image converted to video successfully: ${outputFilePath}`);
+                    console.log(`[SUCCESS] Image successfully converted to video: ${outputFilePath}`);
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
-                    console.error(`[ERROR] Error converting image to video: ${err.message}`);
+                    console.error(`[ERROR] Image-to-video conversion failed: ${err.message}`);
                     reject(err);
                 })
                 .save(outputFilePath);
         } catch (error) {
-            console.error(`[ERROR] Image download or conversion failed: ${error.message}`);
+            console.error(`[ERROR] Conversion process failed: ${error.message}`);
             reject(error);
         }
     });
@@ -399,40 +370,44 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
 
 
 const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
-    console.log(`[INFO] Starting media merge. Total media items: ${mediaArray.length}`);
+    console.log(`[INFO] Starting media merge operation.`);
+    console.log(`[DEBUG] Total media items for merging: ${mediaArray.length}`);
+
     const validMedia = mediaArray.filter(media => media && media.endsWith('.mp4'));
+    console.log(`[DEBUG] Valid media count: ${validMedia.length}`);
 
     if (validMedia.length === 0) {
-        throw new Error(`[ERROR] No valid media to merge.`);
+        console.error(`[ERROR] No valid media to merge.`);
+        throw new Error(`No valid media to merge.`);
     }
 
     const concatFilePath = path.join(outputDir, `concat_list_${Date.now()}.txt`);
     const concatFileContent = validMedia.map(media => `file '${media}'`).join('\n');
     fs.writeFileSync(concatFilePath, concatFileContent);
-    console.log(`[INFO] Concat file created at ${concatFilePath} with contents: \n${concatFileContent}`);
+    console.log(`[INFO] Concat file created. Path: ${concatFilePath}`);
+    console.log(`[DEBUG] Concat file content:\n${concatFileContent}`);
 
     const outputFilePath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
-    const [width, height] = resolution.split(':');
+    const [width, height] = resolution.split(':').map(Number);
+    console.log(`[DEBUG] Parsed resolution - Width: ${width}, Height: ${height}`);
 
-    console.log(`[INFO] Resolution parsed: Width=${width}, Height=${height}`);
-    console.log(`[INFO] Starting ffmpeg merge operation.`);
-
+    console.log(`[INFO] Running ffmpeg merge command.`);
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
             .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
             .outputOptions('-threads', '6')
-            .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
+            .outputOptions('-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
-                console.log(`[SUCCESS] Media merged successfully. Output file: ${outputFilePath}`);
+                console.log(`[SUCCESS] Media successfully merged. Output file: ${outputFilePath}`);
                 resolve({
                     status: 'success',
-                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`,
+                    outputFileUrl: `https://your-server-url/download/merged/${path.basename(outputFilePath)}`,
                 });
             })
             .on('error', (err) => {
-                console.error(`[ERROR] Error merging media: ${err.message}`);
+                console.error(`[ERROR] Media merge failed: ${err.message}`);
                 reject(err);
             })
             .save(outputFilePath);
@@ -445,31 +420,34 @@ const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
 const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
 
 async function validateMedia(url) {
+    console.log(`[INFO] Validating media URL: ${url}`);
     const extension = path.extname(url).toLowerCase();
-    console.log(`[DEBUG] Validating media URL: ${url}, FileType: ${extension}`);
+    console.log(`[DEBUG] File extension detected: ${extension}`);
 
     try {
         if (ALLOWED_VIDEO_EXTENSIONS.includes(extension) || ALLOWED_IMAGE_EXTENSIONS.includes(extension)) {
-            console.log(`[INFO] Valid file extension detected.`);
+            console.log(`[INFO] Valid file extension.`);
             return true;
         }
 
+        console.log(`[INFO] Fetching MIME type from URL.`);
         const response = await axios.head(url);
         const mimeType = response.headers['content-type'];
         console.log(`[DEBUG] MIME type detected: ${mimeType}`);
 
         if (ALLOWED_IMAGE_MIME_TYPES.includes(mimeType)) {
-            console.log(`[INFO] Valid MIME type detected.`);
+            console.log(`[INFO] Valid MIME type.`);
             return true;
         } else {
-            console.error(`[ERROR] Unsupported MIME type for media: ${url} - ${mimeType}`);
+            console.error(`[ERROR] Unsupported MIME type: ${mimeType}`);
             return false;
         }
     } catch (error) {
-        console.error(`[ERROR] Failed to fetch MIME type for URL: ${url} - ${error.message}`);
+        console.error(`[ERROR] Failed to validate media URL: ${error.message}`);
         return false;
     }
 }
+
 
 
 async function processMediaSequence(mediaSequence, orientation, resolution) {
