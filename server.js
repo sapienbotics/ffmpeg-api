@@ -501,7 +501,6 @@ async function validateMedia(url) {
 async function processMediaSequence(mediaSequence, orientation, resolution) {
     let videoPaths = [];
     let totalValidDuration = 0;
-    let totalFailedDuration = 0;
     let validMediaCount = 0;
     let validMedia = [];
     let adjustedDurations = mediaSequence.map(media => media.duration);
@@ -517,68 +516,59 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         console.log(`[DEBUG] Processing media: URL=${url}, Duration=${duration}`);
         if (failedMediaUrls.has(url)) {
             console.log(`[WARN] Skipping already failed media: ${url}`);
-            return true; // Skip processing if media has already failed
+            return true;
         }
 
         let failed = false;
         try {
-            // Validate media (generic validation)
             const isValid = await validateMedia(url);
             if (!isValid) {
                 console.error(`[ERROR] Unsupported media: ${url}`);
-                failed = true; // Mark as failed
-            } else {
-                // Process video type media
-                if (['.mp4', '.mov', '.avi', '.mkv'].includes(path.extname(url).toLowerCase())) {
-                    console.log(`[INFO] Media Type: Video`);
-                    const localVideoPath = path.join(outputDir, path.basename(url));
-                    try {
-                        await downloadFile(url, localVideoPath);
-                        console.log(`[INFO] Video downloaded successfully: ${localVideoPath}`);
-                    } catch (err) {
-                        console.error(`[ERROR] Download failed for video: ${url} - ${err.message}`);
-                        failed = true; // Mark as failed
-                    }
+                failed = true;
+            } else if (['.mp4', '.mov', '.avi', '.mkv'].includes(path.extname(url).toLowerCase())) {
+                console.log(`[INFO] Media Type: Video`);
+                const localVideoPath = path.join(outputDir, path.basename(url));
+                try {
+                    await downloadFile(url, localVideoPath);
+                    console.log(`[INFO] Video downloaded successfully: ${localVideoPath}`);
+                } catch (err) {
+                    console.error(`[ERROR] Download failed for video: ${url} - ${err.message}`);
+                    failed = true;
+                }
 
-                    if (!failed) {
-                        try {
-                            // Convert and trim video if necessary
-                            const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
-                            const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration || duration);
-                            videoPaths.push(trimmedVideoPath);
-                            totalValidDuration += newDuration || duration;
-                            validMediaCount++;
-                        } catch (err) {
-                            console.error(`[ERROR] Conversion/Trimming failed for video: ${url} - ${err.message}`);
-                            failed = true; // Mark as failed
-                        }
-                    }
-                } 
-                // Process image type media
-                else if (['.jpg', '.jpeg', '.png'].includes(path.extname(url).toLowerCase())) {
-                    console.log(`[INFO] Media Type: Image`);
+                if (!failed) {
                     try {
-                        const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
-                        videoPaths.push(videoPath);
+                        const convertedVideoPath = await convertVideoToStandardFormat(localVideoPath, duration, resolution, orientation);
+                        const trimmedVideoPath = await trimVideo(convertedVideoPath, newDuration || duration);
+                        videoPaths.push(trimmedVideoPath);
                         totalValidDuration += newDuration || duration;
                         validMediaCount++;
                     } catch (err) {
-                        console.error(`[ERROR] Image to video conversion failed for image: ${url} - ${err.message}`);
-                        failed = true; // Mark as failed
+                        console.error(`[ERROR] Conversion/Trimming failed for video: ${url} - ${err.message}`);
+                        failed = true;
                     }
+                }
+            } else if (['.jpg', '.jpeg', '.png'].includes(path.extname(url).toLowerCase())) {
+                console.log(`[INFO] Media Type: Image`);
+                try {
+                    const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
+                    videoPaths.push(videoPath);
+                    totalValidDuration += newDuration || duration;
+                    validMediaCount++;
+                } catch (err) {
+                    console.error(`[ERROR] Image to video conversion failed for image: ${url} - ${err.message}`);
+                    failed = true;
                 }
             }
         } catch (error) {
             console.error(`[ERROR] Unexpected error processing media (${url}): ${error.message}`);
-            failed = true; // Mark as failed
+            failed = true;
         }
 
-        // Add valid media to list, or log the failure
         if (!failed) {
             validMedia.push(media);
         } else {
             console.log(`[WARN] Media processing failed for URL: ${url}, adding ${newDuration || duration}s to failed duration.`);
-            totalFailedDuration += newDuration || duration;
             failedMediaUrls.add(url);
         }
 
@@ -594,18 +584,17 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         }
     }
 
-    // Redistribution of duration (only if there are failed media)
-    if (validMediaCount > 0 && totalFailedDuration > 0) {
-        console.log(`[INFO] Redistributing ${totalFailedDuration}s across ${validMediaCount} valid media.`);
-        const additionalTimePerMedia = totalFailedDuration / validMediaCount;
+    // Redistribution of duration
+    if (validMediaCount > 0 && totalValidDuration > 0) {
+        console.log(`[INFO] Redistributing ${totalValidDuration}s across ${validMediaCount} valid media.`);
+        const additionalTimePerMedia = totalValidDuration / validMediaCount;
 
-        // Adjust duration for valid media
         validMedia.forEach((media) => {
             const originalIndex = mediaSequence.indexOf(media);
             adjustedDurations[originalIndex] += additionalTimePerMedia;
         });
 
-        // Reprocess valid media with adjusted durations
+        // Reprocessing valid media with updated durations
         const reprocessValidMedia = [...validMedia];
         validMedia = [];
         videoPaths = [];
@@ -633,7 +622,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
             return mergeResult.outputFileUrl;
         } catch (error) {
             console.error(`[ERROR] Error merging videos: ${error.message}`);
-            throw error; // Throw error if merge fails
+            throw error;
         }
     } else {
         console.error(`[ERROR] No valid media found for merging.`);
