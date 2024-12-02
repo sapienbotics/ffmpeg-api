@@ -107,7 +107,6 @@ const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 100
 };
 
 
-// Updated downloadAndConvertImage function
 async function downloadAndConvertImage(imageUrl, outputFilePath) {
     try {
         // Step 1: Get MIME type of the image
@@ -115,41 +114,40 @@ async function downloadAndConvertImage(imageUrl, outputFilePath) {
         let mimeType = response.headers['content-type'];
         console.log(`[INFO] Initial MIME type of the image: ${mimeType}`);
 
-        // Step 2: Download the image
+        // Step 2: Derive extension from MIME type if missing
+        let extension = path.extname(imageUrl).toLowerCase();
+        if (!extension) {  // If URL does not contain extension
+            if (mimeType === 'image/webp') {
+                extension = '.webp';  // Assign appropriate extension for WebP
+            } else if (mimeType === 'image/jpeg') {
+                extension = '.jpg';
+            } else if (mimeType === 'image/png') {
+                extension = '.png';
+            } else {
+                throw new Error(`Unsupported MIME type: ${mimeType}`);
+            }
+        }
+
+        // Save the image locally with the derived extension
+        const localImagePath = outputFilePath.replace(/(.*)\.[^.]+$/, `$1${extension}`);
         const imageResponse = await axios({
             url: imageUrl,
             responseType: 'arraybuffer' // Get raw image data as buffer
         });
-        let buffer = imageResponse.data;
-        let finalOutputPath = outputFilePath;
 
-        // Step 3: Convert if necessary or inspect the image if MIME type is unsupported
+        let buffer = imageResponse.data;
+
+        // Step 3: Convert image if needed (e.g., from WebP to JPG)
         if (mimeType === 'image/webp') {
             // Convert webp to jpg
-            finalOutputPath = outputFilePath.replace('.jpg', '_converted.jpg');
             buffer = await sharp(buffer).toFormat('jpg').toBuffer();
-            const { info } = await sharp(buffer).metadata();
-            console.log(`[INFO] Converted image format: ${info.format}`); // Should log 'jpeg'
-        } else if (mimeType === 'application/octet-stream') {
-            // Attempt to infer MIME type using sharp
-            const metadata = await sharp(buffer).metadata();
-            console.log(`[INFO] Inferred image format using sharp: ${metadata.format}`);
-
-            if (['jpeg', 'png'].includes(metadata.format)) {
-                // Convert to jpg if necessary
-                finalOutputPath = outputFilePath.replace('.jpg', `_${metadata.format}.jpg`);
-                buffer = await sharp(buffer).toFormat('jpg').toBuffer();
-            } else {
-                throw new Error(`Unsupported inferred MIME type: ${metadata.format}`);
-            }
-        } else if (!/^image\/(jpeg|jpg|png)$/.test(mimeType)) {
-            throw new Error(`Unsupported MIME type: ${mimeType}`);
         }
 
-        // Step 4: Save the image
-        fs.writeFileSync(finalOutputPath, buffer);
-        console.log(`[INFO] Image successfully written to: ${finalOutputPath}`);
-        return finalOutputPath;
+        // Step 4: Save image to local file
+        fs.writeFileSync(localImagePath, buffer);
+        console.log(`[INFO] Image saved locally to: ${localImagePath}`);
+
+        return localImagePath;
     } catch (error) {
         console.error(`[ERROR] Failed to download or convert image: ${error.message}`);
         throw error;
@@ -247,21 +245,24 @@ async function convertImageToVideo(imageUrl, duration, outputDir, randomEffect) 
         try {
             console.log(`[INFO] Starting image-to-video conversion for URL: ${imageUrl}`);
 
+            // Step 1: Download and save the image locally
+            const localImagePath = await downloadAndConvertImage(imageUrl, path.join(outputDir, path.basename(imageUrl)));
+
             // Validate output directory exists or create it
             if (!fs.existsSync(outputDir)) {
                 console.log(`[INFO] Output directory does not exist. Creating: ${outputDir}`);
                 fs.mkdirSync(outputDir, { recursive: true });
             }
 
-            // Set output file path
-            const outputFileName = `${path.basename(imageUrl).split('?')[0]}.mp4`; // Derive a base name with `.mp4` extension
+            // Step 2: Set output file path for video
+            const outputFileName = `${path.basename(localImagePath).split('.')[0]}.mp4`; // Derive base name for `.mp4`
             const outputFilePath = path.join(outputDir, outputFileName);
             console.log(`[DEBUG] Output file path: ${outputFilePath}`);
 
-            // Extract dominant color (if needed for effects)
+            // Extract dominant color (optional for effects)
             let dominantColor = '#000000'; // Default color
             try {
-                dominantColor = await extractDominantColor(imageUrl); // Assuming this function exists
+                dominantColor = await extractDominantColor(localImagePath); // Assuming this function exists
                 console.log(`[DEBUG] Dominant color extracted: ${dominantColor}`);
             } catch (colorError) {
                 console.warn(`[WARN] Failed to extract dominant color. Using default: ${dominantColor}`);
@@ -270,14 +271,14 @@ async function convertImageToVideo(imageUrl, duration, outputDir, randomEffect) 
             // Log the random effect being applied
             console.log(`[DEBUG] Applying effect: ${randomEffect || 'none'}`);
 
-            // FFmpeg command
+            // Step 3: Create video using FFmpeg
             ffmpeg()
-                .input(imageUrl) // Input image
+                .input(localImagePath) // Input local image
                 .loop(duration) // Loop for duration (in seconds)
-                .outputOptions('-vf', randomEffect || 'scale=720:1280,format=yuv420p') // Default effect if none provided
+                .outputOptions('-vf', randomEffect || 'scale=720:1280,format=yuv420p') // Apply effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Compression options
-                .outputOptions('-pix_fmt', 'yuv420p') // Ensure compatibility with most players
+                .outputOptions('-pix_fmt', 'yuv420p') // Ensure compatibility
                 .outputOptions('-threads', '6') // Parallel processing
                 .on('start', (command) => {
                     console.log(`[DEBUG] FFmpeg command started: ${command}`);
@@ -287,19 +288,20 @@ async function convertImageToVideo(imageUrl, duration, outputDir, randomEffect) 
                 })
                 .on('end', () => {
                     console.log(`[SUCCESS] Video created successfully: ${outputFilePath}`);
-                    resolve(outputFilePath); // Resolve with the output path
+                    resolve(outputFilePath); // Resolve with output path
                 })
                 .on('error', (err) => {
                     console.error(`[ERROR] FFmpeg error during conversion: ${err.message}`);
                     reject(new Error(`FFmpeg failed: ${err.message}`)); // Reject with error
                 })
-                .save(outputFilePath); // Save the output video
+                .save(outputFilePath); // Save the video
         } catch (error) {
             console.error(`[ERROR] Image-to-video conversion failed: ${error.message}`);
             reject(error);
         }
     });
 }
+
 
 // Function to get audio duration using ffmpeg
 const getAudioDuration = async (audioPath) => {
