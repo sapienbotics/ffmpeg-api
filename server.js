@@ -294,7 +294,9 @@ zoompan=z='if(lte(zoom,1.2),zoom+0.005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/z
 
 ];
 
-            // Step 5: Randomly select an effect for each image conversion
+
+
+            // Step 5: Apply multiple effects with proper proportions
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
             console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
 
