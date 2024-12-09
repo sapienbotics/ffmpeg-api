@@ -246,6 +246,17 @@ const extractDominantColor = async (imagePath) => {
     return palette.Vibrant.hex; // Get the hex value of the dominant color
 };
 
+app.post('/convert-image-to-video', async (req, res) => {
+    const { imageUrl, duration, resolution, orientation } = req.body;
+    
+    try {
+        const outputFilePath = await convertImageToVideo(imageUrl, duration, resolution, orientation);
+        res.json({ success: true, videoUrl: outputFilePath });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
