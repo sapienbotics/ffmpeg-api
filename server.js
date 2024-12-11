@@ -56,25 +56,42 @@ if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
 }
 
-// Helper function to download files with timeout and retry logic
 const downloadFile = async (url, outputPath, timeout = 30000) => {
     try {
         const response = await axios({
             url,
             method: 'GET',
             responseType: 'stream',
-            timeout, // Timeout added here
+            timeout,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3', // Mimic a browser request
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
             },
         });
 
+        const totalBytes = response.headers['content-length'];
+        const writer = fs.createWriteStream(outputPath);
+        
         return new Promise((resolve, reject) => {
-            const writer = fs.createWriteStream(outputPath);
+            let downloadedBytes = 0;
             response.data.pipe(writer);
-            writer.on('finish', resolve);
+            
+            response.data.on('data', chunk => {
+                downloadedBytes += chunk.length;
+                // Optional: Log the download progress if needed
+                console.log(`Downloaded ${Math.round((downloadedBytes / totalBytes) * 100)}%`);
+            });
+
+            writer.on('finish', () => {
+                if (downloadedBytes === parseInt(totalBytes)) {
+                    resolve();
+                } else {
+                    fs.unlinkSync(outputPath); // Remove incomplete file
+                    reject(new Error('File download incomplete'));
+                }
+            });
+
             writer.on('error', (err) => {
-                fs.unlinkSync(outputPath); // Remove the file if there was an error
+                fs.unlinkSync(outputPath);
                 reject(err);
             });
         });
@@ -84,9 +101,10 @@ const downloadFile = async (url, outputPath, timeout = 30000) => {
         } else {
             console.error(`Error downloading file from ${url}: ${error.message}`);
         }
-        throw error; // Re-throw error for handling in the calling function
+        throw error;
     }
 };
+
 
 // Helper function to retry downloading files if they fail
 const downloadFileWithRetry = async (url, outputPath, retries = 3, timeout = 10000) => {
@@ -446,6 +464,20 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
 };
 
 
+// Function to validate the video file (checking for corruption)
+const validateVideoFile = async (filePath) => {
+    return new Promise((resolve, reject) => {
+        ffmpeg(filePath).ffprobe((err, metadata) => {
+            if (err) {
+                reject(new Error('Invalid video file or corruption detected'));
+            } else {
+                resolve(metadata);
+            }
+        });
+    });
+};
+
+// Main function to process the media sequence
 async function processMediaSequence(mediaSequence, orientation, resolution) {
     let videoPaths = [];
     let totalValidDuration = 0;
@@ -479,6 +511,15 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                     console.log(`Downloading video from URL: ${url}`);
                     await downloadFile(url, localVideoPath);
                     console.log(`Download successful: ${localVideoPath}`);
+                    
+                    // Validate the downloaded video file
+                    try {
+                        await validateVideoFile(localVideoPath);  // Check the integrity of the downloaded video
+                        console.log(`Video file is valid: ${localVideoPath}`);
+                    } catch (err) {
+                        console.error(`Invalid video file: ${url} - ${err.message}`);
+                        failed = true;
+                    }
                 } catch (err) {
                     console.error(`Download failed for video: ${url} - ${err.message}`);
                     failed = true;
@@ -600,7 +641,6 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
         throw new Error('No valid media found for merging.');
     }
 }
-
 
 
 
