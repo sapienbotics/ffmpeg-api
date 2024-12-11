@@ -445,6 +445,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
     });
 };
 
+
 async function processMediaSequence(mediaSequence, orientation, resolution) {
     let videoPaths = [];
     let totalValidDuration = 0;
