@@ -78,7 +78,7 @@ const downloadFile = async (url, outputPath, timeout = 30000) => {
             response.data.on('data', chunk => {
                 downloadedBytes += chunk.length;
                 // Optional: Log the download progress if needed
-                console.log(`Downloaded ${Math.round((downloadedBytes / totalBytes) * 100)}%`);
+                //console.log(`Downloaded ${Math.round((downloadedBytes / totalBytes) * 100)}%`);
             });
 
             writer.on('finish', () => {
