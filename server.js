@@ -1181,58 +1181,45 @@ module.exports = app; // Ensure you export your app to give
 
 // Endpoint to join multiple audio files
 app.post('/join-audio', async (req, res) => {
-    const { audioSequence } = req.body;
-
-    if (!audioSequence || !Array.isArray(audioSequence) || audioSequence.length < 2) {
-        return res.status(400).json({ error: 'audioSequence must be an array with at least two audio files.' });
-    }
-
-    const tempFileDir = path.join(__dirname, 'temp');
-    const concatFilePath = path.join(tempFileDir, `concat_${uuidv4()}.txt`);
-    const outputFilePath = path.join(outputDir, `joined_${uuidv4()}.mp3`);
-
     try {
-        // Ensure temp directory exists
-        if (!fs.existsSync(tempFileDir)) {
-            fs.mkdirSync(tempFileDir, { recursive: true });
+        const audioSequence = req.body;
+
+        if (!Array.isArray(audioSequence) || audioSequence.length < 2) {
+            return res.status(400).json({ error: 'Invalid audioSequence: At least two audio URLs are required.' });
         }
 
-        // Download audio files if they are URLs
-        const localFilePaths = await Promise.all(audioSequence.map(async (audioPath, index) => {
-            const localPath = path.join(tempFileDir, `audio_${index}_${uuidv4()}.mp3`);
+        const downloadedFiles = [];
+        const concatFilePath = path.join(outputDir, `concat_${uuidv4()}.txt`);
+        const outputFilePath = path.join(outputDir, `joined_audio_${uuidv4()}.mp3`);
 
-            if (audioPath.startsWith('http')) {
-                await downloadFileWithRetry(audioPath, localPath);
-            } else {
-                if (!fs.existsSync(audioPath)) {
-                    throw new Error(`File not found: ${audioPath}`);
-                }
-                fs.copyFileSync(audioPath, localPath);
+        for (const item of audioSequence) {
+            if (!item.audioUrl) {
+                return res.status(400).json({ error: 'Invalid input: Each object must have an audioUrl field.' });
             }
 
-            return localPath;
-        }));
+            const audioUrl = item.audioUrl;
+            const fileName = `${uuidv4()}.mp3`;
+            const filePath = path.join(processedDir, fileName);
 
-        // Generate FFmpeg concat file
-        const concatFileContent = localFilePaths.map(filePath => `file '${filePath}'`).join('\n');
+            // Download the file
+            await downloadFileWithRetry(audioUrl, filePath);
+            downloadedFiles.push(filePath);
+        }
+
+        // Create FFmpeg concat file
+        const concatFileContent = downloadedFiles.map(file => `file '${file}'`).join('\n');
         fs.writeFileSync(concatFilePath, concatFileContent);
 
-        // Use FFmpeg to join the audio files
+        // Execute FFmpeg command to join the audio files
         await execPromise(`ffmpeg -f concat -safe 0 -i "${concatFilePath}" -c copy "${outputFilePath}"`);
 
-        // Cleanup temp files
-        cleanupFiles([...localFilePaths, concatFilePath]);
+        // Cleanup temporary files
+        await cleanupFiles([...downloadedFiles, concatFilePath]);
 
-        // Respond with the output file URL
-        const outputFileUrl = `${req.protocol}://${req.get('host')}/output/${path.basename(outputFilePath)}`;
-        res.json({ message: 'Audio files joined successfully.', outputUrl: outputFileUrl });
+        res.json({ message: 'Audio files joined successfully', outputUrl: `/output/${path.basename(outputFilePath)}` });
     } catch (error) {
-        console.error(`Error joining audio files: ${error.message}`);
-
-        // Cleanup temp files in case of failure
-        cleanupFiles([concatFilePath, ...localFilePaths, outputFilePath]);
-
-        res.status(500).json({ error: 'Failed to join audio files.', details: error.message });
+        console.error('Error joining audio files:', error.message);
+        res.status(500).json({ error: 'Failed to join audio files. Please try again later.' });
     }
 });
 
