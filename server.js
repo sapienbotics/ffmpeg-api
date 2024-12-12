@@ -1000,6 +1000,7 @@ app.post('/apply-subtitles', async (req, res) => {
         const {
             "video-link": videoLink,
             content,
+            audioDuration, // Audio duration in seconds
             subtitle_font: fontName = 'NotoSansDevanagari-VariableFont_wdth,wght',
             subtitle_size: fontSize = 40,
             subtitle_color: subtitleColor = '#FFFFFF',
@@ -1039,35 +1040,22 @@ app.post('/apply-subtitles', async (req, res) => {
             return res.json({ videoUrl });
         }
 
-        if (!content || position === undefined) {
-            console.error("Error: Content and subtitle position are required for subtitles.");
-            return res.status(400).json({ error: "Content and subtitle position are required for subtitles." });
+        if (!content || position === undefined || !audioDuration) {
+            console.error("Error: Content, subtitle position, and audio duration are required for subtitles.");
+            return res.status(400).json({ error: "Content, subtitle position, and audio duration are required for subtitles." });
         }
-
-        let videoLengthInSeconds = 0;
-        await new Promise((resolve, reject) => {
-            ffmpeg.ffprobe(downloadPath, (err, metadata) => {
-                if (err) {
-                    console.error("Error during ffprobe:", err);
-                    return reject(err);
-                }
-                videoLengthInSeconds = Math.ceil(metadata.format.duration);
-                console.log("Video length in seconds:", videoLengthInSeconds);
-                resolve();
-            });
-        });
 
         const fontPath = path.join(__dirname, 'fonts', fontName + '.ttf');
         console.log("Font Path being used:", fontPath);
 
         const subtitleFile = path.join(outputDir, `${videoId}.ass`);
-        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, videoLengthInSeconds);
-        
+        const assContent = generateAss(content, fontName, fontSize, subtitleColor, backColor, opacity, position, audioDuration);
+
         fs.writeFileSync(subtitleFile, assContent, { encoding: 'utf-8' });
 
         console.log(`Running FFmpeg command to apply subtitles with subtitle file: ${subtitleFile}`);
         ffmpeg(downloadPath)
-            .outputOptions([
+            .outputOptions([ 
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
                 '-pix_fmt yuv420p',
                 '-color_range pc',
@@ -1098,7 +1086,8 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
+// Function to generate subtitles (ASS format)
+function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, audioDuration) {
     const assHeader = `
 [Script Info]
 Title: Subtitles
@@ -1115,19 +1104,20 @@ Format: Layer, Start, End, Style, Text
 
     const words = content.split(' ');
     const totalWords = words.length;
-    const wordsPerSubtitle = 4 + Math.floor(Math.random() * 2);  // Randomly decide between 4 or 5 words per subtitle
+    
+    const wordsPerSubtitle = Math.max(4, Math.floor(audioDuration / totalWords * 5)); // Dynamically calculate words per subtitle based on audioDuration
 
-    const adjustedDuration = Math.max(0, videoLengthInSeconds);
     const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
-    const durationPerSubtitle = adjustedDuration / totalSubtitles;
+    const durationPerSubtitle = audioDuration / totalSubtitles;
 
     let startTime = 0;
     let events = '';
 
+    // Split content based on wordsPerSubtitle and calculate subtitle timings
     for (let i = 0; i < totalSubtitles; i++) {
         const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
         const endTime = startTime + durationPerSubtitle;
-        if (endTime > adjustedDuration) {
+        if (endTime > audioDuration) {
             break;
         }
 
@@ -1138,7 +1128,6 @@ Format: Layer, Start, End, Style, Text
 
     return assHeader + events;
 }
-
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
