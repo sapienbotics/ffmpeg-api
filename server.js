@@ -1009,7 +1009,6 @@ app.post('/apply-subtitles', async (req, res) => {
             include_subtitles: includeSubtitles
         } = req.body;
 
-        // Validate input
         if (!videoLink) {
             console.error("Error: Video link is required.");
             return res.status(400).json({ error: "Video link is required." });
@@ -1019,7 +1018,6 @@ app.post('/apply-subtitles', async (req, res) => {
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
 
-        // Download the video
         const response = await axios({
             method: 'get',
             url: videoLink,
@@ -1100,8 +1098,6 @@ app.post('/apply-subtitles', async (req, res) => {
     }
 });
 
-
-
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, videoLengthInSeconds) {
     const assHeader = `
 [Script Info]
@@ -1119,30 +1115,23 @@ Format: Layer, Start, End, Style, Text
 
     const words = content.split(' ');
     const totalWords = words.length;
-    const wordsPerSubtitle = 4;
-
-    const adjustedDuration = Math.max(0, videoLengthInSeconds);
-    const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
-    const durationPerSubtitle = adjustedDuration / totalSubtitles;
+    const durationPerSubtitle = Math.max(0, videoLengthInSeconds / totalWords);
 
     let startTime = 0;
     let events = '';
 
-    for (let i = 0; i < totalSubtitles; i++) {
-        const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
+    // Create subtitles with dynamically calculated durations
+    for (let i = 0; i < totalWords; i++) {
+        const chunk = words.slice(i, i + 1).join(' ');  // One word per subtitle
         const endTime = startTime + durationPerSubtitle;
-        if (endTime > adjustedDuration) {
-            break;
-        }
+        if (endTime > videoLengthInSeconds) break;
 
-        // Corrected Dialogue line without unnecessary zeros
         events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
         startTime = endTime;
     }
 
     return assHeader + events;
 }
-
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
@@ -1175,6 +1164,7 @@ function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
 }
+
 
 
 module.exports = app; // Ensure you export your app to give
@@ -1222,8 +1212,6 @@ app.post('/join-audio', async (req, res) => {
         res.status(500).json({ error: 'Failed to join audio files. Please try again later.' });
     }
 });
-
-
 
 
 
