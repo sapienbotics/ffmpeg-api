@@ -1102,32 +1102,35 @@ Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${
 Format: Layer, Start, End, Style, Text
 `;
 
-    const words = content.split(' ');
-    const totalWords = words.length;
-    
-    const wordsPerSubtitle = Math.max(4, Math.floor(audioDuration / totalWords * 5)); // Dynamically calculate words per subtitle based on audioDuration
+    // Split content into chunks by punctuation or natural pauses
+    const segments = content.match(/[^.?!]+[.?!]*/g) || [content]; // Default to splitting by sentence
+    const totalSegments = segments.length;
 
-    const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
-    const durationPerSubtitle = audioDuration / totalSubtitles;
+    // Distribute audio duration proportionally to segment lengths
+    const segmentDurations = [];
+    const totalTextLength = segments.reduce((sum, seg) => sum + seg.length, 0);
+    
+    segments.forEach(segment => {
+        const duration = (segment.length / totalTextLength) * audioDuration;
+        segmentDurations.push(duration);
+    });
 
     let startTime = 0;
     let events = '';
 
-    // Split content based on wordsPerSubtitle and calculate subtitle timings
-    for (let i = 0; i < totalSubtitles; i++) {
-        const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
-        const endTime = startTime + durationPerSubtitle;
-        if (endTime > audioDuration) {
-            break;
-        }
+    segments.forEach((segment, index) => {
+        const duration = segmentDurations[index];
+        const endTime = startTime + duration;
 
-        // Corrected Dialogue line with grouped words
-        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
+        // Create ASS event line
+        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${segment.trim()}\n`;
+
         startTime = endTime;
-    }
+    });
 
     return assHeader + events;
 }
+
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
