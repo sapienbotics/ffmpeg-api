@@ -1115,23 +1115,30 @@ Format: Layer, Start, End, Style, Text
 
     const words = content.split(' ');
     const totalWords = words.length;
-    const durationPerSubtitle = Math.max(0, videoLengthInSeconds / totalWords);
+    const wordsPerSubtitle = 4 + Math.floor(Math.random() * 2);  // Randomly decide between 4 or 5 words per subtitle
+
+    const adjustedDuration = Math.max(0, videoLengthInSeconds);
+    const totalSubtitles = Math.ceil(totalWords / wordsPerSubtitle);
+    const durationPerSubtitle = adjustedDuration / totalSubtitles;
 
     let startTime = 0;
     let events = '';
 
-    // Create subtitles with dynamically calculated durations
-    for (let i = 0; i < totalWords; i++) {
-        const chunk = words.slice(i, i + 1).join(' ');  // One word per subtitle
+    for (let i = 0; i < totalSubtitles; i++) {
+        const chunk = words.slice(i * wordsPerSubtitle, (i + 1) * wordsPerSubtitle).join(' ');
         const endTime = startTime + durationPerSubtitle;
-        if (endTime > videoLengthInSeconds) break;
+        if (endTime > adjustedDuration) {
+            break;
+        }
 
+        // Corrected Dialogue line with grouped words
         events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${chunk}\n`;
         startTime = endTime;
     }
 
     return assHeader + events;
 }
+
 
 // Converts hex color to ASS format (&HAABBGGRR)
 function convertHexToAssColor(hex) {
