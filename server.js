@@ -1102,30 +1102,44 @@ Style: Default,${fontName},${fontSize},${convertHexToAssColor(subtitleColor)},${
 Format: Layer, Start, End, Style, Text
 `;
 
-    // Split content into chunks by punctuation or natural pauses
-    const segments = content.match(/[^.?!]+[.?!]*/g) || [content]; // Default to splitting by sentence
-    const totalSegments = segments.length;
-
-    // Distribute audio duration proportionally to segment lengths
-    const segmentDurations = [];
+    const maxCharsPerSubtitle = 50; // Adjust this value based on screen size
+    const segments = content.match(/[^.?!]+[.?!]*/g) || [content]; // Split by sentences
     const totalTextLength = segments.reduce((sum, seg) => sum + seg.length, 0);
-    
-    segments.forEach(segment => {
-        const duration = (segment.length / totalTextLength) * audioDuration;
-        segmentDurations.push(duration);
-    });
+
+    const segmentDurations = segments.map(segment => 
+        (segment.length / totalTextLength) * audioDuration
+    );
 
     let startTime = 0;
     let events = '';
 
     segments.forEach((segment, index) => {
         const duration = segmentDurations[index];
-        const endTime = startTime + duration;
+        const words = segment.split(/\s+/); // Split into words
+        let chunk = '';
+        let chunkStartTime = startTime;
+        let remainingDuration = duration;
 
-        // Create ASS event line
-        events += `Dialogue: 0,${formatTimeAss(startTime)},${formatTimeAss(endTime)},Default,${segment.trim()}\n`;
+        for (let i = 0; i < words.length; i++) {
+            // Add words to the current chunk until maxCharsPerSubtitle is reached
+            if ((chunk + ' ' + words[i]).trim().length > maxCharsPerSubtitle) {
+                const chunkDuration = remainingDuration * (chunk.length / segment.length);
 
-        startTime = endTime;
+                events += `Dialogue: 0,${formatTimeAss(chunkStartTime)},${formatTimeAss(chunkStartTime + chunkDuration)},Default,${chunk.trim()}\n`;
+
+                chunkStartTime += chunkDuration;
+                remainingDuration -= chunkDuration;
+                chunk = '';
+            }
+            chunk += (chunk ? ' ' : '') + words[i];
+        }
+
+        // Add the last chunk
+        if (chunk) {
+            events += `Dialogue: 0,${formatTimeAss(chunkStartTime)},${formatTimeAss(chunkStartTime + remainingDuration)},Default,${chunk.trim()}\n`;
+        }
+
+        startTime += duration;
     });
 
     return assHeader + events;
