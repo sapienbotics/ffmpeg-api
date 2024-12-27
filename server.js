@@ -298,7 +298,10 @@ const effects = [
     //`scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
     // Slow Zoom In Effect (Stops at 1.2x zoom)
-    `scale='min(${width}/iw,${height}/ih)*iw:min(${width}/iw,${height}/ih)*ih':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},zoompan=z='if(gte(zoom,1.2),1.2,zoom+(1.2-zoom)/(${duration}*30)*sqrt(zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration}*30:s=${width}x${height},unsharp=5:5:1:5:5:0`
+    `scale=${width}:${height}:force_original_aspect_ratio=decrease,
+pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},
+zoompan=z='if(gte(zoom,1.2),1.2,zoom+(1.2-zoom)/(${duration}*30))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration}*30:s=${width}x${height},
+unsharp=5:5:1:5:5:0`
 
 
     // Slow Zoom Out Effect (Stops at 1x zoom)
