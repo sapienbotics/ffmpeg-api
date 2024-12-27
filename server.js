@@ -283,7 +283,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
-            // Step 1: Download the image (and convert if necessary)
+            // Step 1: Download the image and convert if necessary
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
             // Step 2: Extract the dominant color for padding
@@ -292,52 +292,66 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects with improved parameters
+            // Step 4: Define effects with refined parameters
             const effects = [
-                // Stationary Effect (Centered with padding using dominant color)
+                // Stationary effect with padding (Fallback)
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Smooth Slow Zoom In Effect (Stops at 1.2x zoom)
-                `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                // Smooth slow zoom effect (gradual stop)
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.001,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-                // Ken Burns Effect (Zoom with subtle pan left movement)
-                `zoompan=z='if(gte(on,1),zoom+0.0015,zoom)':x='if(gte(on,1),x+3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-                // Ken Burns Effect (Zoom with subtle pan right movement)
-                `zoompan=z='if(gte(on,1),zoom+0.0015,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-                // Fade-in and Fade-out Effect (Smooth transitions)
+                // Fade-in and fade-out transitions
                 `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
             ];
 
-            // Step 5: Apply multiple effects with proper proportions
-            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
+            // Step 5: Determine if dynamic effects are suitable
+            let selectedEffect;
 
-            // Step 6: Apply the selected effect to the image and convert to video
+            // Example condition: Use Stationary Effect if Image Aspect Ratio is Too Wide or Too Tall
+            const imageAspectRatio = await getImageAspectRatio(finalImagePath);
+            const targetAspectRatio = width / height;
+
+            if (Math.abs(imageAspectRatio - targetAspectRatio) > 0.3) {
+                console.log(`Image aspect ratio (${imageAspectRatio}) unsuitable for dynamic effects. Applying stationary effect.`);
+                selectedEffect = effects[0]; // Stationary effect
+            } else {
+                // Randomly select from other effects
+                selectedEffect = effects[Math.floor(Math.random() * effects.length)];
+            }
+
+            console.log(`Selected effect: ${selectedEffect}`);
+
+            // Step 6: Apply the selected effect and convert to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', randomEffect) // Apply selected effect
+                .outputOptions('-vf', selectedEffect) // Apply selected effect
                 .outputOptions('-r', '30') // Frame rate
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
-                .outputOptions('-threads', '6') // Speed up with multiple threads
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '20') // Video codec and quality
+                .outputOptions('-pix_fmt', 'yuv420p') // Ensure compatibility
                 .on('end', () => {
-                    console.log('Image converted to video with effect.');
+                    console.log('Image successfully converted to video.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
-                    console.error(`Error converting image to video: ${err.message}`);
+                    console.error(`Error during conversion: ${err.message}`);
                     reject(err);
                 })
                 .save(outputFilePath);
 
         } catch (error) {
-            console.error(`Image download or conversion failed: ${error.message}`);
+            console.error(`Error in image processing: ${error.message}`);
             reject(error);
         }
     });
 }
+
+// Helper Function to Calculate Image Aspect Ratio
+async function getImageAspectRatio(imagePath) {
+    const metadata = await sharp(imagePath).metadata();
+    return metadata.width / metadata.height;
+}
+
 
 
 
