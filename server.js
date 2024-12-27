@@ -292,22 +292,22 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define smooth effects with refined parameters
+            // Step 4: Define effects with refined parameters
             const effects = [
                 // Stationary effect (fallback)
                 `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
                 // Smooth slow zoom in (with no abrupt shaking)
-                `zoompan=z='if(lte(zoom,1.2),zoom+0.002,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.002,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale='if(gt(iw/ih,${width}/${height}),${width},-1):if(lt(iw/ih,${width}/${height}),${height},-1)':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
                 // Smooth zoom out (subtle and controlled)
-                `zoompan=z='if(gte(zoom,1.0),zoom-0.0015,1.0)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `zoompan=z='if(gte(zoom,1.0),zoom-0.0015,1.0)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale='if(gt(iw/ih,${width}/${height}),${width},-1):if(lt(iw/ih,${width}/${height}),${height},-1)':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
                 // Ken Burns effect (smooth pan left-to-right)
-                `zoompan=z='1.1':x='iw/2-(iw/zoom/2)+on*5':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `zoompan=z='1.1':x='iw/2-(iw/zoom/2)+on*5':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale='if(gt(iw/ih,${width}/${height}),${width},-1):if(lt(iw/ih,${width}/${height}),${height},-1)':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
                 // Ken Burns effect (smooth pan right-to-left)
-                `zoompan=z='1.1':x='iw/2-(iw/zoom/2)-on*5':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+                `zoompan=z='1.1':x='iw/2-(iw/zoom/2)-on*5':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale='if(gt(iw/ih,${width}/${height}),${width},-1):if(lt(iw/ih,${width}/${height}),${height},-1)':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
             ];
 
             // Step 5: Randomly select an effect (or fallback to stationary)
