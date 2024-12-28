@@ -290,40 +290,37 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 2: Extract the dominant color for padding
             const dominantColor = await extractDominantColor(finalImagePath);
 
-            // Step 3: Parse the resolution (e.g., "1920:1080")
+            // Step 3: Parse the resolution
             const [targetWidth, targetHeight] = resolution.split(':').map(Number);
 
-            // Step 4: Calculate padding filter without resizing the image
+            // Step 4: Define FFmpeg filters
             const paddingFilter = `scale=-1:${targetHeight}:force_original_aspect_ratio=decrease,` +
                 `pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-
-            // Step 5: Smooth Zoom Effect with slow increments
             const zoomEffect = `zoompan=z='if(lte(zoom,1.1),zoom+0.0005,zoom)':` +
                 `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight}`;
+            const filterComplex = `[0]${paddingFilter},${zoomEffect},minterpolate=fps=60[out]`;
 
-            // Apply the effects together
-            const filterComplex = `[0]${paddingFilter},${zoomEffect},minterpolate='fps=60'[out]`;
-
-            // Step 6: Apply the selected effect to the image and convert to video
+            // Step 5: Apply filters and encode video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-filter_complex', filterComplex) // Apply padding, zoom, and interpolation effects
-                .outputOptions('-r', '30') // Frame rate (30 for output)
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
-                .outputOptions('-threads', '6') // Speed up with multiple threads
+                .outputOptions('-filter_complex', filterComplex)
+                .outputOptions('-map', '[out]') // Explicitly map the output
+                .outputOptions('-r', '30') // Set final output frame rate
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Optimize encoding
+                .outputOptions('-threads', '4')
                 .on('end', () => {
-                    console.log('Image converted to video with effect.');
+                    console.log('Image successfully converted to video.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
-                    console.error(`Error converting image to video: ${err.message}`);
+                    console.error(`Error in FFmpeg: ${err.message}`);
                     reject(err);
                 })
                 .save(outputFilePath);
 
         } catch (error) {
-            console.error(`Image download or conversion failed: ${error.message}`);
+            console.error(`Conversion failed for image: ${imageUrl} - ${error.message}`);
             reject(error);
         }
     });
