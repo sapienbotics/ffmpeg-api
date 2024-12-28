@@ -277,38 +277,58 @@ app.post('/convert-image-to-video', async (req, res) => {
 
 
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
-    const ffmpeg = require('fluent-ffmpeg');
-    const path = require('path');
-
-    const outputFilePath = path.join('/usr/src/app/output', `${Date.now()}_video.mp4`);
-    const downloadedImagePath = path.join('/usr/src/app/output', 'downloaded_image.jpg');
-
+    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
 
-    return new Promise((resolve, reject) => {
-        ffmpeg()
-            .input(imageUrl)
-            .inputOptions('-loop', '1') // Loop the single image for the video duration
-            .outputOptions('-t', duration.toString()) // Set video duration
-            .outputOptions('-vf', `
-                scale=w='if(gt(iw/ih,${resolution.width}/${resolution.height}),${resolution.width},-2)':h='if(gt(iw/ih,${resolution.width}/${resolution.height}),-2,${resolution.height}):force_original_aspect_ratio=decrease,
-                pad=${resolution.width}:${resolution.height}:(ow-iw)/2:(oh-ih)/2:black,
-                zoompan=z='if(lte(zoom,1.5),zoom+0.0015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':fps=30
-            `)
-            .outputOptions('-r', '30') // Set frame rate to 30 FPS
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Encoding settings
-            .output(outputFilePath)
-            .on('end', () => {
-                console.log(`Successfully converted image to video: ${outputFilePath}`);
-                resolve(outputFilePath);
-            })
-            .on('error', (err) => {
-                console.error(`FFmpeg Error: ${err.message}`);
-                reject(err);
-            })
-            .run();
+    return new Promise(async (resolve, reject) => {
+        const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
+
+        try {
+            // Step 1: Download the image
+            const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
+
+            // Step 2: Extract the dominant color for padding
+            const dominantColor = await extractDominantColor(finalImagePath);
+
+            // Step 3: Parse the resolution (e.g., "1920:1080")
+            const [targetWidth, targetHeight] = resolution.split(':').map(Number);
+
+            // Step 4: Calculate padding filter without resizing the image
+            const paddingFilter = `scale=-1:${targetHeight}:force_original_aspect_ratio=decrease,` +
+                `pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+
+            // Step 5: Smooth Zoom Effect (Stops at 1.2x zoom)
+            const zoomEffect = `zoompan=z='if(lte(zoom,1.1),zoom+0.0005,zoom)':` +
+                `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight}`;
+
+            // Combine padding and zoom/pan effects
+            const effect = `${zoomEffect},${paddingFilter}`;
+
+            // Step 6: Apply the selected effect to the image and convert to video
+            ffmpeg()
+                .input(finalImagePath)
+                .loop(duration)
+                .outputOptions('-vf', effect) // Apply zoom/pan and padding effect
+                .outputOptions('-r', '30') // Frame rate
+                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
+                .outputOptions('-threads', '6') // Speed up with multiple threads
+                .on('end', () => {
+                    console.log('Image converted to video with effect.');
+                    resolve(outputFilePath);
+                })
+                .on('error', (err) => {
+                    console.error(`Error converting image to video: ${err.message}`);
+                    reject(err);
+                })
+                .save(outputFilePath);
+
+        } catch (error) {
+            console.error(`Image download or conversion failed: ${error.message}`);
+            reject(error);
+        }
     });
 }
+
 
 
 // Helper Function to Calculate Image Aspect Ratio
