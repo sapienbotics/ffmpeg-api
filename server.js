@@ -275,6 +275,7 @@ app.post('/convert-image-to-video', async (req, res) => {
     }
 });
 
+
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -283,7 +284,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
-            // Step 1: Download the image (and convert if necessary)
+            // Step 1: Download the image
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
             // Step 2: Extract the dominant color for padding
@@ -292,51 +293,28 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects with improved parameters
-const effects = [
-    // Stationary Effect (Centered with padding)
-    //`scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            // Step 4: Apply padding without resizing
+            const paddingEffect = `scale='min(${width},iw)':min(${height},ih)':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-    // Slow Zoom In Effect (Stops at 1.2x zoom)
-    `scale=${width}:${height}:force_original_aspect_ratio=decrease,
-pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor},
-zoompan=z='if(gte(zoom,1.2),1.2,zoom+(1.2-zoom)/(${duration}*30))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration}*30:s=${width}x${height},
-unsharp=5:5:1:5:5:0`
+            // Step 5: Define video effects with padding applied
+            const effects = [
+                paddingEffect,
+                `${paddingEffect},zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}`
+            ];
 
+            const selectedEffect = effects[Math.floor(Math.random() * effects.length)];
+            console.log(`Selected effect for image: ${selectedEffect}`); // Debug log
 
-    // Slow Zoom Out Effect (Stops at 1x zoom)
-   // `zoompan=z='if(eq(on,0),1.2,if(gte(zoom,1),zoom-0.0015,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Fade-in and Fade-out Effect (Smooth fade transition)
-    //`fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Ken Burns Effect (Zoom with subtle pan left movement)
-    //`zoompan=z='zoom+0.0005':x='x+1.5':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-
-    // Ken Burns Effect (Zoom with subtle pan right movement)
-    //`zoompan=z='if(gte(on,1),zoom+0.0015,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Diagonal Zoom In/Out Effect
-   // `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-];
-
-
-
-
-            // Step 5: Apply multiple effects with proper proportions
-            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
-
-            // Step 6: Apply the selected effect to the image and convert to video
+            // Step 6: Convert the image to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', randomEffect) // Apply selected effect
+                .outputOptions('-vf', selectedEffect) // Apply selected effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
                 .on('end', () => {
-                    console.log('Image converted to video with effect.');
+                    console.log('Image converted to video successfully.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
