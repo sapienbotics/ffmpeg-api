@@ -291,30 +291,26 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const dominantColor = await extractDominantColor(finalImagePath);
 
             // Step 3: Parse the resolution (e.g., "1920:1080")
-            const [width, height] = resolution.split(':').map(Number);
+            const [targetWidth, targetHeight] = resolution.split(':').map(Number);
 
-            // Step 4: Apply padding without resizing
-            const paddingEffect = `scale='min(${width},iw)':min(${height},ih)':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            // Step 4: Dynamic padding to preserve original orientation
+            const paddingFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,` +
+                `pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Step 5: Define video effects with padding applied
-            const effects = [
-                paddingEffect,
-                `${paddingEffect},zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}`
-            ];
+            // Step 5: Basic zoom effect to start
+            const zoomEffect = `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':` +
+                `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight},${paddingFilter}`;
 
-            const selectedEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${selectedEffect}`); // Debug log
-
-            // Step 6: Convert the image to video
+            // Step 6: Apply selected effect to the image and convert to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', selectedEffect) // Apply selected effect
+                .outputOptions('-vf', paddingFilter) // Padding filter
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
                 .on('end', () => {
-                    console.log('Image converted to video successfully.');
+                    console.log('Image converted to video with effect.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
@@ -329,7 +325,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 // Helper Function to Calculate Image Aspect Ratio
 async function getImageAspectRatio(imagePath) {
