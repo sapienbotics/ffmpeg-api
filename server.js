@@ -301,19 +301,17 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const zoomEffect = `zoompan=z='if(lte(zoom,1.1),zoom+0.0005,zoom)':` +
                 `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight}`;
 
-            // Combine padding and zoom/pan effects
-            const effect = `${zoomEffect},${paddingFilter}`;
+            // Apply the effects together
+            const filterComplex = `[0]${paddingFilter},${zoomEffect},minterpolate='fps=60'[out]`;
 
             // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', effect) // Apply zoom/pan and padding effect
-                .outputOptions('-r', '60') // Frame rate (60 for smoother motion)
+                .outputOptions('-filter_complex', filterComplex) // Apply padding, zoom, and interpolation effects
+                .outputOptions('-r', '30') // Frame rate (30 for output)
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
-                .outputOptions('-filter:v', 'minterpolate=fps=60') // Correct syntax for minterpolate filter
-                .outputOptions('-r', '30') // Reduce frame rate to 30 FPS for output video
                 .on('end', () => {
                     console.log('Image converted to video with effect.');
                     resolve(outputFilePath);
@@ -330,7 +328,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 // Helper Function to Calculate Image Aspect Ratio
 async function getImageAspectRatio(imagePath) {
