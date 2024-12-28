@@ -1217,6 +1217,31 @@ app.post('/join-audio', async (req, res) => {
     }
 });
 
+app.delete('/delete-file', (req, res) => {
+    const { filename } = req.body; // Extract filename from the JSON body
+
+    if (!filename) {
+        return res.status(400).json({ error: 'Filename is required' });
+    }
+
+    const filePath = path.join(__dirname, 'path_to_your_files_directory', filename);
+
+    fs.access(filePath, fs.constants.F_OK, (err) => {
+        if (err) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        fs.unlink(filePath, (err) => {
+            if (err) {
+                console.error(`Error deleting file: ${err.message}`);
+                return res.status(500).json({ error: 'Could not delete the file' });
+            }
+
+            res.status(200).json({ message: 'File deleted successfully' });
+        });
+    });
+});
+
 
 
 // Start the server
