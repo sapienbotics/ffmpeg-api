@@ -293,12 +293,12 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [targetWidth, targetHeight] = resolution.split(':').map(Number);
 
-            // Step 4: Calculate padding and scale the image to fit the resolution
-            const paddingFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,` +
+            // Step 4: Calculate padding filter without resizing the image
+            const paddingFilter = `scale=-1:${targetHeight}:force_original_aspect_ratio=decrease,` +
                 `pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Step 5: Zoom/Pan Effect
-            const zoomEffect = `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':` +
+            // Step 5: Smooth Zoom Effect (Stops at 1.2x zoom)
+            const zoomEffect = `zoompan=z='if(lte(zoom,1.1),zoom+0.0010,zoom)':` +
                 `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight}`;
 
             // Combine padding and zoom/pan effects
