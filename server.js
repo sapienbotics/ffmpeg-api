@@ -297,8 +297,8 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const paddingFilter = `scale=-1:${targetHeight}:force_original_aspect_ratio=decrease,` +
                 `pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Step 5: Smooth Zoom Effect (Stops at 1.2x zoom)
-            const zoomEffect = `zoompan=z='if(lte(zoom,1.1),zoom+0.0010,zoom)':` +
+            // Step 5: Smooth Zoom Effect with slow increments
+            const zoomEffect = `zoompan=z='if(lte(zoom,1.1),zoom+0.0005,zoom)':` +
                 `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight}`;
 
             // Combine padding and zoom/pan effects
@@ -312,6 +312,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
+                .outputOptions('-minterpolate', 'frame_rate=60') // Add intermediate frames to smooth zoom transition
                 .on('end', () => {
                     console.log('Image converted to video with effect.');
                     resolve(outputFilePath);
@@ -328,6 +329,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 // Helper Function to Calculate Image Aspect Ratio
