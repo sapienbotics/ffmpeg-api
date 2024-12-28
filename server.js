@@ -281,6 +281,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
     const path = require('path');
 
     const outputFilePath = path.join('/usr/src/app/output', `${Date.now()}_video.mp4`);
+    const downloadedImagePath = path.join('/usr/src/app/output', 'downloaded_image.jpg');
 
     console.log(`Starting conversion for image: ${imageUrl}`);
 
@@ -292,10 +293,9 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             .outputOptions('-vf', `
                 scale=w='if(gt(iw/ih,${resolution.width}/${resolution.height}),${resolution.width},-2)':h='if(gt(iw/ih,${resolution.width}/${resolution.height}),-2,${resolution.height}):force_original_aspect_ratio=decrease,
                 pad=${resolution.width}:${resolution.height}:(ow-iw)/2:(oh-ih)/2:black,
-                zoompan=z='if(lte(zoom,1.5),zoom+0.0015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)',
-                minterpolate=fps=60:mi_mode=mci
+                zoompan=z='if(lte(zoom,1.5),zoom+0.0015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':fps=30
             `)
-            .outputOptions('-r', '60') // Interpolation requires higher FPS
+            .outputOptions('-r', '30') // Set frame rate to 30 FPS
             .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Encoding settings
             .output(outputFilePath)
             .on('end', () => {
@@ -309,6 +309,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             .run();
     });
 }
+
 
 // Helper Function to Calculate Image Aspect Ratio
 async function getImageAspectRatio(imagePath) {
