@@ -277,52 +277,36 @@ app.post('/convert-image-to-video', async (req, res) => {
 
 
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
-    const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
+    const ffmpeg = require('fluent-ffmpeg');
+    const path = require('path');
+
+    const outputFilePath = path.join('/usr/src/app/output', `${Date.now()}_video.mp4`);
+
     console.log(`Starting conversion for image: ${imageUrl}`);
 
-    return new Promise(async (resolve, reject) => {
-        const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
-
-        try {
-            // Step 1: Download the image
-            const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
-
-            // Step 2: Extract the dominant color for padding
-            const dominantColor = await extractDominantColor(finalImagePath);
-
-            // Step 3: Parse the resolution
-            const [targetWidth, targetHeight] = resolution.split(':').map(Number);
-
-            // Step 4: Define FFmpeg filters
-            const paddingFilter = `scale=-1:${targetHeight}:force_original_aspect_ratio=decrease,` +
-                `pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
-            const zoomEffect = `zoompan=z='if(lte(zoom,1.1),zoom+0.0005,zoom)':` +
-                `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight}`;
-            const filterComplex = `[0]${paddingFilter},${zoomEffect},minterpolate=fps=60[out]`;
-
-            // Step 5: Apply filters and encode video
-            ffmpeg()
-                .input(finalImagePath)
-                .loop(duration)
-                .outputOptions('-filter_complex', filterComplex)
-                .outputOptions('-map', '[out]') // Explicitly map the output
-                .outputOptions('-r', '30') // Set final output frame rate
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Optimize encoding
-                .outputOptions('-threads', '4')
-                .on('end', () => {
-                    console.log('Image successfully converted to video.');
-                    resolve(outputFilePath);
-                })
-                .on('error', (err) => {
-                    console.error(`Error in FFmpeg: ${err.message}`);
-                    reject(err);
-                })
-                .save(outputFilePath);
-
-        } catch (error) {
-            console.error(`Conversion failed for image: ${imageUrl} - ${error.message}`);
-            reject(error);
-        }
+    return new Promise((resolve, reject) => {
+        ffmpeg()
+            .input(imageUrl)
+            .inputOptions('-loop', '1') // Loop the single image for the video duration
+            .outputOptions('-t', duration.toString()) // Set video duration
+            .outputOptions('-vf', `
+                scale=w='if(gt(iw/ih,${resolution.width}/${resolution.height}),${resolution.width},-2)':h='if(gt(iw/ih,${resolution.width}/${resolution.height}),-2,${resolution.height}):force_original_aspect_ratio=decrease,
+                pad=${resolution.width}:${resolution.height}:(ow-iw)/2:(oh-ih)/2:black,
+                zoompan=z='if(lte(zoom,1.5),zoom+0.0015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)',
+                minterpolate=fps=60:mi_mode=mci
+            `)
+            .outputOptions('-r', '60') // Interpolation requires higher FPS
+            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Encoding settings
+            .output(outputFilePath)
+            .on('end', () => {
+                console.log(`Successfully converted image to video: ${outputFilePath}`);
+                resolve(outputFilePath);
+            })
+            .on('error', (err) => {
+                console.error(`FFmpeg Error: ${err.message}`);
+                reject(err);
+            })
+            .run();
     });
 }
 
