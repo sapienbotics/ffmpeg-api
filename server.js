@@ -309,10 +309,11 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
                 .input(finalImagePath)
                 .loop(duration)
                 .outputOptions('-vf', effect) // Apply zoom/pan and padding effect
-                .outputOptions('-r', '30') // Frame rate
+                .outputOptions('-r', '60') // Frame rate (60 for smoother motion)
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
-                .outputOptions('-minterpolate', 'frame_rate=60') // Add intermediate frames to smooth zoom transition
+                .outputOptions('-filter:v', 'minterpolate=fps=60') // Correct syntax for minterpolate filter
+                .outputOptions('-r', '30') // Reduce frame rate to 30 FPS for output video
                 .on('end', () => {
                     console.log('Image converted to video with effect.');
                     resolve(outputFilePath);
@@ -329,7 +330,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
 
 
 // Helper Function to Calculate Image Aspect Ratio
