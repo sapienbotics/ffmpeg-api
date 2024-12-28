@@ -293,19 +293,22 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [targetWidth, targetHeight] = resolution.split(':').map(Number);
 
-            // Step 4: Dynamic padding to preserve original orientation
+            // Step 4: Calculate padding and scale the image to fit the resolution
             const paddingFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,` +
                 `pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Step 5: Basic zoom effect to start
+            // Step 5: Zoom/Pan Effect
             const zoomEffect = `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':` +
-                `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight},${paddingFilter}`;
+                `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${targetWidth}x${targetHeight}`;
 
-            // Step 6: Apply selected effect to the image and convert to video
+            // Combine padding and zoom/pan effects
+            const effect = `${zoomEffect},${paddingFilter}`;
+
+            // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', paddingFilter) // Padding filter
+                .outputOptions('-vf', effect) // Apply zoom/pan and padding effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
@@ -325,6 +328,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 // Helper Function to Calculate Image Aspect Ratio
 async function getImageAspectRatio(imagePath) {
