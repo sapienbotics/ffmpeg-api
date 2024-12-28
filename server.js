@@ -307,9 +307,8 @@ const effects = [
     // Fade-in and Fade-out Effect (Smooth fade transition)
    // `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
-    // Ken Burns Effect (Zoom with subtle pan left movement)
-`zoompan=z='if(gte(on,1),zoom+0.0005,zoom)':x='if(gte(on,1),x+1,x)':y='ih/2-(ih/zoom/2) + (x/iw)*0.5':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
+// Ken Burns Effect (Zoom with subtle pan left movement)
+`zoompan=z='if(gte(on,1),zoom+0.0005,zoom)':x='if(gte(on,1),x+1,x)':y='if(gte(on,1),ih/2-(ih/zoom/2)+(x/iw)*0.25,ih/2-(ih/zoom/2))':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
 
     // Ken Burns Effect (Zoom with subtle pan right movement)
     //`zoompan=z='if(gte(on,1),zoom+0.0005,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
