@@ -1239,10 +1239,16 @@ app.post('/join-audio', async (req, res) => {
 // Endpoint to delete a file
 app.post('/delete-file', async (req, res) => {
     try {
-        const { filename } = req.body;
+        let { filename } = req.body;
 
         if (!filename) {
             return res.status(400).json({ error: 'Filename is required' });
+        }
+
+        // Extract the actual file name if a full URL is provided
+        if (filename.startsWith('http://') || filename.startsWith('https://')) {
+            const urlParts = new URL(filename);
+            filename = path.basename(urlParts.pathname); // Extracts the file name
         }
 
         const filePath = path.join(__dirname, 'path_to_your_files_directory', filename);
@@ -1261,6 +1267,7 @@ app.post('/delete-file', async (req, res) => {
         res.status(500).json({ error: 'Failed to delete the file. Please try again later.' });
     }
 });
+
 
 
 
