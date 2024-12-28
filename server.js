@@ -1236,35 +1236,43 @@ app.post('/join-audio', async (req, res) => {
     }
 });
 
-// Endpoint to delete a file
-app.post('/delete-file', async (req, res) => {
+// DELETE endpoint to delete a file based on URL
+app.delete('/delete-file', async (req, res) => {
+    const { filename } = req.body;
+
+    if (!filename) {
+        return res.status(400).json({ error: 'Filename is required' });
+    }
+
     try {
-        let { filename } = req.body;
-
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename is required' });
+        // Ensure the filename starts with the expected base URL
+        const baseUrl = 'https://ffmpeg-api-production.up.railway.app/output/';
+        if (!filename.startsWith(baseUrl)) {
+            return res.status(400).json({ error: 'Invalid filename URL' });
         }
 
-        // Extract the actual file name if a full URL is provided
-        if (filename.startsWith('http://') || filename.startsWith('https://')) {
-            const urlParts = new URL(filename);
-            filename = path.basename(urlParts.pathname); // Extracts the file name
-        }
+        // Extract the file name from the URL
+        const fileName = path.basename(filename);
 
-        const filePath = path.join(__dirname, 'path_to_your_files_directory', filename);
+        // Construct the full file path in the server's output directory
+        const filePath = path.join(outputDir, fileName);
 
-        // Check if the file exists
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'File not found' });
         }
 
         // Delete the file
-        await fs.promises.unlink(filePath);
+        fs.unlink(filePath, (err) => {
+            if (err) {
+                console.error('Error deleting file:', err);
+                return res.status(500).json({ error: 'An error occurred while deleting the file.' });
+            }
 
-        res.json({ message: 'File deleted successfully', deletedFile: filename });
-    } catch (error) {
-        console.error('Error deleting file:', error.message);
-        res.status(500).json({ error: 'Failed to delete the file. Please try again later.' });
+            res.status(200).json({ message: `File ${fileName} deleted successfully.` });
+        });
+    } catch (err) {
+        console.error('Unexpected error:', err);
+        res.status(500).json({ error: 'An unexpected error occurred.' });
     }
 });
 
