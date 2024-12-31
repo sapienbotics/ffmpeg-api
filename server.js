@@ -292,12 +292,12 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "720:1280")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Apply scaling and padding logic correctly
+            // Step 4: Apply scaling and padding logic
             const scaleFilter = `scale=${width}:${height}`;
             const padFilter = `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Step 5: Apply the zoom effect with a smooth zoom-out
-            const effect = `zoompan=z='if(gte(on,1),zoom-0.002,1.0)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},${scaleFilter},${padFilter}`;
+            // Step 5: Apply zoom effect (Zoom in and then zoom out)
+            const effect = `zoompan=z='if(gte(on,1),1.5,1.0)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},${scaleFilter},${padFilter}`;
 
             // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
