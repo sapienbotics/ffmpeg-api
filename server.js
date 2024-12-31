@@ -295,9 +295,10 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
 
             // Step 4: Define possible effects with improved parameters
             const effects = [
-                // Slow Zoom Out Effect (Stops at 1x zoom) without Pixel Movement
-                `zoompan=z='if(eq(on,0),1.2,if(gte(zoom,1),zoom-0.0005,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-            ];
+    // Smooth Zoom Out Effect (Stops at 1x zoom) without Pixel Movement
+    `zoompan=z='if(eq(on,0),1.2,zoom-0.0002)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+];
+
 
             // Step 5: Apply multiple effects with proper proportions
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
