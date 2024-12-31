@@ -290,23 +290,21 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 2: Extract the dominant color for padding
             const dominantColor = await extractDominantColor(finalImagePath);
 
-            // Step 3: Parse the resolution (e.g., "1920:1080")
+            // Step 3: Parse the resolution (e.g., "720:1280")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Scale the image to fit the target resolution
-            const effects = [
-                `zoompan=z='if(eq(on,0),1.2,zoom-0.0015)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale='if(gte(iw/ih,${width}/${height}),${width}:-1,${-1}:${height})',pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-            ];
+            // Step 4: Apply scaling and padding logic correctly
+            const scaleFilter = `scale='if(gte(iw/ih,${width}/${height}),${width}:-1,-1:${height})'`;
+            const padFilter = `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Step 5: Apply multiple effects with proper proportions
-            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
+            // Step 5: Define the zoom effect with smoother transition and fixed filters
+            const effect = `zoompan=z='if(eq(on,0),1.2,zoom-0.0015)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},${scaleFilter},${padFilter}`;
 
             // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', randomEffect) // Apply selected effect
+                .outputOptions('-vf', effect) // Apply selected effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
