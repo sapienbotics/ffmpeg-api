@@ -283,33 +283,25 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
-            // Step 1: Download the image (and convert if necessary)
+            // Step 1: Download the image
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
-            // Step 2: Extract the dominant color for padding
-            const dominantColor = await extractDominantColor(finalImagePath);
-
-            // Step 3: Parse the resolution (e.g., "720:1280")
+            // Step 2: Parse resolution (e.g., "720:1280")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Apply scaling and padding logic
-            const scaleFilter = `scale=${width}:${height}`;
-            const padFilter = `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            // Step 3: Define the zoom effect
+            const zoomEffect = `zoompan=z='zoom+0.005':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:fps=30,scale=${width}:${height}`;
 
-            // Step 5: Explicit zoom effect
-            // The expression will zoom in from 1 to 1.5 and then back to 1, gradually over the video
-            const effect = `zoompan=z='min(1.5, 1+0.01*(in-1))':d=${duration * 30},${scaleFilter},${padFilter}`;
-
-            // Step 6: Apply the selected effect to the image and convert to video
+            // Step 4: Convert image to video with the zoom effect
             ffmpeg()
                 .input(finalImagePath)
-                .loop(duration)
-                .outputOptions('-vf', effect) // Apply selected effect
+                .loop(duration) // Repeat the image for the specified duration
+                .outputOptions('-vf', zoomEffect) // Apply the zoom effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
                 .on('end', () => {
-                    console.log('Image converted to video with effect.');
+                    console.log('Image converted to video with zoom effect.');
                     resolve(outputFilePath);
                 })
                 .on('error', (err) => {
@@ -324,6 +316,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 
