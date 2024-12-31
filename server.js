@@ -293,13 +293,12 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects with improved parameters
+            // Step 4: Scale the image to fit the target resolution
             const effects = [
-                // Smooth Zoom Out Effect (Stops at 1x zoom) without Erratic Movements
-                `zoompan=z='if(eq(on,0),1.2,zoom-0.002)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
+                `zoompan=z='if(eq(on,0),1.2,zoom-0.0015)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale='if(gte(iw/ih,${width}/${height}),${width}:-1,${-1}:${height})',pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
             ];
 
-            // Step 5: Apply selected effect
+            // Step 5: Apply multiple effects with proper proportions
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
             console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
 
@@ -327,6 +326,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 // Function to get audio duration using ffmpeg
