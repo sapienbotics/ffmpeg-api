@@ -275,7 +275,6 @@ app.post('/convert-image-to-video', async (req, res) => {
     }
 });
 
-
 async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
     console.log(`Starting conversion for image: ${imageUrl}`);
@@ -298,7 +297,8 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const padFilter = `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
             // Step 5: Define the zoom effect with smoother transition and fixed filters
-            const effect = `zoompan=z='if(eq(on,0),1.2,zoom-0.0015)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},${scaleFilter},${padFilter}`;
+            // This approach ensures a smoother zoom and avoids errors in the filter chain
+            const effect = `zoompan=z='if(gte(on,1),zoom-0.0015,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},${scaleFilter},${padFilter}`;
 
             // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
