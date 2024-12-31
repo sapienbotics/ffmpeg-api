@@ -293,46 +293,23 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects with improved parameters
-const effects = [
-    // Stationary Effect (Centered with padding)
-    //`scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            // Step 4: Validate image aspect ratio using ffprobe
+            const aspectRatio = await getImageAspectRatioWithFFProbe(finalImagePath);
+            console.log(`Image aspect ratio from ffprobe: ${aspectRatio}`);
 
-    // Slow Zoom In Effect (Stops at 1.2x zoom) with Pixel Movement
-    //`zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='if(gte(on,1),x+1,x)':y='if(gte(on,1),ih/2-(ih/zoom/2)+(x/iw)*0.25,ih/2-(ih/zoom/2))':d=${duration * 30}:s=${width}x${height}`,
+            // Step 5: Define possible effects
+            const effects = [
+                `zoompan=z='if(eq(on,0),1.2,if(gte(zoom,1),zoom-0.0005,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale='if(gt(a,${width}/${height}),${width}:-1,-1:${height})':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            ];
 
-    //Slow Zoom Out Effect (Stops at 1x zoom) with Pixel Movement
-  // `zoompan=z='if(eq(on,0),1.2,if(gte(zoom,1),zoom-0.0005,zoom))':x='if(gte(on,1),x+1,x)':y='if(gte(on,1),ih/2-(ih/zoom/2)+(x/iw)*0.25,ih/2-(ih/zoom/2))':d=${duration * 30},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-  //Slow Zoom Out Effect (Stops at 1x zoom) new trial
-   `zoompan=z='if(eq(on,0),1.2,if(gte(zoom,1),zoom-0.0005,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale='if(gt(a,${width}/${height}),${width}:-1,-1:${height})':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-
-    // Fade-in and Fade-out Effect (Smooth fade transition)
-   // `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-// Ken Burns Effect (Zoom with subtle pan left movement)
-//`zoompan=z='if(gte(on,1),zoom+0.0005,zoom)':x='if(gte(on,1),x+1,x)':y='if(gte(on,1),ih/2-(ih/zoom/2)+(x/iw)*0.25,ih/2-(ih/zoom/2))':d=${duration * 30}:s=${width}x${height},scale='if(gte(iw/ih,${width}/${height}),${width}:-1,-1,${height})':force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Ken Burns Effect (Zoom with subtle pan right movement)
-    //`zoompan=z='if(gte(on,1),zoom+0.0005,zoom)':x='if(gte(on,1),x-3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Diagonal Zoom In/Out Effect
-   // `zoompan=z='if(lte(zoom,1.1),zoom+0.0005,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-];
-
-
-
-
-            // Step 5: Apply multiple effects with proper proportions
             const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
+            console.log(`Selected effect for image: ${randomEffect}`);
 
-            // Step 6: Apply the selected effect to the image and convert to video
+            // Step 6: Apply effect to convert image to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', randomEffect) // Apply selected effect
+                .outputOptions('-vf', randomEffect)
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
@@ -345,7 +322,6 @@ const effects = [
                     reject(err);
                 })
                 .save(outputFilePath);
-
         } catch (error) {
             console.error(`Image download or conversion failed: ${error.message}`);
             reject(error);
@@ -353,14 +329,23 @@ const effects = [
     });
 }
 
-
-// Helper Function to Calculate Image Aspect Ratio
-async function getImageAspectRatio(imagePath) {
-    const metadata = await sharp(imagePath).metadata();
-    return metadata.width / metadata.height;
+// Updated Helper Function to Get Aspect Ratio Using ffprobe
+async function getImageAspectRatioWithFFProbe(imagePath) {
+    return new Promise((resolve, reject) => {
+        exec(
+            `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${imagePath}"`,
+            (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`Error retrieving aspect ratio: ${stderr}`);
+                    reject(new Error(stderr));
+                } else {
+                    const [width, height] = stdout.trim().split(',').map(Number);
+                    resolve(width / height);
+                }
+            }
+        );
+    });
 }
-
-
 
 
 
