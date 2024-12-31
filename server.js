@@ -296,8 +296,9 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const scaleFilter = `scale=${width}:${height}`;
             const padFilter = `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Step 5: Apply zoom effect (Zoom in and then zoom out)
-            const effect = `zoompan=z='if(gte(on,1),1.5,1.0)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},${scaleFilter},${padFilter}`;
+            // Step 5: Explicit zoom effect
+            // The expression will zoom in from 1 to 1.5 and then back to 1, gradually over the video
+            const effect = `zoompan=z='min(1.5, 1+0.01*(in-1))':d=${duration * 30},${scaleFilter},${padFilter}`;
 
             // Step 6: Apply the selected effect to the image and convert to video
             ffmpeg()
