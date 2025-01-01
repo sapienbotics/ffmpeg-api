@@ -290,7 +290,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             const [width, height] = resolution.split(':').map(Number);
 
             // Step 3: Define the zoom effect
-            const zoomEffect = `zoompan=z='zoom+0.005':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:fps=30,scale=${width}:${height}`;
+            const zoomEffect = `zoompan=z='if(eq(on,0),1.0,zoom+0.005)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:fps=30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
             // Step 4: Convert image to video with the zoom effect
             ffmpeg()
