@@ -283,19 +283,22 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
 
         try {
-            // Step 1: Download the image
+            // Step 1: Download the image (and convert if necessary)
             const finalImagePath = await downloadAndConvertImage(imageUrl, downloadedImagePath);
 
-            // Step 2: Parse resolution (e.g., "720:1280")
+            // Step 2: Extract the dominant color for padding
+            const dominantColor = await extractDominantColor(finalImagePath);
+
+            // Step 3: Parse the resolution (e.g., "720:1280")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 3: Define the zoom effect
+            // Step 4: Define the zoom effect
             const zoomEffect = `zoompan=z='if(eq(on,0),1.0,zoom+0.005)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:fps=30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
 
-            // Step 4: Convert image to video with the zoom effect
+            // Step 5: Apply the zoom effect to the image and convert to video
             ffmpeg()
                 .input(finalImagePath)
-                .loop(duration) // Repeat the image for the specified duration
+                .loop(duration)
                 .outputOptions('-vf', zoomEffect) // Apply the zoom effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
@@ -316,8 +319,6 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
-
-
 
 
 
