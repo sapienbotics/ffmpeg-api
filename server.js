@@ -292,16 +292,19 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "720:1280")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define the zoom effect with a slower progression
-            const totalFrames = Math.ceil(duration * 30); // Total frames based on duration and 30fps
-            const zoomEffect = `zoompan=z='if(eq(on,0),1.0,zoom+0.005)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:fps=30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+            // Step 4: Define total frames for smooth zoom effect
+            const fps = 30; // Frames per second
+            const totalFrames = Math.ceil(duration * fps);
 
-            // Step 5: Apply the zoom effect to the image and convert to video
+            // Step 5: Define the zoom effect with stable calculations
+            const zoomEffect = `zoompan=z='if(eq(on,0),1.0,zoom+0.0025)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:fps=${fps},scale=${width}:${height}:flags=lanczos,force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`;
+
+            // Step 6: Apply the zoom effect to the image and convert to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
                 .outputOptions('-vf', zoomEffect) // Apply the zoom effect
-                .outputOptions('-r', '30') // Frame rate
+                .outputOptions('-r', `${fps}`) // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
                 .on('end', () => {
@@ -320,6 +323,7 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
         }
     });
 }
+
 
 
 // Function to get audio duration using ffmpeg
