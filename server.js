@@ -276,9 +276,9 @@ app.post('/convert-image-to-video', async (req, res) => {
 });
 
 
-async function convertImageToVideo(imageUrl, duration, resolution, orientation) {
+async function convertImageToVideo(imageUrl, duration, resolution, orientation, source) {
     const outputFilePath = path.join(outputDir, `${Date.now()}_image.mp4`);
-    console.log(`Starting conversion for image: ${imageUrl}`);
+    console.log(`Starting conversion for image: ${imageUrl}, Source: ${source}`);
 
     return new Promise(async (resolve, reject) => {
         const downloadedImagePath = path.join(outputDir, 'downloaded_image.jpg');
@@ -293,41 +293,31 @@ async function convertImageToVideo(imageUrl, duration, resolution, orientation) 
             // Step 3: Parse the resolution (e.g., "1920:1080")
             const [width, height] = resolution.split(':').map(Number);
 
-            // Step 4: Define possible effects with improved parameters
-const effects = [
-    // Stationary Effect (Centered with padding)
-   // `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            // Step 4: Define possible effects
+            const allEffects = [
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `zoompan=z='if(gte(on,1),zoom+0.0015,zoom)':x='if(gte(on,1),x+3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `zoompan=z='if(gte(on,1),zoom+0.0015,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            ];
 
-    // Slow Zoom In Effect (Stops at 1.2x zoom)
-    `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height}`,
+            const limitedEffects = [
+                `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+                `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            ];
 
-    // Slow Zoom Out Effect (Stops at 1x zoom)
-    //`zoompan=z='if(eq(on,0),1.2,if(gte(zoom,1),zoom-0.0015,zoom))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            const effects = source === 'stock' ? limitedEffects : allEffects;
 
-    // Fade-in and Fade-out Effect (Smooth fade transition)
-    `fade=in:0:30,fade=out:${duration * 30 - 30}:30,scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
+            // Step 5: Randomly select an effect
+            const selectedEffect = effects[Math.floor(Math.random() * effects.length)];
+            console.log(`Selected effect for image: ${selectedEffect}`); // Debug log for verification
 
-    // Ken Burns Effect (Zoom with subtle pan left movement)
-  `zoompan=z='if(gte(on,1),zoom+0.0015,zoom)':x='if(gte(on,1),x+3,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Ken Burns Effect (Zoom with subtle pan right movement)
-  `zoompan=z='if(gte(on,1),zoom+0.0015,zoom)':x='if(gte(on,1),x-1,x)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`,
-
-    // Diagonal Zoom In/Out Effect
-   `zoompan=z='if(lte(zoom,1.2),zoom+0.0015,zoom)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 30}:s=${width}x${height},scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${dominantColor}`
-];
-
-
-
-            // Step 5: Apply multiple effects with proper proportions
-            const randomEffect = effects[Math.floor(Math.random() * effects.length)];
-            console.log(`Selected effect for image: ${randomEffect}`); // Debug log for verification
-
-            // Step 6: Apply the selected effect to the image and convert to video
+            // Step 6: Apply the selected effect to the image and convert it to video
             ffmpeg()
                 .input(finalImagePath)
                 .loop(duration)
-                .outputOptions('-vf', randomEffect) // Apply selected effect
+                .outputOptions('-vf', selectedEffect) // Apply selected effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '6') // Speed up with multiple threads
@@ -478,7 +468,7 @@ const validateVideoFile = async (filePath) => {
 };
 
 // Main function to process the media sequence
-async function processMediaSequence(mediaSequence, orientation, resolution) {
+async function processMediaSequence(mediaSequence, orientation, resolution, source) {
     let videoPaths = [];
     let totalValidDuration = 0;
     let totalFailedDuration = 0;
@@ -556,7 +546,7 @@ async function processMediaSequence(mediaSequence, orientation, resolution) {
                         failed = true;
                     } else {
                         console.log(`Converting image to video: ${url}`);
-                        const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation);
+                        const videoPath = await convertImageToVideo(url, newDuration || duration, resolution, orientation, source); // Added source here
                         console.log(`Image converted to video successfully: ${videoPath}`);
                         
                         videoPaths.push(videoPath);
@@ -718,7 +708,7 @@ function generateOutputPath(url) {
 
 
 app.post('/merge-media-sequence', async (req, res) => {
-    const { mediaSequence, orientation, resolution } = req.body;
+    const { mediaSequence, orientation, resolution, source } = req.body; // Include source
 
     if (!mediaSequence || !Array.isArray(mediaSequence) || mediaSequence.length === 0) {
         return res.status(400).json({ error: 'Invalid or empty media sequence provided.' });
@@ -728,17 +718,22 @@ app.post('/merge-media-sequence', async (req, res) => {
         return res.status(400).json({ error: 'Orientation and resolution must be provided.' });
     }
 
+    if (!source) {
+        return res.status(400).json({ error: 'Source must be provided.' });
+    }
+
     try {
-        const mergedVideoUrl = await processMediaSequence(mediaSequence, orientation, resolution);
+        const mergedVideoUrl = await processMediaSequence(mediaSequence, orientation, resolution, source); // Pass source
         res.json({
             message: 'Media merged successfully',
-            mergedVideoUrl,  // Include the merged video URL in the response
+            mergedVideoUrl,
         });
     } catch (error) {
         console.error(`Error in merge-media-sequence endpoint: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
+
 
 
 
