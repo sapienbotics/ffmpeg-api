@@ -1145,27 +1145,38 @@ Format: Layer, Start, End, Style, Text
 `;
 
     const maxCharsPerSubtitle = 50; // Adjust this value based on screen size
-    const segments = content.match(/[^.?!]+[.?!]*/g) || [content]; // Split by sentences
-    const totalTextLength = segments.reduce((sum, seg) => sum + seg.length, 0);
 
-    const segmentDurations = segments.map(segment => 
-        (segment.length / totalTextLength) * audioDuration
-    );
+    // Improve sentence splitting: include Hindi punctuation (।)
+    const segments = content.match(/[^.?!।]+[.?!।]*/g) || [content];
+
+    // Calculate total word count from the entire content
+    const totalWords = content.split(/\s+/).filter(Boolean).length;
+
+    // Use word count per segment instead of character length
+    const segmentDurations = segments.map(segment => {
+        const wordCount = segment.split(/\s+/).filter(Boolean).length;
+        return (wordCount / totalWords) * audioDuration;
+    });
 
     let startTime = 0;
     let events = '';
 
     segments.forEach((segment, index) => {
         const duration = segmentDurations[index];
-        const words = segment.split(/\s+/); // Split into words
+        const words = segment.split(/\s+/);
         let chunk = '';
         let chunkStartTime = startTime;
         let remainingDuration = duration;
 
         for (let i = 0; i < words.length; i++) {
-            // Add words to the current chunk until maxCharsPerSubtitle is reached
+            // When adding a word would exceed the max characters for this subtitle chunk...
             if ((chunk + ' ' + words[i]).trim().length > maxCharsPerSubtitle) {
-                const chunkDuration = remainingDuration * (chunk.length / segment.length);
+                // Calculate duration proportionally using word counts rather than character counts
+                const currentWordCount = chunk.split(/\s+/).filter(Boolean).length;
+                const totalSegmentWords = segment.split(/\s+/).filter(Boolean).length;
+                let chunkDuration = remainingDuration * (currentWordCount / totalSegmentWords);
+                // Ensure a minimum chunk duration for readability
+                chunkDuration = Math.max(chunkDuration, 0.8);
 
                 events += `Dialogue: 0,${formatTimeAss(chunkStartTime)},${formatTimeAss(chunkStartTime + chunkDuration)},Default,${chunk.trim()}\n`;
 
@@ -1176,9 +1187,11 @@ Format: Layer, Start, End, Style, Text
             chunk += (chunk ? ' ' : '') + words[i];
         }
 
-        // Add the last chunk
+        // Add any remaining words as the final chunk for this segment
         if (chunk) {
-            events += `Dialogue: 0,${formatTimeAss(chunkStartTime)},${formatTimeAss(chunkStartTime + remainingDuration)},Default,${chunk.trim()}\n`;
+            // Use remaining duration but enforce a minimum duration if needed
+            let finalDuration = Math.max(remainingDuration, 0.8);
+            events += `Dialogue: 0,${formatTimeAss(chunkStartTime)},${formatTimeAss(chunkStartTime + finalDuration)},Default,${chunk.trim()}\n`;
         }
 
         startTime += duration;
@@ -1219,6 +1232,7 @@ function pad(num, size) {
     const s = "0000" + num;
     return s.substr(s.length - size);
 }
+
 
 
 
