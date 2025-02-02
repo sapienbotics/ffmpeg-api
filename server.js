@@ -24,9 +24,11 @@ app.use(cors({
 // Promisify exec for easier use with async/await
 const execPromise = util.promisify(exec);
 
-const storageDir = path.join(__dirname, 'storage', 'processed');
+const sessionId = uuidv4(); // Generate unique ID per request
+const storageDir = path.join(__dirname, 'storage', 'processed', sessionId);
 const processedDir = path.join(storageDir, 'media');
-const outputDir = path.join(__dirname, 'output'); // Output directory for storing processed videos
+const outputDir = path.join(__dirname, 'output', sessionId);
+
 
 // Middleware to force download for /output files
 app.use('/output', (req, res, next) => {
@@ -49,12 +51,12 @@ app.use('/output', (req, res, next) => {
 }, express.static(outputDir));
 
 // Ensure processed and output directories exist
-if (!fs.existsSync(processedDir)) {
-    fs.mkdirSync(processedDir, { recursive: true });
-}
-if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-}
+[storageDir, processedDir, outputDir].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+});
+
 
 const downloadFile = async (url, outputPath, timeout = 30000) => {
     try {
@@ -1029,6 +1031,9 @@ app.post('/apply-subtitles', async (req, res) => {
         const videoId = uuidv4();
         const videoFile = path.join(outputDir, `${videoId}.mp4`);
         const downloadPath = path.join(outputDir, `${videoId}-input.mp4`);
+        const sessionOutputDir = path.join(outputDir, videoId); // Define session directory
+
+        fs.mkdirSync(sessionOutputDir, { recursive: true });
 
         const response = await axios({
             method: 'get',
@@ -1048,6 +1053,13 @@ app.post('/apply-subtitles', async (req, res) => {
             console.log("Subtitles are disabled, returning the original video.");
             fs.renameSync(downloadPath, videoFile);
             const videoUrl = `https://${req.get('host')}/output/${videoId}.mp4`;
+            
+            // Cleanup temporary files
+            fs.rm(sessionOutputDir, { recursive: true, force: true }, (err) => {
+                if (err) console.error(`Error cleaning up ${sessionOutputDir}:`, err);
+                else console.log(`Cleaned up session directory: ${sessionOutputDir}`);
+            });
+
             return res.json({ videoUrl });
         }
 
@@ -1084,18 +1096,37 @@ app.post('/apply-subtitles', async (req, res) => {
 
                 fs.unlinkSync(downloadPath);
                 fs.unlinkSync(subtitleFile);
+
+                // Cleanup temporary files
+                fs.rm(sessionOutputDir, { recursive: true, force: true }, (err) => {
+                    if (err) console.error(`Error cleaning up ${sessionOutputDir}:`, err);
+                    else console.log(`Cleaned up session directory: ${sessionOutputDir}`);
+                });
             })
             .on('error', (err) => {
                 console.error("FFmpeg error:", err.message);
                 res.status(500).json({ error: 'Failed to apply subtitles', details: err.message });
+
+                // Cleanup temporary files even in case of an error
+                fs.rm(sessionOutputDir, { recursive: true, force: true }, (err) => {
+                    if (err) console.error(`Error cleaning up ${sessionOutputDir}:`, err);
+                    else console.log(`Cleaned up session directory: ${sessionOutputDir}`);
+                });
             })
             .save(videoFile);
 
     } catch (error) {
         console.error("Processing error:", error.message);
         res.status(500).json({ error: 'An error occurred while processing the request.', details: error.message });
+
+        // Cleanup temporary files even in case of an error
+        fs.rm(sessionOutputDir, { recursive: true, force: true }, (err) => {
+            if (err) console.error(`Error cleaning up ${sessionOutputDir}:`, err);
+            else console.log(`Cleaned up session directory: ${sessionOutputDir}`);
+        });
     }
 });
+
 
 // Function to generate subtitles (ASS format)
 function generateAss(content, fontName, fontSize, subtitleColor, backgroundColor, opacity, position, audioDuration) {
