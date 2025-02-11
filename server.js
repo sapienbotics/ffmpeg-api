@@ -1324,7 +1324,8 @@ app.delete('/delete-file', async (req, res) => {
 
 app.post('/apply-custom-watermark', async (req, res) => {
     try {
-        const { inputVideo, text, fontSize, fontColor, alpha, angle, x, y } = req.body;
+        const { inputVideo, text, fontSize, fontColor, alpha, x, y } = req.body;
+
         if (!inputVideo) {
             return res.status(400).json({ error: "Input video path or URL is required." });
         }
@@ -1357,7 +1358,7 @@ app.post('/apply-custom-watermark', async (req, res) => {
         const outputVideoPath = path.join(outputDir, `watermarked_${Date.now()}.mp4`);
         const rgbaColor = `${fontColor || "white"}@${alpha || 1.0}`;
 
-        const ffmpegCommand = `ffmpeg -i "${localVideoPath}" -vf "drawtext=text='${text || "Sample Watermark"}':fontsize=${fontSize || 30}:fontcolor=${rgbaColor}:x=${x || "(w-text_w)-10"}:y=${y || "(h-text_h)-10"}:rotate=${angle || 0}*PI/180" -c:a copy "${outputVideoPath}"`;
+        const ffmpegCommand = `ffmpeg -i "${localVideoPath}" -vf "drawtext=text='${text || "Sample Watermark"}':fontsize=${fontSize || 30}:fontcolor=${rgbaColor}:x=${x || "(w-text_w)-10"}:y=${y || "(h-text_h)-10"}" -c:a copy "${outputVideoPath}"`;
 
         await execPromise(ffmpegCommand);
 
@@ -1368,7 +1369,6 @@ app.post('/apply-custom-watermark', async (req, res) => {
         res.status(500).json({ error: `FFmpeg processing failed: ${error.message}` });
     }
 });
-
 
 
 
