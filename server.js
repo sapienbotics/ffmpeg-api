@@ -1322,6 +1322,31 @@ app.delete('/delete-file', async (req, res) => {
     }
 });
 
+// Apply Customizable Text Watermark
+app.post('/apply-custom-watermark', async (req, res) => {
+    try {
+        const { inputVideo, text, fontSize, fontColor, alpha, angle, x, y } = req.body;
+        if (!inputVideo) {
+            return res.status(400).json({ error: "Input video path is required." });
+        }
+
+        const outputVideoPath = path.join(outputDir, `watermarked_${Date.now()}.mp4`);
+        
+        // Convert transparency value to FFmpeg's expected format
+        const rgbaColor = `${fontColor || "white"}@${alpha || 1.0}`;
+
+        const ffmpegCommand = `ffmpeg -i "${inputVideo}" -vf "drawtext=text='${text || "Sample Watermark"}':fontsize=${fontSize || 30}:fontcolor=${rgbaColor}:x=${x || "(w-text_w)-10"}:y=${y || "(h-text_h)-10"}:rotate=${angle || 0}*PI/180" -c:a copy "${outputVideoPath}"`;
+
+        await execPromise(ffmpegCommand);
+
+        res.json({ message: "Custom text watermark applied successfully", outputVideo: outputVideoPath });
+    } catch (error) {
+        console.error("FFmpeg error:", error);
+        res.status(500).json({ error: `FFmpeg processing failed: ${error.message}` });
+    }
+});
+
+
 
 
 
