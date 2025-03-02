@@ -16,7 +16,11 @@ app.use(express.json());
 
 // CORS setup
 app.use(cors({
-    origin: 'http://ffmpeg-api-production.up.railway.app', // Replace with your actual tool URL
+<<<<<<< HEAD
+    origin: 'https://ffmpeg-api-production.up.railway.app', // Replace with your actual tool URL
+=======
+    origin: 'https://ffmpeg.sapienbotics.tech', // Replace with your actual tool URL
+>>>>>>> 3a98fc942ddab78f8c74c6754b11d6ec772acf77
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -203,7 +207,7 @@ async function removeAudio(videoUrl) {
 
     return new Promise((resolve, reject) => {
         console.log(`Removing audio from video: ${videoUrl}`);
-        execPromise(`ffmpeg -i ${videoUrl} -c:v copy -an -threads 6 "${outputFilePath}"`) // Added -threads 6
+        execPromise(`ffmpeg -i ${videoUrl} -c:v copy -an -threads 2 "${outputFilePath}"`) // Added -threads 2
  // Using execPromise
             .then(() => {
                 console.log(`Audio removed from video: ${outputFilePath}`);
@@ -231,7 +235,7 @@ async function trimVideo(videoUrl, duration) {
                 '-preset fast',
                 '-crf 23',
                 '-vf setsar=1/1', // Ensure the SAR is set, but no scaling is applied
-                '-threads 6' // Add threading option here
+                '-threads 2' // Add threading option here
             ])
             .on('end', () => {
                 console.log(`Trimmed video created: ${outputFilePath}`);
@@ -338,7 +342,7 @@ const limitedEffects = [
                 .outputOptions('-vf', selectedEffect) // Apply selected effect
                 .outputOptions('-r', '30') // Frame rate
                 .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
-                .outputOptions('-threads', '6') // Speed up with multiple threads
+                .outputOptions('-threads', '2') // Speed up with multiple threads
                 .on('end', () => {
                     console.log('Image converted to video with effect.');
                     resolve(outputFilePath);
@@ -395,7 +399,7 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
         }
 
         // Base command to merge video with content audio
-        let command = `ffmpeg -threads 6 -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
+        let command = `ffmpeg -threads 2 -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content]" -map 0:v -map "[content]" -c:v copy -shortest -y "${outputFilePath}"`;
 
         if (backgroundAudioExists) {
             // Get durations of content audio and background audio
@@ -404,12 +408,12 @@ const addAudioToVideoWithFallback = async (videoPath, contentAudioPath, backgrou
 
             if (backgroundAudioDuration < contentAudioDuration) {
                 // Loop background audio if it is shorter than content audio
-                command = `ffmpeg -threads 6 -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
+                command = `ffmpeg -threads 2 -i "${videoPath}" -i "${contentAudioPath}" -stream_loop -1 -i "${backgroundAudioPath}" -filter_complex \
                     "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
                     -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
             } else {
                 // No looping needed, merge normally
-                command = `ffmpeg -threads 6 -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
+                command = `ffmpeg -threads 2 -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex \
                     "[1:a]volume=${contentVolume}[content]; [2:a]volume=${backgroundVolume}[background]; [content][background]amix=inputs=2:duration=longest[out]" \
                     -map 0:v -map "[out]" -c:v copy -shortest -y "${outputFilePath}"`;
             }
@@ -453,14 +457,14 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
             .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
-            .outputOptions('-threads', '6')
+            .outputOptions('-threads', '2')
             // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
             .on('end', () => {
                 console.log('Merging finished.');
                 resolve({
                     status: 'success',
-                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`,
+                    outputFileUrl: `https://ffmpeg.sapienbotics.tech/download/merged/${path.basename(outputFilePath)}`,
                 });
             })
             .on('error', (err) => {
@@ -678,7 +682,7 @@ async function convertVideoToStandardFormat(inputVideoPath, duration, resolution
         '-c:v', 'libx264', 
         '-preset', 'fast', 
         '-crf', '23',
-        '-threads', '6' // Utilize 6 threads for processing
+        '-threads', '2' // Utilize 6 threads for processing
     )
             .on('end', () => {
                 console.log(`Converted video to standard format: ${outputVideoPath}`);
@@ -794,7 +798,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         // Normalize input videos to ensure they have the same format and frame rate
         const normalizedFiles = await Promise.all(downloadedFiles.map(async (inputFile) => {
             const normalizedPath = path.join(outputDir, `normalized_${path.basename(inputFile)}`);
-            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 30 -an -threads 6 -y "${normalizedPath}"`;
+            const normalizeCommand = `ffmpeg -i "${inputFile}" -c:v libx264 -pix_fmt yuv420p -r 30 -an -threads 2 -y "${normalizedPath}"`;
 
             await new Promise((resolve, reject) => {
                 exec(normalizeCommand, (error, stdout, stderr) => {
@@ -816,7 +820,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         const filterComplex = `concat=n=${normalizedFiles.length}:v=1:a=0`;
 
         // Add pixel format and color range settings for PC and mobile, and include verbose logging
-        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -threads 6 -loglevel verbose -y "${outputPath}"`;
+        const ffmpegCommand = `ffmpeg ${inputs} -filter_complex "${filterComplex}" -pix_fmt yuv420p -color_range pc -threads 2 -loglevel verbose -y "${outputPath}"`;
 
         console.log(`Running command: ${ffmpegCommand}`); // Log command for debugging
 
@@ -834,7 +838,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
             }
 
             // Return download link in the desired format
-            const downloadUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilename}`;
+            const downloadUrl = `https://ffmpeg.sapienbotics.tech/download/merged/${outputFilename}`;
             return res.status(200).json({ message: 'Videos merged successfully', output: downloadUrl });
         });
     } catch (err) {
@@ -924,26 +928,26 @@ app.post('/add-audio', async (req, res) => {
 
     // Prepare the FFmpeg command based on the available audio sources
     let ffmpegCommand;
-    const commonSettings = `-ar 44100 -bufsize 1000k -threads 6`;
+    const commonSettings = `-ar 44100 -bufsize 1000k -threads 2`;
 
 if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
   // Video, content, and background audio
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[0:a][content][bg]amix=inputs=3:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 2 "${outputFilePath}"`;
 } else if (hasVideoAudio && contentAudioExists) {
   // Video and content audio only
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[0:a][content]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 2 "${outputFilePath}"`;
 } else if (contentAudioExists && backgroundAudioExists) {
   // Content and background audio only (no audio in video)
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[2:a]volume=${backgroundVolume}[bg];[content][bg]amix=inputs=2:duration=longest,aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 2 "${outputFilePath}"`;
 } else if (contentAudioExists) {
   // Content audio only (no audio in video or background)
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${contentAudioPath}" -filter_complex "[1:a]volume=${contentVolume}[content];[content]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 2 "${outputFilePath}"`;
 } else if (backgroundAudioExists) {
   // Background audio only (no content or video audio)
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -i "${backgroundAudioPath}" -filter_complex "[1:a]volume=${backgroundVolume}[bg];[bg]aresample=async=1:min_hard_comp=0.1:max_soft_comp=0.9[aout]" -map 0:v -map "[aout]" -c:v copy ${commonSettings} -shortest -threads 2 "${outputFilePath}"`;
 } else {
   // No audio at all, just output the video
-  ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest -threads 6 "${outputFilePath}"`;
+  ffmpegCommand = `ffmpeg -i "${videoPath}" -c:v copy ${commonSettings} -shortest -threads 2 "${outputFilePath}"`;
 }
 
 
@@ -961,7 +965,7 @@ if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
     }
 
     // Generate the final HTTPS output URL
-    const outputUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`;
+    const outputUrl = `https://ffmpeg.sapienbotics.tech/download/merged/${path.basename(outputFilePath)}`;
 
     // Return the HTTPS link to the final video
     res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputUrl });
@@ -1082,7 +1086,7 @@ app.post('/apply-subtitles', async (req, res) => {
                 `-vf subtitles='${subtitleFile}':fontsdir='${path.join(__dirname, 'fonts')}'`,
                 '-pix_fmt yuv420p',
                 '-color_range pc',
-                '-threads 6'
+                '-threads 2'
             ])
             .on('start', (cmd) => {
                 console.log("FFmpeg command:", cmd);
@@ -1292,7 +1296,7 @@ app.delete('/delete-file', async (req, res) => {
 
     try {
         // Ensure the filename starts with the expected base URL
-        const baseUrl = 'https://ffmpeg-api-production.up.railway.app/output/';
+        const baseUrl = 'https://ffmpeg.sapienbotics.tech/output/';
         if (!filename.startsWith(baseUrl)) {
             return res.status(400).json({ error: 'Invalid filename URL' });
         }
@@ -1363,7 +1367,7 @@ app.post('/apply-custom-watermark', async (req, res) => {
         await execPromise(ffmpegCommand);
 
         // Generate public download URL
-        const downloadURL = `https://ffmpeg-api-production.up.railway.app/output/${outputFileName}`;
+        const downloadURL = `https://ffmpeg.sapienbotics.tech/output/${outputFileName}`;
 
         res.json({ message: "Watermark applied successfully", outputVideo: downloadURL });
 
