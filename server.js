@@ -16,7 +16,7 @@ app.use(express.json());
 
 // CORS setup
 app.use(cors({
-    origin: 'https://ffmpeg-api-production.up.railway.app', // Replace with your actual tool URL
+    origin: 'http://3.109.67.68:8080', // Replace with your actual tool URL
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -460,7 +460,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
                 console.log('Merging finished.');
                 resolve({
                     status: 'success',
-                    outputFileUrl: `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`,
+                    outputFileUrl: `http://3.109.67.68:8080/download/merged/${path.basename(outputFilePath)}`,
                 });
             })
             .on('error', (err) => {
@@ -834,7 +834,7 @@ app.post('/merge-audio-free-videos', async (req, res) => {
             }
 
             // Return download link in the desired format
-            const downloadUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${outputFilename}`;
+            const downloadUrl = `http://3.109.67.68:8080/download/merged/${outputFilename}`;
             return res.status(200).json({ message: 'Videos merged successfully', output: downloadUrl });
         });
     } catch (err) {
@@ -961,7 +961,7 @@ if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
     }
 
     // Generate the final HTTPS output URL
-    const outputUrl = `https://ffmpeg-api-production.up.railway.app/download/merged/${path.basename(outputFilePath)}`;
+    const outputUrl = `http://3.109.67.68:8080/download/merged/${path.basename(outputFilePath)}`;
 
     // Return the HTTPS link to the final video
     res.status(200).json({ message: 'Audio added to video successfully', outputUrl: outputUrl });
@@ -1292,7 +1292,7 @@ app.delete('/delete-file', async (req, res) => {
 
     try {
         // Ensure the filename starts with the expected base URL
-        const baseUrl = 'https://ffmpeg-api-production.up.railway.app/output/';
+        const baseUrl = 'http://3.109.67.68:8080/output/';
         if (!filename.startsWith(baseUrl)) {
             return res.status(400).json({ error: 'Invalid filename URL' });
         }
@@ -1363,7 +1363,7 @@ app.post('/apply-custom-watermark', async (req, res) => {
         await execPromise(ffmpegCommand);
 
         // Generate public download URL
-        const downloadURL = `https://ffmpeg-api-production.up.railway.app/output/${outputFileName}`;
+        const downloadURL = `http://3.109.67.68:8080/output/${outputFileName}`;
 
         res.json({ message: "Watermark applied successfully", outputVideo: downloadURL });
 
