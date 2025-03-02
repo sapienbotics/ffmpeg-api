@@ -16,11 +16,7 @@ app.use(express.json());
 
 // CORS setup
 app.use(cors({
-<<<<<<< HEAD
     origin: 'https://ffmpeg-api-production.up.railway.app', // Replace with your actual tool URL
-=======
-    origin: 'https://ffmpeg.sapienbotics.tech', // Replace with your actual tool URL
->>>>>>> 3a98fc942ddab78f8c74c6754b11d6ec772acf77
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
