@@ -16,7 +16,7 @@ app.use(express.json());
 
 // CORS setup
 app.use(cors({
-    origin: 'https://ffmpeg-api-production.up.railway.app', // Replace with your actual tool URL
+    origin: 'http://ffmpeg-api-production.up.railway.app', // Replace with your actual tool URL
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
