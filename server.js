@@ -1269,7 +1269,7 @@ app.post('/join-audio', async (req, res) => {
             // Move the file to output directory (optional, to maintain consistency)
             fs.renameSync(singleFile, outputFilePath);
 
-            return res.json({ message: 'Single audio file returned', outputUrl: `/output/${path.basename(outputFilePath)}` });
+            return res.json({ message: 'Single audio file returned', outputUrl: `https://ffmpeg-api-production.up.railway.app/output/${path.basename(outputFilePath)}` });
         }
 
         // Normalization step (ensures compatibility)
@@ -1290,7 +1290,7 @@ app.post('/join-audio', async (req, res) => {
         // Cleanup temporary files
         await cleanupFiles([...downloadedFiles, ...normalizedFiles, concatFilePath]);
 
-        res.json({ message: 'Audio files joined successfully', outputUrl: `/output/${path.basename(outputFilePath)}` });
+        res.json({ message: 'Audio files joined successfully', outputUrl: `https://ffmpeg-api-production.up.railway.app/output/${path.basename(outputFilePath)}` });
     } catch (error) {
         console.error('Error joining audio files:', error);
         res.status(500).json({ error: 'Failed to join audio files. Please try again later.' });
