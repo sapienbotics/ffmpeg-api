@@ -972,6 +972,8 @@ if (hasVideoAudio && contentAudioExists && backgroundAudioExists) {
 });
 
 
+
+
 // Download endpoint for processed media
 app.get('/download/:filename', (req, res) => {
     const fileName = req.params.filename;
@@ -1249,8 +1251,8 @@ app.post('/join-audio', async (req, res) => {
         const downloadedFiles = [];
         const outputFilePath = path.join(outputDir, `joined_audio_${uuidv4()}.mp3`);
 
-        // Download the audio files (parallel processing)
-        await Promise.all(audioSequence.map(async (item) => {
+        // Download the audio files **sequentially** to maintain order
+        for (const item of audioSequence) {
             if (!item.audioUrl) {
                 throw new Error('Invalid input: Each object must have an audioUrl field.');
             }
@@ -1259,8 +1261,8 @@ app.post('/join-audio', async (req, res) => {
             const filePath = path.join(processedDir, fileName);
 
             await downloadFileWithRetry(item.audioUrl, filePath);
-            downloadedFiles.push(filePath);
-        }));
+            downloadedFiles.push(filePath); // Order is now maintained
+        }
 
         if (downloadedFiles.length === 1) {
             // If only one file, return it as is
@@ -1272,12 +1274,13 @@ app.post('/join-audio', async (req, res) => {
             return res.json({ message: 'Single audio file returned', outputUrl: `https://ffmpeg-api-production.up.railway.app/output/${path.basename(outputFilePath)}` });
         }
 
-        // Normalization step (ensures compatibility)
-        const normalizedFiles = await Promise.all(downloadedFiles.map(async (file, index) => {
-            const normalizedFile = path.join(processedDir, `normalized_${index}.mp3`);
-            await execPromise(`ffmpeg -i "${file}" -acodec libmp3lame -ar 44100 -ac 2 "${normalizedFile}"`);
-            return normalizedFile;
-        }));
+        // Normalize files to ensure uniform format
+        const normalizedFiles = [];
+        for (let i = 0; i < downloadedFiles.length; i++) {
+            const normalizedFile = path.join(processedDir, `normalized_${i}.mp3`);
+            await execPromise(`ffmpeg -i "${downloadedFiles[i]}" -acodec libmp3lame -ar 44100 -ac 2 "${normalizedFile}"`);
+            normalizedFiles.push(normalizedFile); // Order is still maintained
+        }
 
         // Create FFmpeg concat file
         const concatFilePath = path.join(outputDir, `concat_${uuidv4()}.txt`);
@@ -1296,6 +1299,8 @@ app.post('/join-audio', async (req, res) => {
         res.status(500).json({ error: 'Failed to join audio files. Please try again later.' });
     }
 });
+
+
 
 // DELETE endpoint to delete a file based on URL
 app.delete('/delete-file', async (req, res) => {
