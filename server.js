@@ -1238,46 +1238,61 @@ function pad(num, size) {
 
 module.exports = app; // Ensure you export your app to give
 
-// Endpoint to join multiple audio files
 app.post('/join-audio', async (req, res) => {
     try {
         const audioSequence = req.body;
 
-        if (!Array.isArray(audioSequence) || audioSequence.length < 2) {
-            return res.status(400).json({ error: 'Invalid audioSequence: At least two audio URLs are required.' });
+        if (!Array.isArray(audioSequence) || audioSequence.length < 1) {
+            return res.status(400).json({ error: 'Invalid audioSequence: At least one audio URL is required.' });
         }
 
         const downloadedFiles = [];
-        const concatFilePath = path.join(outputDir, `concat_${uuidv4()}.txt`);
         const outputFilePath = path.join(outputDir, `joined_audio_${uuidv4()}.mp3`);
 
-        for (const item of audioSequence) {
+        // Download the audio files (parallel processing)
+        await Promise.all(audioSequence.map(async (item) => {
             if (!item.audioUrl) {
-                return res.status(400).json({ error: 'Invalid input: Each object must have an audioUrl field.' });
+                throw new Error('Invalid input: Each object must have an audioUrl field.');
             }
 
-            const audioUrl = item.audioUrl;
             const fileName = `${uuidv4()}.mp3`;
             const filePath = path.join(processedDir, fileName);
 
-            // Download the file
-            await downloadFileWithRetry(audioUrl, filePath);
+            await downloadFileWithRetry(item.audioUrl, filePath);
             downloadedFiles.push(filePath);
+        }));
+
+        if (downloadedFiles.length === 1) {
+            // If only one file, return it as is
+            const singleFile = downloadedFiles[0];
+
+            // Move the file to output directory (optional, to maintain consistency)
+            fs.renameSync(singleFile, outputFilePath);
+
+            return res.json({ message: 'Single audio file returned', outputUrl: `/output/${path.basename(outputFilePath)}` });
         }
 
+        // Normalization step (ensures compatibility)
+        const normalizedFiles = await Promise.all(downloadedFiles.map(async (file, index) => {
+            const normalizedFile = path.join(processedDir, `normalized_${index}.mp3`);
+            await execPromise(`ffmpeg -i "${file}" -acodec libmp3lame -ar 44100 -ac 2 "${normalizedFile}"`);
+            return normalizedFile;
+        }));
+
         // Create FFmpeg concat file
-        const concatFileContent = downloadedFiles.map(file => `file '${file}'`).join('\n');
+        const concatFilePath = path.join(outputDir, `concat_${uuidv4()}.txt`);
+        const concatFileContent = normalizedFiles.map(file => `file '${file}'`).join('\n');
         fs.writeFileSync(concatFilePath, concatFileContent);
 
         // Execute FFmpeg command to join the audio files
         await execPromise(`ffmpeg -f concat -safe 0 -i "${concatFilePath}" -c copy "${outputFilePath}"`);
 
         // Cleanup temporary files
-        await cleanupFiles([...downloadedFiles, concatFilePath]);
+        await cleanupFiles([...downloadedFiles, ...normalizedFiles, concatFilePath]);
 
         res.json({ message: 'Audio files joined successfully', outputUrl: `/output/${path.basename(outputFilePath)}` });
     } catch (error) {
-        console.error('Error joining audio files:', error.message);
+        console.error('Error joining audio files:', error);
         res.status(500).json({ error: 'Failed to join audio files. Please try again later.' });
     }
 });
