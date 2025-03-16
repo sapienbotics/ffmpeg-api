@@ -757,13 +757,22 @@ app.post('/merge-media-sequence', async (req, res) => {
 
 app.post('/merge-audio-free-videos', async (req, res) => {
     const { videoUrls } = req.body;
-    const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
-    const outputFilename = path.basename(outputPath); // Extracting just the filename for the response URL
-
-    // Validate the input
-    if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
-        return res.status(400).json({ error: 'At least two valid video URLs are required.' });
+    
+    // Validate input
+    if (!Array.isArray(videoUrls) {
+        return res.status(400).json({ error: 'videoUrls must be an array' });
     }
+
+    // Handle single URL case immediately
+    if (videoUrls.length === 1) {
+        return res.status(200).json({ 
+            message: 'Single video URL provided', 
+            output: videoUrls[0].url 
+        });
+    }
+
+    const outputPath = path.join(outputDir, `merged_output_${Date.now()}.mp4`);
+    const outputFilename = path.basename(outputPath);
 
     try {
         // Download videos to temporary files
