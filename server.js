@@ -757,9 +757,9 @@ app.post('/merge-media-sequence', async (req, res) => {
 
 app.post('/merge-audio-free-videos', async (req, res) => {
     const { videoUrls } = req.body;
-    
+
     // Validate input
-    if (!Array.isArray(videoUrls) {
+    if (!Array.isArray(videoUrls)) {
         return res.status(400).json({ error: 'videoUrls must be an array' });
     }
 
@@ -851,8 +851,6 @@ app.post('/merge-audio-free-videos', async (req, res) => {
         return res.status(500).json({ error: 'Internal server error', details: err.message });
     }
 });
-
-
 
 
 
