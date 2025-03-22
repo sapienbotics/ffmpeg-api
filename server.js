@@ -228,7 +228,7 @@ async function trimVideo(videoUrl, duration) {
                 `-t ${duration}`, 
                 '-r 30', 
                 '-c:v libx264', 
-                '-preset fast',
+                '-preset ultrafast',
                 '-crf 23',
                 '-vf setsar=1/1', // Ensure the SAR is set, but no scaling is applied
                 '-threads 6' // Add threading option here
@@ -337,7 +337,7 @@ const limitedEffects = [
                 .loop(duration)
                 .outputOptions('-vf', selectedEffect) // Apply selected effect
                 .outputOptions('-r', '30') // Frame rate
-                .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23') // Video codec and quality
+                .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23') // Video codec and quality
                 .outputOptions('-threads', '2') // Speed up with multiple threads
                 .on('end', () => {
                     console.log('Image converted to video with effect.');
@@ -452,7 +452,7 @@ const mergeMediaUsingFile = async (mediaArray, resolution, orientation) => {
         ffmpeg()
             .input(concatFilePath)
             .inputOptions(['-f', 'concat', '-safe', '0'])
-            .outputOptions('-c:v', 'libx264', '-preset', 'fast', '-crf', '23')
+            .outputOptions('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23')
             .outputOptions('-threads', '2')
             // Apply orientation-specific scaling and padding
             .outputOptions(`-vf`, `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1/1`)
@@ -676,7 +676,7 @@ async function convertVideoToStandardFormat(inputVideoPath, duration, resolution
     .outputOptions('-vf', scaleOptions)
     .outputOptions(
         '-c:v', 'libx264', 
-        '-preset', 'fast', 
+        '-preset', 'ultrafast', 
         '-crf', '23',
         '-threads', '2' // Utilize 6 threads for processing
     )
