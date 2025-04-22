@@ -1411,13 +1411,25 @@ app.post('/api/mask-bbox', async (req, res) => {
     const dir = path.join(__dirname, 'storage', 'processed', fileId);
     const maskFile = path.join(dir, 'mask.png');
 
-    // ✅ create folder if it doesn't exist
-    await fs.promises.mkdir(dir, { recursive: true });
+    // ✅ Create the directory
+    fs.mkdirSync(dir, { recursive: true });
+
+    // ✅ Download the mask image and save it
+    const response = await axios({
+      method: 'GET',
+      url: maskUrl,
+      responseType: 'stream',
+    });
 
     const writer = fs.createWriteStream(maskFile);
-    const response = await axios({ method: 'GET', url: maskUrl, responseType: 'stream' });
-    await pipeline(response.data, writer);
 
+    await new Promise((resolve, reject) => {
+      response.data.pipe(writer);
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    // ✅ Run ffmpeg to detect crop area
     const ffmpegCmd = `ffmpeg -i "${maskFile}" -vf "format=gray,geq='lum=max(lum(X\\,Y)\\,alpha(X\\,Y))',cropdetect=0:1:0" -f null - 2>&1`;
     const { stderr } = await execPromise(ffmpegCmd);
 
@@ -1430,8 +1442,9 @@ app.post('/api/mask-bbox', async (req, res) => {
     const [width, height, x, y] = cropString.split(':').map(Number);
 
     res.json({ width, height, x, y });
+
   } catch (err) {
-    console.error('Error in /api/mask-bbox:', err.message);
+    console.error('[MASK-BBOX ERROR]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
