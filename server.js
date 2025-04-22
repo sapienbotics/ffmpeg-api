@@ -11,7 +11,8 @@ const Vibrant = require('node-vibrant');
 const sharp = require('sharp'); // Add sharp for image conversion
 const cors = require('cors'); // Import CORS middleware
 const os = require('os');
-const mkdirp = require('mkdirp');
+const { mkdirp } = require('mkdirp');
+
 
 const app = express();
 app.use(express.json());
