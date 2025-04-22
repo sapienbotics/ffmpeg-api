@@ -1399,20 +1399,20 @@ app.post('/apply-custom-watermark', async (req, res) => {
     }
 });
 
-// 1) Compute mask bounding box from a binary mask image
+// ───────── Updated mask-bbox endpoint ─────────
 app.post('/api/mask-bbox', async (req, res) => {
   try {
     const { maskUrl } = req.body;
-    // Download mask into storageDir
     const maskFile = path.join(storageDir, 'mask.png');
     await downloadFileWithRetry(maskUrl, maskFile);
 
-    // Run ffmpeg cropdetect to get the last reported crop line
-    const { stdout } = await execPromise(
-      `ffmpeg -i ${maskFile} -vf "cropdetect=1:0:0" -f null - 2>&1`
-    );
+    // Use alphaextract to isolate the mask's alpha channel,
+    // then cropdetect with threshold=0 to catch any non‑black (i.e., opaque) pixels
+    const cmd = `ffmpeg -i ${maskFile} -vf "alphaextract,cropdetect=0:0:0" -f null -`;
+    const { stderr } = await execPromise(cmd);
+
     // Extract the last "crop=W:H:X:Y"
-    const matches = stdout.match(/crop=\d+:\d+:\d+:\d+/g);
+    const matches = stderr.match(/crop=\d+:\d+:\d+:\d+/g);
     if (!matches?.length) throw new Error('No crop info found');
     const crop = matches[matches.length - 1].replace('crop=', '');
     const [w, h, x, y] = crop.split(':').map(Number);
@@ -1423,24 +1423,21 @@ app.post('/api/mask-bbox', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+// ────────────────────────────────────────────────────────
 
-// 2) Align (scale + pad) the jewelry image to that bbox within the base dimensions
+// ───────── Align-jewelry remains the same ─────────
 app.post('/api/align-jewelry', async (req, res) => {
   try {
     const { jewelryUrl, w, h, x, y, baseW, baseH } = req.body;
-    // Download & convert jewelry if needed
     const inFile = path.join(storageDir, 'jewelry_input.png');
     const downloaded = await downloadAndConvertImage(jewelryUrl, inFile);
 
-    // Prepare output filename
     const outFilename = `${uuidv4()}.png`;
     const outFile = path.join(outputDir, outFilename);
 
-    // Build ffmpeg filter: scale to w×h, pad onto baseW×baseH at x,y
     const vf = `scale=${w}:${h},pad=${baseW}:${baseH}:${x}:${y}:color=0x00000000`;
     await execPromise(`ffmpeg -i ${downloaded} -vf "${vf}" -y ${outFile}`);
 
-    // Return the publicly served URL
     const publicUrl = `${req.protocol}://${req.get('host')}/output/${outFilename}`;
     return res.json({ alignedUrl: publicUrl });
   } catch (err) {
@@ -1448,6 +1445,7 @@ app.post('/api/align-jewelry', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+// ────────────────────────────────────────────────────────
 
 
 
