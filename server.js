@@ -1401,7 +1401,7 @@ app.post('/apply-custom-watermark', async (req, res) => {
     }
 });
 
-router.post('/mask-bbox', async (req, res) => {
+app.post('/mask-bbox', async (req, res) => {
   try {
     const { maskUrl } = req.body;
 
