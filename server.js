@@ -1399,23 +1399,23 @@ app.post('/apply-custom-watermark', async (req, res) => {
     }
 });
 
-// ───────── Updated mask-bbox endpoint ─────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 1) Compute mask bounding box from a black‑and‑white mask image
 app.post('/api/mask-bbox', async (req, res) => {
   try {
     const { maskUrl } = req.body;
     const maskFile = path.join(storageDir, 'mask.png');
     await downloadFileWithRetry(maskUrl, maskFile);
 
-    // Use alphaextract to isolate the mask's alpha channel,
-    // then cropdetect with threshold=0 to catch any non‑black (i.e., opaque) pixels
-    const cmd = `ffmpeg -i ${maskFile} -vf "alphaextract,cropdetect=0:0:0" -f null -`;
-    const { stderr } = await execPromise(cmd);
+    // Run cropdetect with threshold=0 (detect any non‑black pixel) and round=1px
+    const { stderr } = await execPromise(
+      `ffmpeg -i ${maskFile} -vf "cropdetect=0:1:0" -f null - 2>&1`
+    );
 
-    // Extract the last "crop=W:H:X:Y"
+    // Grab all crop=WxHxXxY matches and take the last one
     const matches = stderr.match(/crop=\d+:\d+:\d+:\d+/g);
     if (!matches?.length) throw new Error('No crop info found');
-    const crop = matches[matches.length - 1].replace('crop=', '');
-    const [w, h, x, y] = crop.split(':').map(Number);
+    const [w, h, x, y] = matches.pop().replace('crop=', '').split(':').map(Number);
 
     return res.json({ w, h, x, y });
   } catch (err) {
@@ -1423,7 +1423,8 @@ app.post('/api/mask-bbox', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-// ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 // ───────── Align-jewelry remains the same ─────────
 app.post('/api/align-jewelry', async (req, res) => {
