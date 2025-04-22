@@ -1399,30 +1399,41 @@ app.post('/apply-custom-watermark', async (req, res) => {
     }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Updated: Alpha-aware mask cropping
 app.post('/api/mask-bbox', async (req, res) => {
   try {
     const { maskUrl } = req.body;
-    const maskFile = path.join(storageDir, 'mask.png');
-    await downloadFileWithRetry(maskUrl, maskFile);
 
-    // Apply grayscale + merge alpha into luminance for cropdetect
-    const { stderr } = await execPromise(
-      `ffmpeg -i ${maskFile} -vf "format=gray,geq='lum=max(lum(X,Y),alpha(X,Y))',cropdetect=0:1:0" -f null - 2>&1`
-    );
+    if (!maskUrl) {
+      return res.status(400).json({ error: 'maskUrl is required' });
+    }
 
-    const matches = stderr.match(/crop=\d+:\d+:\d+:\d+/g);
-    if (!matches?.length) throw new Error('No crop info found');
-    const [w, h, x, y] = matches.pop().replace('crop=', '').split(':').map(Number);
+    const fileId = uuidv4();
+    const maskFile = path.join(__dirname, 'storage', 'processed', fileId, 'mask.png');
 
-    return res.json({ w, h, x, y });
+    await mkdirp(path.dirname(maskFile));
+
+    const writer = fs.createWriteStream(maskFile);
+    const response = await axios({ method: 'GET', url: maskUrl, responseType: 'stream' });
+    await pipeline(response.data, writer);
+
+    const ffmpegCmd = `ffmpeg -i "${maskFile}" -vf "format=gray,geq='lum=max(lum(X\\,Y)\\,alpha(X\\,Y))',cropdetect=0:1:0" -f null - 2>&1`;
+    const { stderr } = await execPromise(ffmpegCmd);
+
+    const cropMatch = stderr.match(/crop=\S+/);
+    if (!cropMatch) {
+      return res.status(500).json({ error: 'No crop info found' });
+    }
+
+    const cropString = cropMatch[0].replace('crop=', '');
+    const [width, height, x, y] = cropString.split(':').map(Number);
+
+    res.json({ width, height, x, y });
   } catch (err) {
-    console.error('mask-bbox error:', err);
-    return res.status(500).json({ error: err.message });
+    console.error('Error in /api/mask-bbox:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
- ─────────────────────────────────────────────────────────────────────────────
+
 
 
 // ───────── Align-jewelry remains the same ─────────
