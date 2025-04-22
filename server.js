@@ -1453,7 +1453,6 @@ app.post('/mask-bbox', async (req, res) => {
   }
 });
 
-module.exports = router;
 
 
 // ───────── Align-jewelry remains the same ─────────
