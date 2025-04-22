@@ -1414,7 +1414,8 @@ app.post('/mask-bbox', async (req, res) => {
     await mkdirp(tmpDir);
 
     const filename = `${uuidv4()}.png`;
-    const maskFile = path.join(tmpDir, filename);
+    const originalFile = path.join(tmpDir, `original-${filename}`);
+    const preprocessedFile = path.join(tmpDir, filename);
 
     // Download the image
     const response = await axios({
@@ -1423,10 +1424,16 @@ app.post('/mask-bbox', async (req, res) => {
       responseType: 'arraybuffer',
     });
 
-    fs.writeFileSync(maskFile, Buffer.from(response.data));
+    fs.writeFileSync(originalFile, Buffer.from(response.data));
+
+    // Preprocess image: flatten alpha + convert to grayscale-compatible PNG
+    await sharp(originalFile)
+      .flatten({ background: '#ffffff' }) // Remove transparency by setting white background
+      .toFormat('png')
+      .toFile(preprocessedFile);
 
     // Run FFmpeg cropdetect
-    const ffmpegCmd = `ffmpeg -i "${maskFile}" -vf "format=gray,scale=iw:ih,cropdetect=24:16:0" -f null - 2>&1`;
+    const ffmpegCmd = `ffmpeg -y -i "${preprocessedFile}" -vf "format=gray,scale=512:512,cropdetect=24:16:0" -frames:v 1 -f null - 2>&1`;
 
     exec(ffmpegCmd, (error, stdout, stderr) => {
       if (error) {
@@ -1453,6 +1460,7 @@ app.post('/mask-bbox', async (req, res) => {
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
+
 
 
 
