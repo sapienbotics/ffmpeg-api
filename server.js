@@ -1400,19 +1400,18 @@ app.post('/apply-custom-watermark', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1) Compute mask bounding box from a black‑and‑white mask image
+// Updated: Alpha-aware mask cropping
 app.post('/api/mask-bbox', async (req, res) => {
   try {
     const { maskUrl } = req.body;
     const maskFile = path.join(storageDir, 'mask.png');
     await downloadFileWithRetry(maskUrl, maskFile);
 
-    // Run cropdetect with threshold=0 (detect any non‑black pixel) and round=1px
+    // Apply grayscale + merge alpha into luminance for cropdetect
     const { stderr } = await execPromise(
-      `ffmpeg -i ${maskFile} -vf "cropdetect=0:1:0" -f null - 2>&1`
+      `ffmpeg -i ${maskFile} -vf "format=gray,geq='lum=max(lum(X,Y),alpha(X,Y))',cropdetect=0:1:0" -f null - 2>&1`
     );
 
-    // Grab all crop=WxHxXxY matches and take the last one
     const matches = stderr.match(/crop=\d+:\d+:\d+:\d+/g);
     if (!matches?.length) throw new Error('No crop info found');
     const [w, h, x, y] = matches.pop().replace('crop=', '').split(':').map(Number);
@@ -1423,7 +1422,7 @@ app.post('/api/mask-bbox', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-// ─────────────────────────────────────────────────────────────────────────────
+ ─────────────────────────────────────────────────────────────────────────────
 
 
 // ───────── Align-jewelry remains the same ─────────
