@@ -10,6 +10,8 @@ const { promisify } = require('util');
 const Vibrant = require('node-vibrant');
 const sharp = require('sharp'); // Add sharp for image conversion
 const cors = require('cors'); // Import CORS middleware
+const os = require('os');
+const mkdirp = require('mkdirp');
 
 const app = express();
 app.use(express.json());
@@ -1399,7 +1401,7 @@ app.post('/apply-custom-watermark', async (req, res) => {
     }
 });
 
-app.post('/api/mask-bbox', async (req, res) => {
+router.post('/mask-bbox', async (req, res) => {
   try {
     const { maskUrl } = req.body;
 
@@ -1407,47 +1409,51 @@ app.post('/api/mask-bbox', async (req, res) => {
       return res.status(400).json({ error: 'maskUrl is required' });
     }
 
-    const fileId = uuidv4();
-    const dir = path.join(__dirname, 'storage', 'processed', fileId);
-    const maskFile = path.join(dir, 'mask.png');
+    const tmpDir = path.join(os.tmpdir(), 'mask-processing');
+    await mkdirp(tmpDir);
 
-    // ✅ Create the directory
-    fs.mkdirSync(dir, { recursive: true });
+    const filename = `${uuidv4()}.png`;
+    const maskFile = path.join(tmpDir, filename);
 
-    // ✅ Download the mask image and save it
+    // Download the image
     const response = await axios({
       method: 'GET',
       url: maskUrl,
-      responseType: 'stream',
+      responseType: 'arraybuffer',
     });
 
-    const writer = fs.createWriteStream(maskFile);
+    fs.writeFileSync(maskFile, Buffer.from(response.data));
 
-    await new Promise((resolve, reject) => {
-      response.data.pipe(writer);
-      writer.on('finish', resolve);
-      writer.on('error', reject);
+    // Run FFmpeg cropdetect
+    const ffmpegCmd = `ffmpeg -i "${maskFile}" -vf "format=gray,scale=iw:ih,cropdetect=24:16:0" -f null - 2>&1`;
+
+    exec(ffmpegCmd, (error, stdout, stderr) => {
+      if (error) {
+        console.error('FFmpeg error:', error.message);
+        return res.status(500).json({ error: 'FFmpeg execution failed' });
+      }
+
+      const cropMatch = stdout.match(/crop=(\d+):(\d+):(\d+):(\d+)/);
+      if (cropMatch) {
+        const [, width, height, x, y] = cropMatch.map(Number);
+        return res.json({ width, height, x, y });
+      } else {
+        return res.json({
+          width: 512,
+          height: 512,
+          x: 0,
+          y: 0,
+          warning: 'No crop info found, returning fallback values',
+        });
+      }
     });
-
-    // ✅ Run ffmpeg to detect crop area
-    const ffmpegCmd = `ffmpeg -i "${maskFile}" -vf "format=gray,geq='lum=max(lum(X\\,Y)\\,alpha(X\\,Y))',cropdetect=0:1:0" -f null - 2>&1`;
-    const { stderr } = await execPromise(ffmpegCmd);
-
-    const cropMatch = stderr.match(/crop=\S+/);
-    if (!cropMatch) {
-      return res.status(500).json({ error: 'No crop info found' });
-    }
-
-    const cropString = cropMatch[0].replace('crop=', '');
-    const [width, height, x, y] = cropString.split(':').map(Number);
-
-    res.json({ width, height, x, y });
-
   } catch (err) {
-    console.error('[MASK-BBOX ERROR]', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('Server error:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
+
+module.exports = router;
 
 
 // ───────── Align-jewelry remains the same ─────────
