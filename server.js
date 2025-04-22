@@ -1408,9 +1408,11 @@ app.post('/api/mask-bbox', async (req, res) => {
     }
 
     const fileId = uuidv4();
-    const maskFile = path.join(__dirname, 'storage', 'processed', fileId, 'mask.png');
+    const dir = path.join(__dirname, 'storage', 'processed', fileId);
+    const maskFile = path.join(dir, 'mask.png');
 
-    await mkdirp(path.dirname(maskFile));
+    // ✅ create folder if it doesn't exist
+    await fs.promises.mkdir(dir, { recursive: true });
 
     const writer = fs.createWriteStream(maskFile);
     const response = await axios({ method: 'GET', url: maskUrl, responseType: 'stream' });
@@ -1433,7 +1435,6 @@ app.post('/api/mask-bbox', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 
 // ───────── Align-jewelry remains the same ─────────
