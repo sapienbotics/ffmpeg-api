@@ -1405,62 +1405,65 @@ app.post('/apply-custom-watermark', async (req, res) => {
 app.post('/mask-bbox', async (req, res) => {
   try {
     const { maskUrl } = req.body;
-
     if (!maskUrl) {
       return res.status(400).json({ error: 'maskUrl is required' });
     }
 
+    // 1) Prepare temp folder + filename
     const tmpDir = path.join(os.tmpdir(), 'mask-processing');
-    await mkdirp(tmpDir);
+    await fs.promises.mkdir(tmpDir, { recursive: true });
+    const maskFile = path.join(tmpDir, `${uuidv4()}.png`);
 
-    const filename = `${uuidv4()}.png`;
-    const originalFile = path.join(tmpDir, `original-${filename}`);
-    const preprocessedFile = path.join(tmpDir, filename);
-
-    // Download the image
+    // 2) Download mask image
     const response = await axios({
       method: 'GET',
       url: maskUrl,
       responseType: 'arraybuffer',
     });
+    await fs.promises.writeFile(maskFile, response.data);
 
-    fs.writeFileSync(originalFile, Buffer.from(response.data));
+    // 3) Load with sharp: flatten transparency to black, greyscale, raw pixels
+    const { data, info } = await sharp(maskFile)
+      .flatten({ background: '#000000' })
+      .greyscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
-    // Preprocess image: flatten alpha + convert to grayscale-compatible PNG
-    await sharp(originalFile)
-      .flatten({ background: '#ffffff' }) // Remove transparency by setting white background
-      .toFormat('png')
-      .toFile(preprocessedFile);
+    const { width, height } = info;
+    let minX = width, maxX = -1, minY = height, maxY = -1;
 
-    // Run FFmpeg cropdetect
-    const ffmpegCmd = `ffmpeg -y -i "${preprocessedFile}" -vf "format=gray,scale=512:512,cropdetect=24:16:0" -frames:v 1 -f null - 2>&1`;
-
-    exec(ffmpegCmd, (error, stdout, stderr) => {
-      if (error) {
-        console.error('FFmpeg error:', error.message);
-        return res.status(500).json({ error: 'FFmpeg execution failed' });
+    // 4) Scan for white pixels (>128)
+    for (let idx = 0; idx < data.length; idx++) {
+      if (data[idx] > 128) {
+        const x = idx % width;
+        const y = Math.floor(idx / width);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
+    }
 
-      const cropMatch = stdout.match(/crop=(\d+):(\d+):(\d+):(\d+)/);
-      if (cropMatch) {
-        const [, width, height, x, y] = cropMatch.map(Number);
-        return res.json({ width, height, x, y });
-      } else {
-        return res.json({
-          width: 512,
-          height: 512,
-          x: 0,
-          y: 0,
-          warning: 'No crop info found, returning fallback values',
-        });
-      }
-    });
+    // 5) If nothing found, fallback
+    if (maxX < 0 || maxY < 0) {
+      return res.json({
+        width,
+        height,
+        x: 0,
+        y: 0,
+        warning: 'No mask pixels found — returning full image',
+      });
+    }
+
+    // 6) Return exact bbox
+    const w = maxX - minX + 1;
+    const h = maxY - minY + 1;
+    return res.json({ width: w, height: h, x: minX, y: minY });
   } catch (err) {
-    console.error('Server error:', err);
-    res.status(500).json({ error: err.message || 'Internal server error' });
+    console.error('Error in /mask-bbox:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
-
 
 
 
