@@ -1491,34 +1491,52 @@ app.post('/api/align-jewelry', async (req, res) => {
 
 app.post('/composite-jewelry', async (req, res) => {
   try {
-    const { modelUrl, jewelryUrl, x, y, width, height } = req.body;
-    if (!modelUrl || !jewelryUrl) {
-      return res.status(400).json({ error: 'modelUrl and jewelryUrl are required' });
+    const { modelUrl, jewelryUrl, maskUrl, x, y, width, height } = req.body;
+    if (!modelUrl || !jewelryUrl || !maskUrl) {
+      return res.status(400).json({ error: 'modelUrl, jewelryUrl, and maskUrl are required' });
     }
 
-    // 1) Download model and jewelry
-    const [modelBuf, jewelryBuf] = await Promise.all([
+    // 1) Download model, jewelry, and mask
+    const [modelBuf, jewelryBuf, maskBuf] = await Promise.all([
       axios.get(modelUrl,    { responseType: 'arraybuffer' }),
       axios.get(jewelryUrl,  { responseType: 'arraybuffer' }),
+      axios.get(maskUrl,     { responseType: 'arraybuffer' }),
     ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
 
-    // 2) Resize jewelry to bbox
+    // 2) Resize jewelry to target width (keep aspect ratio)
     const resizedJewelry = await sharp(jewelryBuf)
-      .resize(width, height)
+      .resize(width, null)
       .png()
       .toBuffer();
 
-    // 3) Composite onto model
+    // 3) Extract exactly the neck‐band mask region
+    const maskRegion = await sharp(maskBuf)
+      .extract({ left: x, top: y, width, height })
+      .toColourspace('b-w')
+      .png()
+      .toBuffer();
+
+    // 4) Alpha‐mask the resized jewelry using 'dest-in' blend
+    //    (keeps jewelry pixels only where maskRegion is white)
+    const maskedJewelry = await sharp(resizedJewelry)
+      .composite([{
+        input: maskRegion,
+        blend: 'dest-in'
+      }])
+      .png()
+      .toBuffer();
+
+    // 5) Composite that masked jewelry onto the model at (x,y)
     const outputBuf = await sharp(modelBuf)
       .composite([{
-        input: resizedJewelry,
+        input: maskedJewelry,
         top:  y,
         left: x
       }])
       .png()
       .toBuffer();
 
-    // 4) Save & respond
+    // 6) Save & return
     const outName = `${uuidv4()}.png`;
     const outPath = path.join(outputDir, outName);
     await fs.promises.writeFile(outPath, outputBuf);
