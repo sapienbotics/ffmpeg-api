@@ -1491,52 +1491,64 @@ app.post('/api/align-jewelry', async (req, res) => {
 
 app.post('/composite-jewelry', async (req, res) => {
   try {
-    const { modelUrl, jewelryUrl, maskUrl, x, y, width, height } = req.body;
+    let { modelUrl, jewelryUrl, maskUrl, x, y, width, height } = req.body;
     if (!modelUrl || !jewelryUrl || !maskUrl) {
-      return res.status(400).json({ error: 'modelUrl, jewelryUrl, and maskUrl are required' });
+      return res.status(400).json({ error: 'modelUrl, jewelryUrl, maskUrl required' });
     }
 
-    // 1) Download model, jewelry, and mask
+    // Download buffers
     const [modelBuf, jewelryBuf, maskBuf] = await Promise.all([
       axios.get(modelUrl,    { responseType: 'arraybuffer' }),
       axios.get(jewelryUrl,  { responseType: 'arraybuffer' }),
       axios.get(maskUrl,     { responseType: 'arraybuffer' }),
     ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
 
-    // 2) Resize jewelry to target width (keep aspect ratio)
+    // 1) Resize jewelry to target width (keep aspect ratio)
     const resizedJewelry = await sharp(jewelryBuf)
       .resize(width, null)
       .png()
       .toBuffer();
 
-    // 3) Extract exactly the neck‐band mask region
+    // 2) Extract the mask region
     const maskRegion = await sharp(maskBuf)
       .extract({ left: x, top: y, width, height })
-      .toColourspace('b-w')
       .png()
       .toBuffer();
 
-    // 4) Alpha‐mask the resized jewelry using 'dest-in' blend
-    //    (keeps jewelry pixels only where maskRegion is white)
+    // 3) Fake an erosion by cropping & resizing back
+    const erodeX = Math.round(width * 0.05);   // 5% inset horizontally
+    const erodeY = Math.round(height * 0.10);  // 10% inset vertically
+    const erodedMask = await sharp(maskRegion)
+      .extract({
+        left: erodeX,
+        top:  erodeY,
+        width:  width  - erodeX * 2,
+        height: height - erodeY
+      })
+      .resize(width, height)     // back to original maskRegion size
+      .png()
+      .toBuffer();
+
+    // 4) Alpha‐mask the jewelry with the eroded mask
     const maskedJewelry = await sharp(resizedJewelry)
       .composite([{
-        input: maskRegion,
+        input: erodedMask,
         blend: 'dest-in'
       }])
       .png()
       .toBuffer();
 
-    // 5) Composite that masked jewelry onto the model at (x,y)
+    // 5) Composite onto the model
     const outputBuf = await sharp(modelBuf)
       .composite([{
         input: maskedJewelry,
-        top:  y,
-        left: x
+        left: x,
+        top:  y
       }])
       .png()
       .toBuffer();
 
-    // 6) Save & return
+    // 6) Save & respond
     const outName = `${uuidv4()}.png`;
     const outPath = path.join(outputDir, outName);
     await fs.promises.writeFile(outPath, outputBuf);
