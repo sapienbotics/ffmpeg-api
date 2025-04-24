@@ -1489,6 +1489,48 @@ app.post('/api/align-jewelry', async (req, res) => {
 });
 // ────────────────────────────────────────────────────────
 
+app.post('/composite-jewelry', async (req, res) => {
+  try {
+    const { modelUrl, jewelryUrl, x, y, width, height } = req.body;
+    if (!modelUrl || !jewelryUrl) {
+      return res.status(400).json({ error: 'modelUrl and jewelryUrl are required' });
+    }
+
+    // 1) Download model and jewelry
+    const [modelBuf, jewelryBuf] = await Promise.all([
+      axios.get(modelUrl,    { responseType: 'arraybuffer' }),
+      axios.get(jewelryUrl,  { responseType: 'arraybuffer' }),
+    ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
+
+    // 2) Resize jewelry to bbox
+    const resizedJewelry = await sharp(jewelryBuf)
+      .resize(width, height)
+      .png()
+      .toBuffer();
+
+    // 3) Composite onto model
+    const outputBuf = await sharp(modelBuf)
+      .composite([{
+        input: resizedJewelry,
+        top:  y,
+        left: x
+      }])
+      .png()
+      .toBuffer();
+
+    // 4) Save & respond
+    const outName = `${uuidv4()}.png`;
+    const outPath = path.join(outputDir, outName);
+    await fs.promises.writeFile(outPath, outputBuf);
+
+    const publicUrl = `${req.protocol}://${req.get('host')}/output/${outName}`;
+    return res.json({ compositeUrl: publicUrl });
+
+  } catch (err) {
+    console.error('composite-jewelry error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 
 
