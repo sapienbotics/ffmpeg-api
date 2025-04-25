@@ -1492,43 +1492,51 @@ app.post('/api/align-jewelry', async (req, res) => {
 
 app.post('/composite-jewelry', async (req, res) => {
   try {
-    const { modelUrl, jewelryUrl, maskUrl, x, y, width } = req.body;
-    if (!modelUrl || !jewelryUrl || !maskUrl || x == null || y == null || !width) {
-      return res.status(400).json({ error: 'modelUrl, jewelryUrl, maskUrl, x, y & width required' });
+    const { modelUrl, jewelryUrl, maskUrl, x, y, width, height } = req.body;
+    if (!modelUrl || !jewelryUrl || !maskUrl) {
+      return res.status(400).json({ error: 'modelUrl, jewelryUrl & maskUrl required' });
     }
 
-    // Download buffers
-    const [ modelBuf, jewelryBuf, maskBuf ] = await Promise.all([
+    // 1) Download buffers
+    const [modelBuf, jewelryBuf, maskBuf] = await Promise.all([
       axios.get(modelUrl,    { responseType: 'arraybuffer' }),
       axios.get(jewelryUrl,  { responseType: 'arraybuffer' }),
       axios.get(maskUrl,     { responseType: 'arraybuffer' }),
     ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
 
-    // Model dimensions
+    // 2) Model dimensions
     const modelSharp = sharp(modelBuf);
     const { width: baseW, height: baseH } = await modelSharp.metadata();
 
-    // Resize jewelry by width
-    const jewelryPng = await sharp(jewelryBuf)
-      .ensureAlpha()
-      .resize(width, null)
-      .png()
-      .toBuffer();
-    const { width: jw, height: jh } = await sharp(jewelryPng).metadata();
+    // 3) Resize jewelry only if it exceeds the box
+    const meta = await sharp(jewelryBuf).metadata();
+    let resizedJewelry = jewelryBuf;
+    if (meta.width > width || meta.height > height) {
+      resizedJewelry = await sharp(jewelryBuf)
+        .resize({ width, height, fit: 'inside' })
+        .png()
+        .toBuffer();
+    }
+    const { width: rw, height: rh } = await sharp(resizedJewelry).metadata();
 
-    // Position (center-hang)
-    const left = Math.round(x + (width - jw) / 2);
-    const top  = Math.round(y - jh * 0.15);
+    // 4) Center‐hang positioning
+    const left = Math.round(x + (width - rw) / 2);
+    const top  = Math.round(y + height - rh);
 
-    // Composite jewelry onto transparent canvas
+    // 5) Place jewelry on a transparent full‐size canvas
     const jewelryCanvas = await sharp({
-      create: { width: baseW, height: baseH, channels: 4, background: { r:0,g:0,b:0,alpha:0 } }
+      create: {
+        width:  baseW,
+        height: baseH,
+        channels: 4,
+        background: { r:0, g:0, b:0, alpha:0 }
+      }
     })
-    .composite([{ input: jewelryPng, left, top }])
+    .composite([{ input: resizedJewelry, left, top }])
     .png()
     .toBuffer();
 
-    // Prepare mask PNG as an alpha mask
+    // 6) Prepare mask as an alpha mask (white → opaque, black → transparent)
     const maskPng = await sharp(maskBuf)
       .resize(baseW, baseH)
       .threshold(128)
@@ -1536,26 +1544,25 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
 
-    // Clip jewelryCanvas by mask
+    // 7) Clip the jewelryCanvas by that mask
     const clippedJewelry = await sharp(jewelryCanvas)
       .composite([{ input: maskPng, blend: 'dest-in' }])
       .png()
       .toBuffer();
 
-    // Overlay onto model
+    // 8) Overlay clipped jewelry onto the model
     const finalBuf = await modelSharp
       .composite([{ input: clippedJewelry }])
       .png()
       .toBuffer();
 
-    // Save & respond
-    const name = `${uuidv4()}.png`;
-    const outPath = path.join(outputDir, name);
+    // 9) Save & respond
+    const filename = `${uuidv4()}.png`;
+    const outPath = path.join(outputDir, filename);
     await fs.promises.writeFile(outPath, finalBuf);
 
-    return res.json({ 
-      compositeUrl: `${req.protocol}://${req.get('host')}/output/${name}`,
-      maskUrl, x, y, width  // echo back for next step
+    return res.json({
+      compositeUrl: `${req.protocol}://${req.get('host')}/output/${filename}`
     });
   } catch (err) {
     console.error('composite-jewelry error:', err);
