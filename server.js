@@ -1502,101 +1502,101 @@ app.post('/composite-jewelry', async (req, res) => {
       axios.get(modelUrl,    { responseType: 'arraybuffer' }),
       axios.get(jewelryUrl,  { responseType: 'arraybuffer' }),
       axios.get(maskUrl,     { responseType: 'arraybuffer' }),
-    ]).then(resps => resps.map(r => Buffer.from(r.data)));
+    ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
 
-    // 2) Get model dimensions
+    // 2) Model metadata
     const model = sharp(modelBuf);
     const { width: baseW, height: baseH } = await model.metadata();
 
-    // 3) Resize jewelry to mask width
+    // 3) Resize jewelry to target width
     const resizedJewelry = await sharp(jewelryBuf)
       .resize(width, null)
       .png()
       .toBuffer();
     const { width: jw, height: jh } = await sharp(resizedJewelry).metadata();
 
-    // 4) Compute center‐hang position
+    // 4) Position jewelry: center-hang
     const left = Math.round(x + (width - jw) / 2);
-    const top  = Math.round(y + jh * -0.15); // slight upward so pendant hangs
+    const top  = Math.round(y + jh * -0.15);
 
-    // 5) Extract jewelry alpha, blur it for soft shadow
+    // 5) Create soft, wrapped shadow from jewelry alpha
     const alpha = await sharp(resizedJewelry)
       .extractChannel('alpha')
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    // alpha.data = raw alpha pixels, alpha.info = { width: jw, height: jh, channels:1 }
+
+    const blurred = await sharp(alpha.data, {
+        raw: { width: jw, height: jh, channels: 1 }
+      })
+      .blur(5)
       .toBuffer();
 
-    const blurred = await sharp(alpha, { raw: { width: jw, height: jh, channels: 1 } })
-      .blur(5)  // shadow softness
-      .toBuffer();
-
-    // 6) Apply vertical gradient to simulate wrap‐around (stronger shadow at bottom)
+    // vertical gradient mask
     const gradientSVG = `
       <svg width="${jw}" height="${jh}">
-        <defs>
-          <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="white" stop-opacity="0"/>
-            <stop offset="100%" stop-color="white" stop-opacity="1"/>
-          </linearGradient>
-        </defs>
+        <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="white" stop-opacity="0"/>
+          <stop offset="100%" stop-color="white" stop-opacity="1"/>
+        </linearGradient></defs>
         <rect width="100%" height="100%" fill="url(#g)" />
       </svg>`;
     const gradient = Buffer.from(gradientSVG);
-    const wrappedShadow = await sharp(blurred, { raw: { width: jw, height: jh, channels: 1 } })
+    const wrapped = await sharp(blurred, {
+        raw: { width: jw, height: jh, channels: 1 }
+      })
       .composite([{ input: gradient, blend: 'dest-in' }])
       .toBuffer();
 
-    // 7) Build RGBA shadow image (black + wrappedShadow alpha)
+    // build RGBA shadow
     const blackPlane = Buffer.alloc(jw * jh * 3, 0);
-    const shadowRGBA = await sharp(blackPlane, { raw: { width: jw, height: jh, channels: 3 } })
-      .joinChannel(wrappedShadow)
+    const shadowRGBA = await sharp(blackPlane, {
+        raw: { width: jw, height: jh, channels: 3 }
+      })
+      .joinChannel(wrapped)  // wrapped is single-channel alpha
       .png()
       .toBuffer();
 
-    // 8) Prepare full‐image mask alpha channel
-    const maskAlphaRaw = await sharp(maskBuf)
+    // 6) Build full-image alpha mask from maskBuf
+    const { data: maskRaw, info: maskInfo } = await sharp(maskBuf)
       .resize(baseW, baseH)
-      .extractChannel('red')
       .threshold(128)
-      .toBuffer();
+      .toColourspace('b-w')
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
-    const fullMask = Buffer.alloc(baseW * baseH * 4);
-    for (let i = 0; i < baseW * baseH; i++) {
-      const a = maskAlphaRaw[i];
-      fullMask[i*4 + 0] = 0;
-      fullMask[i*4 + 1] = 0;
-      fullMask[i*4 + 2] = 0;
-      fullMask[i*4 + 3] = a;
+    const fullMask = Buffer.alloc(maskInfo.width * maskInfo.height * 4);
+    for (let i = 0; i < maskRaw.length; i++) {
+      const a = maskRaw[i];
+      const o = i * 4;
+      fullMask[o+3] = a;
     }
 
-    // 9) Composite: shadow then jewelry onto transparent canvas
+    // 7) Composite shadow + jewelry onto transparent canvas
     const overlay = await sharp({
-      create: { width: baseW, height: baseH, channels: 4, background: { r:0,g:0,b:0,alpha:0 } }
+      create: { width: baseW, height: baseH, channels:4, background:{r:0,g:0,b:0,alpha:0} }
     })
     .composite([
-      // shadow, offset to simulate light from above-left
-      { input: shadowRGBA,   left: left + 5, top: top + 5, blend: 'over' },
-      // jewelry on top
+      { input: shadowRGBA,   left: left+5, top: top+5, blend:'over' },
       { input: resizedJewelry, left, top }
     ])
     .png()
     .toBuffer();
 
-    // 10) Clip overlay by full mask so nothing bleeds
+    // 8) Clip overlay by full-image mask
     const clipped = await sharp(overlay)
-      .composite([{ input: fullMask, blend: 'dest-in' }])
+      .composite([{ input: fullMask, raw: maskInfo, blend: 'dest-in' }])
       .png()
       .toBuffer();
 
-    // 11) Merge with model
-    const finalBuf = await model
-      .composite([{ input: clipped }])
-      .png()
-      .toBuffer();
+    // 9) Merge with model
+    const finalBuf = await model.composite([{ input: clipped }]).png().toBuffer();
 
-    // 12) Save & respond
-    const filename = `${uuidv4()}.png`;
-    const filepath = path.join(outputDir, filename);
-    await fs.promises.writeFile(filepath, finalBuf);
-    return res.json({ compositeUrl: `${req.protocol}://${req.get('host')}/output/${filename}` });
+    // 10) Save & respond
+    const name = `${uuidv4()}.png`;
+    const outPath = path.join(outputDir, name);
+    await fs.promises.writeFile(outPath, finalBuf);
+    return res.json({ compositeUrl:`${req.protocol}://${req.get('host')}/output/${name}` });
 
   } catch (err) {
     console.error('composite-jewelry error:', err);
