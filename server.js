@@ -1492,83 +1492,110 @@ app.post('/api/align-jewelry', async (req, res) => {
 
 app.post('/composite-jewelry', async (req, res) => {
   try {
-    const { modelUrl, jewelryUrl, maskUrl, x, y, width } = req.body;
+    const { modelUrl, jewelryUrl, maskUrl, x, y, width, height } = req.body;
     if (!modelUrl || !jewelryUrl || !maskUrl) {
       return res.status(400).json({ error: 'modelUrl, jewelryUrl, maskUrl required' });
     }
 
-    // 1) Download buffers
+    // 1. Download everything
     const [modelBuf, jewelryBuf, maskBuf] = await Promise.all([
       axios.get(modelUrl,   { responseType: 'arraybuffer' }),
       axios.get(jewelryUrl, { responseType: 'arraybuffer' }),
       axios.get(maskUrl,    { responseType: 'arraybuffer' }),
     ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
 
-    // 2) Get model dimensions
+    // 2. Get model size
     const { width: baseW, height: baseH } = await sharp(modelBuf).metadata();
 
-    // 3) Resize jewelry to target width (keep aspect ratio)
+    // 3. Resize jewelry to *fit inside* the box (won’t exceed width OR height)
     const resizedJewelry = await sharp(jewelryBuf)
-      .resize(width, null)
+      .resize({ width, height, fit: 'inside' })
       .png()
       .toBuffer();
 
-    // 4) Draw jewelry onto full‐size transparent canvas
+    // 4. Place it on a full‐size transparent canvas
     const jewelryCanvas = await sharp({
-      create: {
-        width:  baseW,
-        height: baseH,
-        channels: 4,
-        background: { r: 0, g: 0, b: 0, alpha: 0 }
-      }
+      create: { width: baseW, height: baseH, channels: 4, background: { r:0,g:0,b:0,alpha:0 } }
     })
     .composite([{ input: resizedJewelry, left: x, top: y }])
     .png()
     .toBuffer();
 
-    // 5) Prepare raw binary mask (0 or 255) at full size
-    const { data: maskRaw, info } = await sharp(maskBuf)
+    // 5. Prepare your binary mask (white=1, black=0)
+    const fullMask = await sharp(maskBuf)
       .resize(baseW, baseH)
       .threshold(128)
+      .toColourspace('b-w')  // ensure 1‐channel
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    // 6) Build an RGBA mask buffer where maskRaw → alpha channel
+    // 6. Build an RGBA alpha mask from that single‐channel buffer
+    const { data: maskRaw, info } = fullMask;
     const rgbaMask = Buffer.alloc(info.width * info.height * 4);
-    for (let i = 0; i < info.width * info.height; i++) {
-      const a = maskRaw[i];            // 0 = transparent, 255 = opaque
-      const idx = i * 4;
-      rgbaMask[idx + 0] = 0;           // R
-      rgbaMask[idx + 1] = 0;           // G
-      rgbaMask[idx + 2] = 0;           // B
-      rgbaMask[idx + 3] = a;           // A
+    for (let i = 0; i < maskRaw.length; i++) {
+      const a = maskRaw[i];              // 0 or 255
+      const off = i * 4;
+      rgbaMask[off+0] = 0;
+      rgbaMask[off+1] = 0;
+      rgbaMask[off+2] = 0;
+      rgbaMask[off+3] = a;
     }
 
-    // 7) Clip the jewelryCanvas by that alpha mask
+    // 7. Clip the jewelryCanvas by the mask
     const clippedJewelry = await sharp(jewelryCanvas)
       .composite([{
         input: rgbaMask,
-        raw: { width: info.width, height: info.height, channels: 4 },
-        blend: 'dest-in'
+        raw:    { width: info.width, height: info.height, channels: 4 },
+        blend:  'dest-in'
       }])
       .png()
       .toBuffer();
 
-    // 8) Overlay the clipped jewelry onto the model
+    // 8. Overlay onto the model
     const outputBuf = await sharp(modelBuf)
       .composite([{ input: clippedJewelry }])
       .png()
       .toBuffer();
 
-    // 9) Save and respond
+    // 9. Save & respond
     const outName = `${uuidv4()}.png`;
     const outPath = path.join(outputDir, outName);
     await fs.promises.writeFile(outPath, outputBuf);
+    res.json({ compositeUrl: `${req.protocol}://${req.get('host')}/output/${outName}` });
 
-    const publicUrl = `${req.protocol}://${req.get('host')}/output/${outName}`;
-    return res.json({ compositeUrl: publicUrl });
   } catch (err) {
     console.error('composite-jewelry error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/enhance-shadow', async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+    if (!imageUrl) throw new Error('imageUrl required');
+
+    // 1) Download the composite PNG
+    const inFile  = tmp.fileSync({ postfix: '.png' }).name;
+    const outFile = tmp.fileSync({ postfix: '.png' }).name;
+    const buf = await axios.get(imageUrl, { responseType: 'arraybuffer' })
+                       .then(r => r.data);
+    fs.writeFileSync(inFile, Buffer.from(buf));
+
+    // 2) FFmpeg drop-shadow
+    await execPromise(`
+      ffmpeg -i "${inFile}" -filter_complex "\
+        [0]alphaextract,boxblur=10:2[sh]; \
+        [sh]format=rgba,colorchannelmixer=aa=0.5[shad]; \
+        [0][shad]overlay=x=5:y=5:format=auto" \
+      -y "${outFile}"
+    `);
+
+    // 3) Return the enhanced URL (you’ll need to upload outFile to your storage)
+    const enhancedUrl = await uploadToYourStorage(outFile);
+    res.json({ enhancedUrl });
+
+  } catch (err) {
+    console.error('enhance-shadow error:', err);
     res.status(500).json({ error: err.message });
   }
 });
