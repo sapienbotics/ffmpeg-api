@@ -1584,73 +1584,58 @@ app.post('/enhance-shadow', async (req, res) => {
   try {
     const { compositeUrl, maskUrl, x, y, width, height } = req.body;
 
-    if (!compositeUrl) {
-      return res.status(400).json({ error: 'compositeUrl is required' });
+    if (!compositeUrl || !maskUrl || x == null || y == null || width == null || height == null) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Create temp working directory
+    // 1) Temp dir
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'shadow-enhance-'));
-    const inputPath = path.join(tmpDir, 'input.png');
-    const maskPath  = path.join(tmpDir, 'mask.png');
-    const outputPath = path.join(tmpDir, 'output.png');
+    const inputImg = path.join(tmpDir, 'input.png');
+    const maskImg = path.join(tmpDir, 'mask.png');
+    const croppedMask = path.join(tmpDir, 'mask-crop.png');
+    const shadowOnly = path.join(tmpDir, 'shadow.png');
+    const finalOutput = path.join(tmpDir, 'output.png');
 
-    // Download composite image
-    const compositeRes = await axios.get(compositeUrl, { responseType: 'arraybuffer' });
-    await fs.promises.writeFile(inputPath, Buffer.from(compositeRes.data));
-    console.log('[✓] Composite image downloaded');
+    // 2) Download composite and mask images
+    await Promise.all([
+      axios.get(compositeUrl, { responseType: 'arraybuffer' }).then(r => fs.promises.writeFile(inputImg, Buffer.from(r.data))),
+      axios.get(maskUrl, { responseType: 'arraybuffer' }).then(r => fs.promises.writeFile(maskImg, Buffer.from(r.data))),
+    ]);
 
-    // Download mask image if provided
-    let useMask = false;
-    if (maskUrl) {
-      const maskRes = await axios.get(maskUrl, { responseType: 'arraybuffer' });
-      await fs.promises.writeFile(maskPath, Buffer.from(maskRes.data));
-      console.log('[✓] Mask image downloaded');
-      useMask = true;
+    // 3) Crop mask to the bounding box
+    await execPromise(`ffmpeg -y -i "${maskImg}" -vf "crop=${width}:${height}:${x}:${y}" "${croppedMask}"`);
+
+    // 4) Create shadow image from cropped mask
+    await execPromise(`
+      ffmpeg -y -i "${croppedMask}" -filter_complex "
+        [0]alphaextract,boxblur=10:2[sh];
+        [sh]format=rgba,colorchannelmixer=aa=0.4[shadow]" -map "[shadow]" "${shadowOnly}"
+    `);
+
+    // 5) Overlay shadow back onto the input image at correct position
+    await execPromise(`
+      ffmpeg -y -i "${inputImg}" -i "${shadowOnly}" -filter_complex "
+        [0][1]overlay=${x}:${y}:format=auto" "${finalOutput}"
+    `);
+
+    // 6) Validate output
+    if (!fs.existsSync(finalOutput)) {
+      throw new Error('Output image not created. FFmpeg likely failed.');
     }
 
-    // Build FFmpeg command
-    let ffmpegCmd;
-
-    if (useMask && x != null && y != null && width != null && height != null) {
-      // Apply blur+shadow only inside bounding box area
-      ffmpegCmd = `
-        ffmpeg -i "${inputPath}" -i "${maskPath}" -filter_complex "
-          [1]crop=${width}:${height}:${x}:${y},format=gray,boxblur=10:2,format=rgba,colorchannelmixer=aa=0.5[shadow];
-          [0][shadow]overlay=${x + 5}:${y + 5}:format=auto
-        " -y "${outputPath}"
-      `;
-    } else {
-      // Fallback: apply full-image shadow effect
-      ffmpegCmd = `
-        ffmpeg -i "${inputPath}" -filter_complex "
-          [0]alphaextract,boxblur=10:2[sh];
-          [sh]format=rgba,colorchannelmixer=aa=0.5[shadow];
-          [0][shadow]overlay=x=5:y=5:format=auto
-        " -y "${outputPath}"
-      `;
-    }
-
-    console.log('[✓] Running FFmpeg...');
-    await exec(ffmpegCmd.replace(/\n/g, ' '));
-    console.log('[✓] Shadow applied');
-
+    // 7) Save final output to public dir
     const finalName = `${uuidv4()}.png`;
     const finalPath = path.join(outputDir, finalName);
-    await fs.promises.copyFile(outputPath, finalPath);
-
+    await fs.promises.copyFile(finalOutput, finalPath);
     const publicUrl = `${req.protocol}://${req.get('host')}/output/${finalName}`;
-    return res.json({ enhancedUrl: publicUrl });
 
+    return res.json({ enhancedUrl: publicUrl });
   } catch (err) {
-    console.error('[✗] Enhance-shadow error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('enhance-shadow error:', err);
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// Static output serving
-app.use('/output', express.static(outputDir));
-
-module.exports = app;
 
 
 
