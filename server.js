@@ -1489,82 +1489,95 @@ app.post('/api/align-jewelry', async (req, res) => {
 });
 // ────────────────────────────────────────────────────────
 
-
 app.post('/composite-jewelry', async (req, res) => {
   try {
-    const { modelUrl, jewelryUrl, maskUrl, x, y, width, height } = req.body;
-    if (!modelUrl || !jewelryUrl || !maskUrl || x==null || y==null || !width || !height) {
-      return res.status(400).json({ error: 'modelUrl, jewelryUrl, maskUrl, x, y, width & height required' });
+    const { modelUrl, jewelryUrl, maskUrl } = req.body;
+    if (!modelUrl || !jewelryUrl || !maskUrl) {
+      return res.status(400).json({ error: 'modelUrl, jewelryUrl & maskUrl required' });
     }
 
-    // 1) Download all three images
-    const [ modelBuf, jewelryBuf, maskBuf ] = await Promise.all([
-      axios.get(modelUrl,    { responseType: 'arraybuffer' }),
-      axios.get(jewelryUrl,  { responseType: 'arraybuffer' }),
-      axios.get(maskUrl,     { responseType: 'arraybuffer' }),
+    // 1) Download buffers
+    const [modelBuf, jewelryBuf, maskBuf] = await Promise.all([
+      axios.get(modelUrl,   { responseType: 'arraybuffer' }),
+      axios.get(jewelryUrl, { responseType: 'arraybuffer' }),
+      axios.get(maskUrl,    { responseType: 'arraybuffer' }),
     ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
 
-    // 2) Model dimensions
+    // 2) Load model and get its dimensions
     const modelSharp = sharp(modelBuf);
     const { width: baseW, height: baseH } = await modelSharp.metadata();
 
-    // 3) Resize jewelry by mask width (aspect preserved)
-    const jewelryPng = await sharp(jewelryBuf)
+    // 3) Prepare mask as binary raw data
+    const { data: maskRaw, info } = await sharp(maskBuf)
+      .resize(baseW, baseH)
+      .threshold(128)
+      .toColourspace('b-w')
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    // info.width === baseW, info.height === baseH
+
+    // 4) Compute the precise mask bounding box
+    let left = baseW, top = baseH, right = 0, bottom = 0;
+    for (let i = 0; i < maskRaw.length; i++) {
+      if (maskRaw[i] > 0) {
+        const row = Math.floor(i / info.width);
+        const col = i % info.width;
+        left   = Math.min(left,   col);
+        right  = Math.max(right,  col);
+        top    = Math.min(top,    row);
+        bottom = Math.max(bottom, row);
+      }
+    }
+    const boxW = right - left + 1;
+    const boxH = bottom - top + 1;
+
+    // 5) Resize jewelry to that exact box size
+    const resizedJewelry = await sharp(jewelryBuf)
       .ensureAlpha()
-      .resize(width, null)
+      .resize(boxW, boxH)
       .png()
       .toBuffer();
-    const { width: jw, height: jh } = await sharp(jewelryPng).metadata();
 
-    // 4) Position (center & hang)
-    const left = Math.round(x + (width - jw) / 2);
-    const top  = Math.round(y + height - jh);
-
-    // 5) Draw jewelry onto a transparent canvas
+    // 6) Place jewelry at (left, top) on a transparent canvas
     const jewelryCanvas = await sharp({
-      create: { width: baseW, height: baseH, channels: 4, background: { r:0, g:0, b:0, alpha:0 } }
+      create: { width: baseW, height: baseH, channels: 4, background: { r:0,g:0,b:0,alpha:0 } }
     })
-    .composite([{ input: jewelryPng, left, top }])
+    .composite([{ input: resizedJewelry, left, top }])
     .png()
     .toBuffer();
 
-    // 6) Build a **morphed** mask:
-    //    threshold → blur (dilate) → threshold (clean) → ensureAlpha
+    // 7) Prepare the mask as an RGBA PNG for dest-in clipping
     const maskPng = await sharp(maskBuf)
       .resize(baseW, baseH)
       .threshold(128)
-      .blur(3)            // slight dilate to cover edges
-      .threshold(128)     // re-binarize
-      .ensureAlpha()      // white → opaque, black → transparent
+      .ensureAlpha()
       .png()
       .toBuffer();
 
-    // 7) Clip the jewelryCanvas by that fattened mask
-    const clippedJewelry = await sharp(jewelryCanvas)
+    // 8) Clip the jewelryCanvas by that mask
+    const clipped = await sharp(jewelryCanvas)
       .composite([{ input: maskPng, blend: 'dest-in' }])
       .png()
       .toBuffer();
 
-    // 8) Overlay the clipped jewelry onto the model
+    // 9) Overlay clipped jewelry onto the model
     const finalBuf = await modelSharp
-      .composite([{ input: clippedJewelry }])
+      .composite([{ input: clipped }])
       .png()
       .toBuffer();
 
-    // 9) Save & return
+    // 10) Save & return
     const filename = `${uuidv4()}.png`;
     const outPath  = path.join(outputDir, filename);
     await fs.promises.writeFile(outPath, finalBuf);
 
-    return res.json({
-      compositeUrl: `${req.protocol}://${req.get('host')}/output/${filename}`
-    });
-
+    res.json({ compositeUrl: `${req.protocol}://${req.get('host')}/output/${filename}` });
   } catch (err) {
     console.error('composite-jewelry error:', err);
-    return res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
+
 
 
 
