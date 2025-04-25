@@ -1572,16 +1572,20 @@ app.post('/composite-jewelry', async (req, res) => {
 app.post('/enhance-shadow', async (req, res) => {
   try {
     const { imageUrl } = req.body;
-    if (!imageUrl) throw new Error('imageUrl required');
+    if (!imageUrl) {
+      return res.status(400).json({ error: 'imageUrl is required' });
+    }
 
-    // 1) Download the composite PNG
-    const inFile  = tmp.fileSync({ postfix: '.png' }).name;
-    const outFile = tmp.fileSync({ postfix: '.png' }).name;
-    const buf = await axios.get(imageUrl, { responseType: 'arraybuffer' })
-                       .then(r => r.data);
-    fs.writeFileSync(inFile, Buffer.from(buf));
+    // 1) Create a temp working directory
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'enhance-'));
+    const inFile  = path.join(tmpDir, 'input.png');
+    const outFile = path.join(tmpDir, 'shadow.png');
 
-    // 2) FFmpeg drop-shadow
+    // 2) Download the composite image
+    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+    await fs.promises.writeFile(inFile, Buffer.from(response.data));
+
+    // 3) Run FFmpeg drop-shadow filter
     await execPromise(`
       ffmpeg -i "${inFile}" -filter_complex "\
         [0]alphaextract,boxblur=10:2[sh]; \
@@ -1590,10 +1594,20 @@ app.post('/enhance-shadow', async (req, res) => {
       -y "${outFile}"
     `);
 
-    // 3) Return the enhanced URL (you’ll need to upload outFile to your storage)
-    const enhancedUrl = await uploadToYourStorage(outFile);
-    res.json({ enhancedUrl });
+    // 4) Read the result and respond
+    const outBuf = await fs.promises.readFile(outFile);
 
+    // (Option A) Return as Base64 URI
+    // const base64 = outBuf.toString('base64');
+    // return res.json({ image: `data:image/png;base64,${base64}` });
+
+    // (Option B) Save to your outputDir and return URL
+    const finalName = `${uuidv4()}.png`;
+    const finalPath = path.join(outputDir, finalName);
+    await fs.promises.writeFile(finalPath, outBuf);
+    const publicUrl = `${req.protocol}://${req.get('host')}/output/${finalName}`;
+
+    return res.json({ enhancedUrl: publicUrl });
   } catch (err) {
     console.error('enhance-shadow error:', err);
     res.status(500).json({ error: err.message });
