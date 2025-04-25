@@ -1497,18 +1497,18 @@ app.post('/composite-jewelry', async (req, res) => {
       return res.status(400).json({ error: 'modelUrl, jewelryUrl, maskUrl, x, y & width required' });
     }
 
-    // 1) Download all three
+    // Download buffers
     const [ modelBuf, jewelryBuf, maskBuf ] = await Promise.all([
       axios.get(modelUrl,    { responseType: 'arraybuffer' }),
       axios.get(jewelryUrl,  { responseType: 'arraybuffer' }),
       axios.get(maskUrl,     { responseType: 'arraybuffer' }),
     ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
 
-    // 2) Model dims
+    // Model dimensions
     const modelSharp = sharp(modelBuf);
     const { width: baseW, height: baseH } = await modelSharp.metadata();
 
-    // 3) Resize jewelry by width
+    // Resize jewelry by width
     const jewelryPng = await sharp(jewelryBuf)
       .ensureAlpha()
       .resize(width, null)
@@ -1516,61 +1516,47 @@ app.post('/composite-jewelry', async (req, res) => {
       .toBuffer();
     const { width: jw, height: jh } = await sharp(jewelryPng).metadata();
 
-    // 4) Position (center-hang)
+    // Position (center-hang)
     const left = Math.round(x + (width - jw) / 2);
     const top  = Math.round(y - jh * 0.15);
 
-    // 5) Build shadow from jewelry alpha
-    const alphaBuf = await sharp(jewelryPng)
-      .extractChannel('alpha')
-      .toBuffer();
-    // blur for softness
-    const blurred = await sharp(alphaBuf, { raw: { width: jw, height: jh, channels: 1 } })
-      .blur(8)
-      .toBuffer();
-    // tint black + re-attach alpha
-    const black = Buffer.alloc(jw * jh * 3, 0);
-    const shadowPng = await sharp(black, { raw: { width: jw, height: jh, channels: 3 } })
-      .joinChannel(blurred)
-      .png()
-      .toBuffer();
-
-    // 6) Create a full-size transparent canvas and compose shadow + jewelry
-    const overlay = await sharp({
+    // Composite jewelry onto transparent canvas
+    const jewelryCanvas = await sharp({
       create: { width: baseW, height: baseH, channels: 4, background: { r:0,g:0,b:0,alpha:0 } }
     })
-    .composite([
-      { input: shadowPng, left: left + 5, top: top + 5 },
-      { input: jewelryPng, left, top }
-    ])
+    .composite([{ input: jewelryPng, left, top }])
     .png()
     .toBuffer();
 
-    // 7) Build full-image mask alpha
-    const maskAlpha = await sharp(maskBuf)
+    // Prepare mask PNG as an alpha mask
+    const maskPng = await sharp(maskBuf)
       .resize(baseW, baseH)
       .threshold(128)
-      .toColourspace('b-w')
       .ensureAlpha()
-      .toBuffer();
-    // clip overlay by mask
-    const clipped = await sharp(overlay)
-      .composite([{ input: maskAlpha, blend: 'dest-in' }])
       .png()
       .toBuffer();
 
-    // 8) Composite onto model
+    // Clip jewelryCanvas by mask
+    const clippedJewelry = await sharp(jewelryCanvas)
+      .composite([{ input: maskPng, blend: 'dest-in' }])
+      .png()
+      .toBuffer();
+
+    // Overlay onto model
     const finalBuf = await modelSharp
-      .composite([{ input: clipped }])
+      .composite([{ input: clippedJewelry }])
       .png()
       .toBuffer();
 
-    // 9) Save & return
-    const filename = `${uuidv4()}.png`;
-    const outPath = path.join(outputDir, filename);
+    // Save & respond
+    const name = `${uuidv4()}.png`;
+    const outPath = path.join(outputDir, name);
     await fs.promises.writeFile(outPath, finalBuf);
 
-    res.json({ compositeUrl: `${req.protocol}://${req.get('host')}/output/${filename}` });
+    return res.json({ 
+      compositeUrl: `${req.protocol}://${req.get('host')}/output/${name}`,
+      maskUrl, x, y, width  // echo back for next step
+    });
   } catch (err) {
     console.error('composite-jewelry error:', err);
     res.status(500).json({ error: err.message });
