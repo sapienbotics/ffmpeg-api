@@ -1494,63 +1494,87 @@ app.post('/composite-jewelry', async (req, res) => {
   try {
     const { modelUrl, jewelryUrl, maskUrl, x, y, width, height } = req.body;
     if (!modelUrl || !jewelryUrl || !maskUrl) {
-      return res.status(400).json({ error: 'modelUrl, jewelryUrl and maskUrl are required' });
+      return res.status(400).json({ error: 'modelUrl, jewelryUrl & maskUrl required' });
     }
 
-    // 1) Download all three images
+    // 1) Download all images
     const [modelBuf, jewelryBuf, maskBuf] = await Promise.all([
-      axios.get(modelUrl,    { responseType: 'arraybuffer' }),
-      axios.get(jewelryUrl,  { responseType: 'arraybuffer' }),
-      axios.get(maskUrl,     { responseType: 'arraybuffer' }),
+      axios.get(modelUrl,   { responseType: 'arraybuffer' }),
+      axios.get(jewelryUrl, { responseType: 'arraybuffer' }),
+      axios.get(maskUrl,    { responseType: 'arraybuffer' }),
     ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
 
     // 2) Get model dimensions
     const { width: baseW, height: baseH } = await sharp(modelBuf).metadata();
 
-    // 3) Resize jewelry to box‐width (keep aspect ratio)
+    // 3) Resize jewelry to *exactly* the mask’s width, keep aspect ratio
     const resizedJewelry = await sharp(jewelryBuf)
       .resize(width, null)
       .png()
       .toBuffer();
+    const { width: rw, height: rh } = await sharp(resizedJewelry).metadata();
 
-    // 4) Place resized jewelry onto a full‐size transparent canvas
+    // 4) Compute position: center horizontally & hang from mask bottom
+    const left = Math.round(x + (width - rw) / 2);
+    const top  = Math.round(y + height - rh);
+
+    // 5) Draw jewelry onto a transparent canvas of model size
     const jewelryCanvas = await sharp({
-      create: { width: baseW, height: baseH, channels: 4, background: { r:0, g:0, b:0, alpha:0 } }
+      create: {
+        width:  baseW,
+        height: baseH,
+        channels: 4,
+        background: { r:0, g:0, b:0, alpha:0 }
+      }
     })
-    .composite([{ input: resizedJewelry, left: x, top: y }])
+    .composite([{ input: resizedJewelry, left, top }])
     .png()
     .toBuffer();
 
-    // 5) Prepare binary mask (white band / black elsewhere)
-    const maskPNG = await sharp(maskBuf)
+    // 6) Build a full-size alpha mask from your binary mask
+    const { data: maskRaw, info } = await sharp(maskBuf)
       .resize(baseW, baseH)
       .threshold(128)
-      .png()
-      .toBuffer();
+      .toColourspace('b-w')
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
-    // 6) Clip jewelryCanvas by that mask
+    const rgbaMask = Buffer.alloc(info.width * info.height * 4);
+    for (let i = 0; i < maskRaw.length; i++) {
+      const a = maskRaw[i];      // 0 = transparent, 255 = opaque
+      const off = i * 4;
+      rgbaMask[off+0] = 0;
+      rgbaMask[off+1] = 0;
+      rgbaMask[off+2] = 0;
+      rgbaMask[off+3] = a;
+    }
+
+    // 7) Clip the jewelryCanvas by that alpha mask
     const clippedJewelry = await sharp(jewelryCanvas)
-      .composite([{ input: maskPNG, blend: 'dest-in' }])
+      .composite([{
+        input: rgbaMask,
+        raw:    { width: info.width, height: info.height, channels: 4 },
+        blend:  'dest-in'
+      }])
       .png()
       .toBuffer();
 
-    // 7) Overlay clipped jewelry onto the model
-    const finalImage = await sharp(modelBuf)
+    // 8) Overlay clipped jewelry onto the model
+    const finalImg = await sharp(modelBuf)
       .composite([{ input: clippedJewelry }])
       .png()
       .toBuffer();
 
-    // 8) Save and return URL
-    const fileName = `${uuidv4()}.png`;
-    const filePath = path.join(outputDir, fileName);
-    await fs.promises.writeFile(filePath, finalImage);
-
-    const publicUrl = `${req.protocol}://${req.get('host')}/output/${fileName}`;
+    // 9) Save & return
+    const filename = `${uuidv4()}.png`;
+    const outPath  = path.join(outputDir, filename);
+    await fs.promises.writeFile(outPath, finalImg);
+    const publicUrl = `${req.protocol}://${req.get('host')}/output/${filename}`;
     res.json({ compositeUrl: publicUrl });
 
   } catch (err) {
     console.error('composite-jewelry error:', err);
-    res.status(500).json({ error: 'Failed to composite jewelry', details: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
