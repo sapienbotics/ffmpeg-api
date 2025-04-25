@@ -1583,95 +1583,74 @@ app.post('/composite-jewelry', async (req, res) => {
 app.post('/enhance-shadow', async (req, res) => {
   try {
     const { compositeUrl, maskUrl, x, y, width, height } = req.body;
-    if (!compositeUrl || !maskUrl) {
-      return res.status(400).json({ error: 'compositeUrl & maskUrl required' });
+
+    if (!compositeUrl) {
+      return res.status(400).json({ error: 'compositeUrl is required' });
     }
 
-    // 1) Download composite & mask
-    const [modelBuf, maskBuf] = await Promise.all([
-      axios.get(compositeUrl, { responseType: 'arraybuffer' }),
-      axios.get(maskUrl,     { responseType: 'arraybuffer' }),
-    ]).then(r => r.map(rsp => Buffer.from(rsp.data)));
+    // Create temp working directory
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'shadow-enhance-'));
+    const inputPath = path.join(tmpDir, 'input.png');
+    const maskPath  = path.join(tmpDir, 'mask.png');
+    const outputPath = path.join(tmpDir, 'output.png');
 
-    // 2) Extract just the necklace (transparent PNG) by clipping composite with mask
-    // —build an alpha mask from maskBuf
-    const { data: mRaw, info } = await sharp(maskBuf)
-      .resize({ width: info?.width || null, height: info?.height || null })
-      .threshold(128)
-      .toColourspace('b-w')
-      .raw({ depth: 'uchar' })
-      .toBuffer({ resolveWithObject: true });
+    // Download composite image
+    const compositeRes = await axios.get(compositeUrl, { responseType: 'arraybuffer' });
+    await fs.promises.writeFile(inputPath, Buffer.from(compositeRes.data));
+    console.log('[✓] Composite image downloaded');
 
-    const alpha = Buffer.alloc(info.width * info.height * 4);
-    for (let i = 0; i < mRaw.length; i++) {
-      const a = mRaw[i];
-      const off = i * 4;
-      alpha[off+0] = 0;
-      alpha[off+1] = 0;
-      alpha[off+2] = 0;
-      alpha[off+3] = a;
+    // Download mask image if provided
+    let useMask = false;
+    if (maskUrl) {
+      const maskRes = await axios.get(maskUrl, { responseType: 'arraybuffer' });
+      await fs.promises.writeFile(maskPath, Buffer.from(maskRes.data));
+      console.log('[✓] Mask image downloaded');
+      useMask = true;
     }
 
-    // —clip the composite to extract only the jewelry
-    const clippedJewelry = await sharp(modelBuf)
-      .composite([{
-        input: alpha,
-        raw:    { width: info.width, height: info.height, channels: 4 },
-        blend:  'dest-in'
-      }])
-      .png()
-      .toBuffer();
+    // Build FFmpeg command
+    let ffmpegCmd;
 
-    // 3) Create the shadow from that clipped layer
-    const shadowAlpha = await sharp(clippedJewelry)
-      .extractChannel('alpha')
-      .blur(8)                // increase for softer shadow
-      .toColourspace('b-w')
-      .toBuffer({ resolveWithObject: true });
-
-    // Build an RGBA shadow image (black + blurred alpha)
-    const { data: saRaw, info: si } = shadowAlpha;
-    const shadowRGBA = Buffer.alloc(si.width * si.height * 4);
-    for (let i = 0; i < saRaw.length; i++) {
-      const a = saRaw[i];     // blurred alpha
-      const off = i * 4;
-      shadowRGBA[off+0] = 0;   // R
-      shadowRGBA[off+1] = 0;   // G
-      shadowRGBA[off+2] = 0;   // B
-      shadowRGBA[off+3] = a;   // A
+    if (useMask && x != null && y != null && width != null && height != null) {
+      // Apply blur+shadow only inside bounding box area
+      ffmpegCmd = `
+        ffmpeg -i "${inputPath}" -i "${maskPath}" -filter_complex "
+          [1]crop=${width}:${height}:${x}:${y},format=gray,boxblur=10:2,format=rgba,colorchannelmixer=aa=0.5[shadow];
+          [0][shadow]overlay=${x + 5}:${y + 5}:format=auto
+        " -y "${outputPath}"
+      `;
+    } else {
+      // Fallback: apply full-image shadow effect
+      ffmpegCmd = `
+        ffmpeg -i "${inputPath}" -filter_complex "
+          [0]alphaextract,boxblur=10:2[sh];
+          [sh]format=rgba,colorchannelmixer=aa=0.5[shadow];
+          [0][shadow]overlay=x=5:y=5:format=auto
+        " -y "${outputPath}"
+      `;
     }
 
-    // 4) Composite shadow + jewelry onto the original composite
-    //    offset shadow by (3,3) pixels to simulate drop-shadow
-    const enhanced = await sharp(modelBuf)
-      .composite([
-        { 
-          input: shadowRGBA,
-          raw:    { width: si.width, height: si.height, channels: 4 },
-          left:   x + 3,
-          top:    y + 3,
-        },
-        {
-          input: clippedJewelry,
-          left:  x,
-          top:   y,
-        }
-      ])
-      .png()
-      .toBuffer();
+    console.log('[✓] Running FFmpeg...');
+    await exec(ffmpegCmd.replace(/\n/g, ' '));
+    console.log('[✓] Shadow applied');
 
-    // 5) Save & return
-    const filename = `${uuidv4()}.png`;
-    const filepath = path.join(outputDir, filename);
-    await fs.promises.writeFile(filepath, enhanced);
-    const publicUrl = `${req.protocol}://${req.get('host')}/output/${filename}`;
-    res.json({ enhancedUrl: publicUrl });
+    const finalName = `${uuidv4()}.png`;
+    const finalPath = path.join(outputDir, finalName);
+    await fs.promises.copyFile(outputPath, finalPath);
+
+    const publicUrl = `${req.protocol}://${req.get('host')}/output/${finalName}`;
+    return res.json({ enhancedUrl: publicUrl });
 
   } catch (err) {
-    console.error('enhance-shadow error:', err);
+    console.error('[✗] Enhance-shadow error:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// Static output serving
+app.use('/output', express.static(outputDir));
+
+module.exports = app;
 
 
 
