@@ -1552,68 +1552,61 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
 
-    // ─── BUILD A VISIBLE, SOFT CAST SHADOW ────────────────────────────────────
-    // Config: blur radius, offset & padding around the jewelry
-    const blurRadius = 6;    // small enough to keep alpha strong
-    const offsetX    = 6;    // shadow shift right
-    const offsetY    = 6;    // shadow shift down
-    const pad        = blurRadius * 2;
-
-    // a) Crop out just the jewelry region (so we never blur the full canvas)
-    const jewelryCrop = await sharp(clippedJewelry)
-      .extract({ left, top, width: RW, height: RH })
-      .png()
-      .toBuffer();
-
-    // b) Extract its alpha channel as RAW rw×rh
-    const rawAlpha = await sharp(jewelryCrop)
+    // ─── IMPROVED SHADOW IMPLEMENTATION ────────────────────────────────────────
+    // Extract the jewelry alpha directly from the clipped jewelry buffer
+    const { data: jewelryAlpha, info: jewelryInfo } = await sharp(clippedJewelry)
       .extractChannel('alpha')
       .raw()
-      .toBuffer();  // length = RW*RH
-
-    // c) Pad that alpha on all sides so blur can spread outward
-    const PW = RW + pad*2, PH = RH + pad*2;
-    const padded = Buffer.alloc(PW * PH).fill(0);
-    for (let row = 0; row < RH; row++) {
-      const srcStart = row * RW;
-      const dstStart = (row + pad) * PW + pad;
-      rawAlpha.copy(padded, dstStart, srcStart, srcStart + RW);
+      .toBuffer({ resolveWithObject: true });
+    
+    // Create shadow parameters - adjust for better visibility
+    const blurRadius = 10;   // Increased blur for softer shadow
+    const offsetX = 2;       // Subtle horizontal shift
+    const offsetY = 4;       // More vertical shift (light from above)
+    const shadowOpacity = 0.5; // 50% opacity for natural look
+    const shadowColor = { r: 20, g: 20, b: 20 }; // Dark gray shadow (not pure black)
+    const shadowIntensity = 1.5; // Boost shadow darkness
+    
+    // Create rgba shadow buffer (full canvas size)
+    const shadowBuffer = Buffer.alloc(jewelryInfo.width * jewelryInfo.height * 4);
+    for (let i = 0; i < jewelryAlpha.length; i++) {
+      // RGB channels - shadow color
+      shadowBuffer[i*4] = shadowColor.r;
+      shadowBuffer[i*4 + 1] = shadowColor.g;
+      shadowBuffer[i*4 + 2] = shadowColor.b;
+      // Alpha channel - use jewelry's alpha with boost
+      shadowBuffer[i*4 + 3] = Math.min(255, Math.round(jewelryAlpha[i] * shadowIntensity));
     }
-
-    // d) Blur that padded alpha buffer
-    const blurred = await sharp(padded, {
-        raw: { width: PW, height: PH, channels: 1 }
-      })
-      .blur(blurRadius)
-      .raw()
-      .toBuffer();
-
-    // e) Boost the blurred alpha so thin bits still cast a visible shadow
-    for (let i = 0; i < blurred.length; i++) {
-      blurred[i] = Math.min(255, blurred[i] * 4);
-    }
-
-    // f) Make a black RGB canvas of size PW×PH, then join our alpha
-    const shadowLayer = await sharp({
-        create: { width: PW, height: PH, channels: 3, background: { r:0, g:0, b:0 } }
-      })
-      .joinChannel(blurred, {
-        raw: { width: PW, height: PH, channels: 1 }
-      })
-      .png()
-      .toBuffer();
-
-    // g) Composite: place shadow under jewelry with padding-offset + your offset
+    
+    // Create shadow image and blur it
+    const shadowImg = await sharp(shadowBuffer, {
+      raw: {
+        width: jewelryInfo.width,
+        height: jewelryInfo.height,
+        channels: 4
+      }
+    })
+    .blur(blurRadius)
+    .png()
+    .toBuffer();
+    
+    // Final composite - shadow first, then jewelry
     const finalBuf = await modelSharp
       .composite([
         {
-          input: shadowLayer,
-          left:   left - pad + offsetX,
-          top:    top  - pad + offsetY,
-          blend:  'over',
-          opacity: 0.6
+          // Shadow layer, slightly offset
+          input: shadowImg,
+          left: offsetX,
+          top: offsetY,
+          blend: 'over',
+          opacity: shadowOpacity
         },
-        { input: clippedJewelry, left: 0, top: 0 }
+        {
+          // Jewelry layer on top
+          input: clippedJewelry,
+          left: 0,
+          top: 0
+        }
       ])
       .png()
       .toBuffer();
