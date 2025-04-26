@@ -1552,60 +1552,81 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
 
-    // ─── IMPROVED SHADOW IMPLEMENTATION ────────────────────────────────────────
-    // Extract the jewelry alpha directly from the clipped jewelry buffer
-    const { data: jewelryAlpha, info: jewelryInfo } = await sharp(clippedJewelry)
-      .extractChannel('alpha')
+    // ─── DIRECTIONAL SHADOW IMPLEMENTATION ────────────────────────────────────────
+    // Light direction parameters
+    const lightAngle = 45;  // Light coming from top-left (in degrees)
+    const shadowDistance = 5; // How far the shadow extends
+    
+    // Calculate shadow offset based on light angle
+    const shadowOffsetX = Math.round(Math.cos(lightAngle * Math.PI / 180) * shadowDistance);
+    const shadowOffsetY = Math.round(Math.sin(lightAngle * Math.PI / 180) * shadowDistance);
+    
+    // Shadow appearance parameters
+    const blurRadius = 8;        // Soft edge blur 
+    const shadowOpacity = 0.3;   // Lower opacity for subtlety
+    const shadowColor = { r: 10, g: 10, b: 10 }; // Very dark shadow color
+    
+    // Create a new canvas slightly larger to accommodate the shadow offset and blur
+    const paddingForShadow = blurRadius * 2;
+    const shadowCanvasWidth = CW + paddingForShadow * 2;
+    const shadowCanvasHeight = CH + paddingForShadow * 2;
+    
+    // 1. Extract the alpha channel from clipped jewelry
+    const { data: jewelryAlpha } = await sharp(clippedJewelry)
+      .extractChannel(3)  // Alpha channel
       .raw()
       .toBuffer({ resolveWithObject: true });
-    
-    // Create shadow parameters - adjust for better visibility
-    const blurRadius = 10;   // Increased blur for softer shadow
-    const offsetX = 2;       // Subtle horizontal shift
-    const offsetY = 4;       // More vertical shift (light from above)
-    const shadowOpacity = 0.5; // 50% opacity for natural look
-    const shadowColor = { r: 20, g: 20, b: 20 }; // Dark gray shadow (not pure black)
-    const shadowIntensity = 1.5; // Boost shadow darkness
-    
-    // Create rgba shadow buffer (full canvas size)
-    const shadowBuffer = Buffer.alloc(jewelryInfo.width * jewelryInfo.height * 4);
+      
+    // 2. Create a new RGBA buffer for the shadow
+    const shadowBuffer = Buffer.alloc(CW * CH * 4);
     for (let i = 0; i < jewelryAlpha.length; i++) {
-      // RGB channels - shadow color
-      shadowBuffer[i*4] = shadowColor.r;
-      shadowBuffer[i*4 + 1] = shadowColor.g;
-      shadowBuffer[i*4 + 2] = shadowColor.b;
-      // Alpha channel - use jewelry's alpha with boost
-      shadowBuffer[i*4 + 3] = Math.min(255, Math.round(jewelryAlpha[i] * shadowIntensity));
+      const offset = i * 4;
+      shadowBuffer[offset] = shadowColor.r;
+      shadowBuffer[offset + 1] = shadowColor.g;
+      shadowBuffer[offset + 2] = shadowColor.b;
+      shadowBuffer[offset + 3] = jewelryAlpha[i]; // Use jewelry alpha directly
     }
     
-    // Create shadow image and blur it
-    const shadowImg = await sharp(shadowBuffer, {
-      raw: {
-        width: jewelryInfo.width,
-        height: jewelryInfo.height,
-        channels: 4
-      }
-    })
-    .blur(blurRadius)
-    .png()
-    .toBuffer();
+    // 3. Create the shadow image, offset it and blur it
+    const shadowImg = await sharp({
+        create: {
+          width: shadowCanvasWidth,
+          height: shadowCanvasHeight,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        }
+      })
+      .composite([{
+        input: shadowBuffer,
+        raw: { width: CW, height: CH, channels: 4 },
+        left: paddingForShadow + shadowOffsetX,
+        top: paddingForShadow + shadowOffsetY
+      }])
+      .blur(blurRadius)
+      .png()
+      .toBuffer();
     
-    // Final composite - shadow first, then jewelry
+    // 4. Extract the shadow area that overlaps with the original canvas
+    const croppedShadow = await sharp(shadowImg)
+      .extract({
+        left: paddingForShadow,
+        top: paddingForShadow,
+        width: CW,
+        height: CH
+      })
+      .png()
+      .toBuffer();
+    
+    // 5. Final composite - first the shadow, then the jewelry
     const finalBuf = await modelSharp
       .composite([
         {
-          // Shadow layer, slightly offset
-          input: shadowImg,
-          left: offsetX,
-          top: offsetY,
+          input: croppedShadow,
           blend: 'over',
           opacity: shadowOpacity
         },
         {
-          // Jewelry layer on top
-          input: clippedJewelry,
-          left: 0,
-          top: 0
+          input: clippedJewelry
         }
       ])
       .png()
