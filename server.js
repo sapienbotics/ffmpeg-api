@@ -1498,7 +1498,7 @@ app.post('/composite-jewelry', async (req, res) => {
     if (!modelUrl || !jewelryUrl || !maskUrl) {
       return res.status(400).json({ error: 'modelUrl, jewelryUrl & maskUrl required' });
     }
-    
+
     // 1) Download images
     const [ m, j, msk ] = await Promise.all([
       axios.get(modelUrl,   { responseType: 'arraybuffer' }),
@@ -1508,11 +1508,11 @@ app.post('/composite-jewelry', async (req, res) => {
     const modelBuf   = Buffer.from(m.data);
     const jewelryBuf = Buffer.from(j.data);
     const maskBuf    = Buffer.from(msk.data);
-    
+
     // 2) Model metadata
     const modelSharp = sharp(modelBuf);
     const { width: baseW, height: baseH } = await modelSharp.metadata();
-    
+
     // 3) Resize jewelry
     const resizedJewelry = await sharp(jewelryBuf)
       .ensureAlpha()
@@ -1520,11 +1520,11 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
     const { width: rw, height: rh } = await sharp(resizedJewelry).metadata();
-    
+
     // 4) Compute jewelry position
     const left = Math.round(x + (width - rw) / 2);
     const top  = Math.round(y +  height - rh);
-    
+
     // 5) Place jewelry on transparent canvas
     const jewelryCanvas = await sharp({
         create: { width: baseW, height: baseH, channels: 4,
@@ -1533,7 +1533,7 @@ app.post('/composite-jewelry', async (req, res) => {
       .composite([{ input: resizedJewelry, left, top }])
       .png()
       .toBuffer();
-    
+
     // 6) Build RGBA mask
     const { data: maskRaw, info } = await sharp(maskBuf)
       .resize(baseW, baseH)
@@ -1545,7 +1545,7 @@ app.post('/composite-jewelry', async (req, res) => {
     for (let i = 0; i < maskRaw.length; i++) {
       rgbaMask[i*4 + 3] = maskRaw[i];
     }
-    
+
     // 7) Clip jewelry to mask
     const clippedJewelry = await sharp(jewelryCanvas)
       .composite([{
@@ -1555,52 +1555,61 @@ app.post('/composite-jewelry', async (req, res) => {
       }])
       .png()
       .toBuffer();
-      
-    // ─── VERY SIMPLE, VERY VISIBLE SHADOW ───────────────────────────────────────
-    
-    // Create a solid black shadow from the jewelry alpha
-    const shadowBuf = await sharp(clippedJewelry)
-      .removeAlpha()                // Remove alpha channel temporarily
-      .threshold(1)                 // Convert to pure black and white
-      .toColourspace('b-w')         // Make it grayscale (actually black)
-      .blur(7)                      // Spread the shadow
-      .linear(-0.2, 100)            // Increase contrast for more visibility
-      .ensureAlpha(0.7)             // Add back alpha at 70% opacity
+
+    // ─── DROP SHADOW (simplified) ───────────────────────────────────────────────
+    // a) extract & blur alpha as *raw*
+    const blurredAlpha = await sharp(clippedJewelry)
+      .extractChannel('alpha')
+      .blur(4)    // soft/hard shadow
+      .raw()
+      .toBuffer();
+
+    // b) make a black RGB layer, then join blurredAlpha as its alpha
+    const shadowLayer = await sharp({
+        create: {
+          width:  info.width,
+          height: info.height,
+          channels: 3,
+          background: { r:0, g:0, b:0 }
+        }
+      })
+      .joinChannel( blurredAlpha, {
+        raw: { width: info.width, height: info.height, channels: 1 }
+      })
       .png()
       .toBuffer();
-      
-    // ───────────────────────────────────────────────────────────────────────────
-    
-    // 8) Composite jewelry with visible shadow
+
+    // c) composite shadow + jewelry onto the model in one go
     const finalBuf = await modelSharp
       .composite([
-        // Apply the shadow first (with offset)
         {
-          input: shadowBuf,
-          left: 0, 
-          top: 8,    // Move shadow down 8 pixels for depth
-          blend: 'over'
+          input: shadowLayer,
+          left:   left + 5,   // shadow offset
+          top:    top  + 5,
+          blend:  'over',
+          opacity: 0.3        // shadow darkness
         },
-        // Then the jewelry on top
-        { 
-          input: clippedJewelry, 
-          left: 0, 
-          top: 0 
-        }
+        { input: clippedJewelry, left: 0, top: 0 }
       ])
       .png()
       .toBuffer();
-    
-    // 9) Save & respond
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // 8) Save & respond
     const filename = `${uuidv4()}.png`;
     const outPath  = path.join(outputDir, filename);
     await fs.promises.writeFile(outPath, finalBuf);
     res.json({ compositeUrl: `${req.protocol}://${req.get('host')}/output/${filename}` });
+
   } catch (err) {
     console.error('composite-jewelry error:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// don’t forget:
+app.use('/output', express.static(outputDir));
+
 
 
 app.post('/enhance-shadow', async (req, res) => {
