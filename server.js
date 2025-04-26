@@ -1553,45 +1553,63 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
 
-    // ─── REFINED SUBTLE SHADOW IMPLEMENTATION ────────────────────────────────────────
+    // ─── IMPROVED SHADOW IMPLEMENTATION ────────────────────────────────────────
     
-    // Extract model skin tone at shadow location for adaptive shadow color
+    // Extract model skin tone with more sample points for better accuracy
     const { data: modelRawData, info: modelInfo } = await modelSharp
       .raw()
       .toBuffer({ resolveWithObject: true });
     
-    // Sample skin area near and below the necklace to get accurate color
-    // More sample points for better averaging
+    // Enhanced sample points for more accurate skin tone detection
+    // More points at varying distances from the jewelry for better averaging
     const samplePoints = [
-      { x: left + Math.round(RW/2), y: top + RH + 5 },      // Center below
-      { x: left + Math.round(RW/4), y: top + RH + 3 },      // Left below
-      { x: left + Math.round(3*RW/4), y: top + RH + 3 },    // Right below
-      { x: left + Math.round(RW/2), y: top + Math.round(RH/2) + 5 }     // Middle of necklace area
+      // Points directly below main pendant area (more important for shadow)
+      { x: left + Math.round(RW/2), y: top + RH + 3 },       // Center below
+      { x: left + Math.round(RW/2), y: top + RH + 6 },       // Center further below
+      { x: left + Math.round(RW/2), y: top + RH + 10 },      // Even further below center
+      
+      // Points below the sides (for broader sampling)
+      { x: left + Math.round(RW/4), y: top + RH + 3 },       // Left below
+      { x: left + Math.round(3*RW/4), y: top + RH + 3 },     // Right below
+      
+      // Points under potential pendant areas
+      { x: left + Math.round(RW/3), y: top + Math.round(RH*0.75) + 3 },    // Left pendant area
+      { x: left + Math.round(2*RW/3), y: top + Math.round(RH*0.75) + 3 },  // Right pendant area
+      
+      // Middle points for chain areas
+      { x: left + Math.round(RW/5), y: top + Math.round(RH/3) + 2 },       // Left chain area
+      { x: left + Math.round(4*RW/5), y: top + Math.round(RH/3) + 2 }      // Right chain area
     ];
     
-    // Calculate average skin tone from sample points
-    let avgR = 0, avgG = 0, avgB = 0, validSamples = 0;
+    // Calculate weighted average skin tone from sample points
+    // More weight to points directly below the center of the jewelry
+    let totalR = 0, totalG = 0, totalB = 0, totalWeight = 0;
+    const defaultWeight = 1.0;
+    const centerWeight = 1.5;  // Higher weight for center points
     
-    samplePoints.forEach(point => {
+    samplePoints.forEach((point, index) => {
       if (point.x >= 0 && point.x < CW && point.y >= 0 && point.y < CH) {
         const pixelIndex = (point.y * CW + point.x) * modelInfo.channels;
         // Make sure we're not sampling outside the image bounds
         if (pixelIndex >= 0 && pixelIndex < modelRawData.length - 2) {
-          avgR += modelRawData[pixelIndex];
-          avgG += modelRawData[pixelIndex + 1];
-          avgB += modelRawData[pixelIndex + 2];
-          validSamples++;
+          // Apply weight based on point location (center points get more weight)
+          const weight = (index < 3) ? centerWeight : defaultWeight;
+          
+          totalR += modelRawData[pixelIndex] * weight;
+          totalG += modelRawData[pixelIndex + 1] * weight;
+          totalB += modelRawData[pixelIndex + 2] * weight;
+          totalWeight += weight;
         }
       }
     });
     
-    // Use skin color for shadow base with very subtle darkening
-    const skinColorR = Math.floor(avgR / validSamples) || 0;  // Fallback to 0 if NaN
-    const skinColorG = Math.floor(avgG / validSamples) || 0;
-    const skinColorB = Math.floor(avgB / validSamples) || 0;
+    // Calculate weighted average skin tone
+    const skinColorR = Math.floor(totalR / totalWeight) || 240;  // Fallback if NaN
+    const skinColorG = Math.floor(totalG / totalWeight) || 200;
+    const skinColorB = Math.floor(totalB / totalWeight) || 180;
     
-    // Much more subtle shadow color - barely darker than skin
-    const shadowDarkness = 0.92; // Very subtle (92% of original skin brightness)
+    // Improved shadow darkening - not too dark, but noticeable
+    const shadowDarkness = 0.85; // Changed from 0.92 to 0.85 (larger difference from skin)
     const shadowColor = {
       r: Math.floor(skinColorR * shadowDarkness),
       g: Math.floor(skinColorG * shadowDarkness),
@@ -1599,34 +1617,43 @@ app.post('/composite-jewelry', async (req, res) => {
     };
     
     // Extract jewelry alpha for shadow shape
-    const { data: jewelryAlpha } = await sharp(clippedJewelry)
+    const { data: jewelryAlpha, info: alphaInfo } = await sharp(clippedJewelry)
       .extractChannel(3)  // Alpha channel
       .raw()
       .toBuffer({ resolveWithObject: true });
     
-    // Create a thinner shadow by eroding the alpha channel slightly
-    const thinnerAlpha = Buffer.alloc(jewelryAlpha.length);
-    const imageWidth = CW;
+    // Analyze jewelry for pendant detection
+    // This helps create appropriate shadow strength for different parts
+    const pendantMap = Buffer.alloc(jewelryAlpha.length);
+    const chainThreshold = 3; // Pixels in diameter to be considered chain vs pendant
     
-    // Simple erosion operation to thin the shadow
-    for (let y = 1; y < CH - 1; y++) {
-      for (let x = 1; x < CW - 1; x++) {
-        const idx = y * imageWidth + x;
-        // Only keep alpha values that have sufficient neighbors with alpha
-        let neighborCount = 0;
-        
-        // Check 4-connected neighbors
-        if (jewelryAlpha[idx - 1] > 100) neighborCount++;
-        if (jewelryAlpha[idx + 1] > 100) neighborCount++;
-        if (jewelryAlpha[idx - imageWidth] > 100) neighborCount++;
-        if (jewelryAlpha[idx + imageWidth] > 100) neighborCount++;
-        
-        // Keep pixel if it has at least 3 strong neighbors
-        thinnerAlpha[idx] = neighborCount >= 3 ? jewelryAlpha[idx] : 0;
+    // Identify pendant areas vs chain areas for different shadow treatment
+    for (let y = 0; y < CH; y++) {
+      for (let x = 0; x < CW; x++) {
+        const idx = y * CW + x;
+        if (jewelryAlpha[idx] > 50) { // If this is part of the jewelry
+          // Check surrounding pixels to determine if this is a pendant or chain
+          let surroundingPixels = 0;
+          const checkRadius = chainThreshold;
+          
+          for (let cy = Math.max(0, y - checkRadius); cy <= Math.min(CH - 1, y + checkRadius); cy++) {
+            for (let cx = Math.max(0, x - checkRadius); cx <= Math.min(CW - 1, x + checkRadius); cx++) {
+              const checkIdx = cy * CW + cx;
+              if (jewelryAlpha[checkIdx] > 50) {
+                surroundingPixels++;
+              }
+            }
+          }
+          
+          // More surrounding pixels = likely pendant (thicker part)
+          // Assign pendant value between 0.5 (chain) and 1.0 (pendant)
+          const pendantValue = Math.min(1.0, 0.5 + (surroundingPixels / (Math.pow(checkRadius * 2 + 1, 2))) * 0.5);
+          pendantMap[idx] = Math.floor(pendantValue * 255);
+        }
       }
     }
     
-    // Create a gradient for the shadow that fades with distance
+    // Create improved shadow
     const createGradientShadow = async (settings) => {
       // Ensure integer offsets
       const offsetX = Math.round(settings.offsetX);
@@ -1635,48 +1662,80 @@ app.post('/composite-jewelry', async (req, res) => {
       // Create shadow buffer with gradient
       const shadowBuffer = Buffer.alloc(CW * CH * 4);
       
-      // Calculate gradient falloff based on distance from edge
+      // Improved edge detection for better shadow gradient
+      const edgeMap = Buffer.alloc(jewelryAlpha.length);
+      
+      // First pass: detect edges for better gradient
+      for (let y = 1; y < CH - 1; y++) {
+        for (let x = 1; x < CW - 1; x++) {
+          const idx = y * CW + x;
+          
+          if (jewelryAlpha[idx] > 30) {
+            // Check if this pixel is on or near an edge
+            const up = jewelryAlpha[idx - CW] < 30;
+            const down = jewelryAlpha[idx + CW] < 30;
+            const left = jewelryAlpha[idx - 1] < 30;
+            const right = jewelryAlpha[idx + 1] < 30;
+            
+            // Diagonal checks for smoother edges
+            const upLeft = jewelryAlpha[idx - CW - 1] < 30;
+            const upRight = jewelryAlpha[idx - CW + 1] < 30;
+            const downLeft = jewelryAlpha[idx + CW - 1] < 30;
+            const downRight = jewelryAlpha[idx + CW + 1] < 30;
+            
+            // Count edge directions (including diagonals)
+            const edgeDirections = 
+              (up ? 1 : 0) + 
+              (down ? 1 : 0) + 
+              (left ? 1 : 0) + 
+              (right ? 1 : 0) +
+              (upLeft ? 0.5 : 0) + 
+              (upRight ? 0.5 : 0) + 
+              (downLeft ? 0.5 : 0) + 
+              (downRight ? 0.5 : 0);
+            
+            // Edge strength (0-255) based on how many directions are edges
+            edgeMap[idx] = Math.min(255, Math.floor(edgeDirections * 40));
+          }
+        }
+      }
+      
+      // Second pass: create shadow with improved gradient
       for (let y = 0; y < CH; y++) {
         for (let x = 0; x < CW; x++) {
           const idx = y * CW + x;
           const bufferIdx = idx * 4;
           
-          // Only process pixels that are part of the shadow
-          if (thinnerAlpha[idx] > 0) {
+          // Only process pixels that are part of the jewelry
+          if (jewelryAlpha[idx] > 0) {
             shadowBuffer[bufferIdx] = shadowColor.r;
             shadowBuffer[bufferIdx + 1] = shadowColor.g;
             shadowBuffer[bufferIdx + 2] = shadowColor.b;
             
-            // Calculate distance from edge for gradient
-            // (a crude approximation - pixels with no neighbors likely on edge)
-            let edgeDistance = 1.0;
+            // Calculate gradient based on edge proximity and pendant vs chain
+            const edgeStrength = edgeMap[idx] / 255;
+            const pendantFactor = pendantMap[idx] / 255;
             
-            // Check for edge proximity by counting empty neighbors
-            let emptyNeighbors = 0;
-            if (idx - 1 >= 0 && thinnerAlpha[idx - 1] === 0) emptyNeighbors++;
-            if (idx + 1 < thinnerAlpha.length && thinnerAlpha[idx + 1] === 0) emptyNeighbors++;
-            if (idx - CW >= 0 && thinnerAlpha[idx - CW] === 0) emptyNeighbors++;
-            if (idx + CW < thinnerAlpha.length && thinnerAlpha[idx + CW] === 0) emptyNeighbors++;
+            // Pendants get stronger shadows than chains
+            const pendantMultiplier = 0.7 + (pendantFactor * 0.5);
             
-            // More empty neighbors = closer to edge = stronger gradient
-            if (emptyNeighbors > 0) {
-              edgeDistance = 0.3 + (0.7 * (1 - emptyNeighbors / 4));
-            }
+            // Stronger alpha near edges, weaker inside
+            const edgeGradient = 0.4 + (edgeStrength * 0.6);
             
-            // Apply gradient to alpha (higher at edges, lower inside)
-            // Also uses original alpha for proper transparency
+            // Apply gradient with pendant factor enhancement
             const finalAlpha = Math.min(
               settings.maxOpacity * 255,
-              thinnerAlpha[idx] * edgeDistance * settings.alphaMultiplier
+              jewelryAlpha[idx] * edgeGradient * settings.alphaMultiplier * pendantMultiplier
             );
-            shadowBuffer[bufferIdx + 3] = Math.round(finalAlpha); // Ensure integer
+            
+            shadowBuffer[bufferIdx + 3] = Math.round(finalAlpha);
           } else {
             shadowBuffer[bufferIdx + 3] = 0; // Transparent if not part of shadow
           }
         }
       }
       
-      // Padding for shadow with blur
+      // Add padding for shadow with blur
       const paddingForShadow = settings.blurRadius * 2;
       const shadowCanvasWidth = CW + paddingForShadow * 2;
       const shadowCanvasHeight = CH + paddingForShadow * 2;
@@ -1693,8 +1752,8 @@ app.post('/composite-jewelry', async (req, res) => {
         .composite([{
           input: shadowBuffer,
           raw: { width: CW, height: CH, channels: 4 },
-          left: paddingForShadow + offsetX, // Using integer offset
-          top: paddingForShadow + offsetY   // Using integer offset
+          left: paddingForShadow + offsetX,
+          top: paddingForShadow + offsetY
         }])
         .blur(settings.blurRadius)
         .png()
@@ -1712,32 +1771,32 @@ app.post('/composite-jewelry', async (req, res) => {
         .toBuffer();
     };
     
-    // Create three extremely subtle shadow layers
-    // Primary contact shadow - very thin and close
+    // Create three improved shadow layers with better visibility
+    // Primary contact shadow - slightly more pronounced
     const contactShadowSettings = {
       blurRadius: 3,
       offsetX: 0,
-      offsetY: 1,
-      maxOpacity: 0.15,    // Very transparent
-      alphaMultiplier: 0.4 // Reduced strength
+      offsetY: 2,         // Increased from 1 to 2
+      maxOpacity: 0.25,   // Increased from 0.15 to 0.25
+      alphaMultiplier: 0.5 // Increased from 0.4 to 0.5
     };
     
-    // Soft ambient shadow
+    // Soft ambient shadow - slightly enhanced
     const ambientShadowSettings = {
       blurRadius: 8,
       offsetX: 0,
-      offsetY: 0,
-      maxOpacity: 0.08,    // Extremely subtle
-      alphaMultiplier: 0.3
+      offsetY: 1,         // Added slight vertical offset
+      maxOpacity: 0.12,   // Increased from 0.08 to 0.12
+      alphaMultiplier: 0.4 // Increased from 0.3 to 0.4
     };
     
-    // Directional shadow - shows where light comes from
+    // Directional shadow - more noticeable but still natural
     const directionalShadowSettings = {
-      blurRadius: 4,
-      offsetX: 2,        // Changed from 1.5 to 2 (integer)
-      offsetY: 2,        // Integer value
-      maxOpacity: 0.12,
-      alphaMultiplier: 0.35
+      blurRadius: 5,      // Increased blur slightly for softer edge
+      offsetX: 2,
+      offsetY: 3,         // Increased from 2 to 3
+      maxOpacity: 0.18,   // Increased from 0.12 to 0.18
+      alphaMultiplier: 0.45 // Increased from 0.35 to 0.45
     };
     
     // Create all shadow layers
@@ -1747,26 +1806,26 @@ app.post('/composite-jewelry', async (req, res) => {
       createGradientShadow(directionalShadowSettings)
     ]);
     
-    // Final composite with subtle shadows and jewelry
+    // Final composite with improved shadow visibility while keeping it natural
     const finalBuf = await modelSharp
       .composite([
         // Ambient shadow layer
         {
           input: ambientShadow,
-          blend: 'darken',  // More natural for subtle shadows
-          opacity: 0.6
+          blend: 'darken',
+          opacity: 0.7     // Increased from 0.6
         },
         // Contact shadow - where jewelry touches skin
         {
           input: contactShadow,
           blend: 'darken',
-          opacity: 0.7
+          opacity: 0.8     // Increased from 0.7
         },
         // Directional shadow
         {
           input: directionalShadow,
-          blend: 'darken',
-          opacity: 0.65
+          blend: 'darken', 
+          opacity: 0.75    // Increased from 0.65
         },
         // The jewelry on top
         {
@@ -1789,7 +1848,6 @@ app.post('/composite-jewelry', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 
 app.post('/enhance-shadow', async (req, res) => {
