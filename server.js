@@ -12,6 +12,7 @@ const sharp = require('sharp'); // Add sharp for image conversion
 const cors = require('cors'); // Import CORS middleware
 const os = require('os');
 const { mkdirp } = require('mkdirp');
+const cv = require('opencv4nodejs');
 
 
 const app = express();
@@ -109,6 +110,124 @@ const downloadFile = async (url, outputPath, timeout = 30000) => {
         throw error;
     }
 };
+
+
+// New auto endpoint
+app.post('/composite-jewelry-auto', async (req, res) => {
+  try {
+    const { modelUrl, jewelryUrl, maskUrl, xOffset = 5, yOffset = 5 } = req.body;
+    if (!modelUrl || !jewelryUrl || !maskUrl) {
+      return res.status(400).json({ error: 'modelUrl, jewelryUrl & maskUrl required' });
+    }
+
+    // 1) download model, jewelry & mask into your storageDir
+    const modelPath   = path.join(storageDir,  'model.png');
+    const jewelryPath = path.join(storageDir,  'jewelry.png');
+    const maskPath    = path.join(storageDir,  'mask.png');
+    await Promise.all([
+      downloadFile(modelUrl,   modelPath),
+      downloadFile(jewelryUrl, jewelryPath),
+      downloadFile(maskUrl,    maskPath),
+    ]);
+    const [modelBuf, jewelryBuf, maskBuf] = await Promise.all([
+      fs.promises.readFile(modelPath),
+      fs.promises.readFile(jewelryPath),
+      fs.promises.readFile(maskPath),
+    ]);
+
+    // 2) face detect to get face box
+    const imgMat  = cv.imdecode(modelBuf);
+    const grayMat = imgMat.bgrToGray();
+    const faceCascade = new cv.CascadeClassifier(cv.HAAR_FRONTALFACE_ALT2);
+    const faces = faceCascade.detectMultiScale(grayMat).objects;
+    if (!faces.length) throw new Error('No face detected');
+    const face = faces[0];
+
+    // 3) compute jewelry size & placement (60% face width, hang under chin)
+    const targetW = Math.round(face.width * 0.6);
+    const resizedJewelry = await sharp(jewelryBuf)
+      .ensureAlpha()
+      .resize(targetW, null)
+      .png()
+      .toBuffer();
+    const { width: rw, height: rh } = await sharp(resizedJewelry).metadata();
+    const jLeft = face.x + Math.round((face.width - rw) / 2);
+    const jTop  = face.y + face.height - Math.round(rh * 0.1);
+
+    // 4) build jewelry canvas
+    const baseW = imgMat.cols, baseH = imgMat.rows;
+    const jewelryCanvas = await sharp({
+      create: { width: baseW, height: baseH, channels: 4, background: { r:0,g:0,b:0,alpha:0 } }
+    })
+    .composite([{ input: resizedJewelry, left: jLeft, top: jTop }])
+    .png()
+    .toBuffer();
+
+    // 5) build mask RGBA for clipping
+    const { data: mRaw, info } = await sharp(maskBuf)
+      .resize(baseW, baseH)
+      .threshold(128)
+      .toColourspace('b-w')
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const rgbaMask = Buffer.alloc(info.width * info.height * 4);
+    for (let i = 0; i < mRaw.length; i++) {
+      rgbaMask[i*4 + 3] = mRaw[i];
+    }
+
+    // 6) shadow from jewelry alpha
+    const alphaMask = await sharp(jewelryCanvas)
+      .extractChannel('alpha')
+      .png()
+      .toBuffer();
+    const blurred   = await sharp(alphaMask).blur(6).png().toBuffer();
+    // create black rect sized to blurred image
+    const blackRect = await sharp({
+      create: { width: baseW, height: baseH, channels:4, background:{r:0,g:0,b:0,alpha:0.3} }
+    }).png().toBuffer();
+    const shadowLayer = await sharp(blackRect)
+      .composite([{ input: blurred, blend:'dest-in' }])
+      .png()
+      .toBuffer();
+    // offset shadow
+    const shadowCanvas = await sharp({
+      create: { width: baseW, height: baseH, channels:4, background:{r:0,g:0,b:0,alpha:0} }
+    })
+    .composite([{ input: shadowLayer, left: jLeft + xOffset, top: jTop + yOffset }])
+    .png()
+    .toBuffer();
+
+    // 7) clip both shadow & jewelry by mask
+    const clippedShadow  = await sharp(shadowCanvas)
+      .composite([{ input: rgbaMask, raw:{width:info.width,height:info.height,channels:4}, blend:'dest-in' }])
+      .png()
+      .toBuffer();
+    const clippedJewelry = await sharp(jewelryCanvas)
+      .composite([{ input: rgbaMask, raw:{width:info.width,height:info.height,channels:4}, blend:'dest-in' }])
+      .png()
+      .toBuffer();
+
+    // 8) final composite onto model
+    const finalBuf = await sharp(modelBuf)
+      .composite([
+        { input: clippedShadow },
+        { input: clippedJewelry }
+      ])
+      .png()
+      .toBuffer();
+
+    // 9) save & return
+    const filename = `${uuidv4()}.png`;
+    const outPath  = path.join(outputDir, filename);
+    await fs.promises.writeFile(outPath, finalBuf);
+    res.json({ compositeUrl: `${req.protocol}://${req.get('host')}/output/${filename}` });
+  }
+  catch(err) {
+    console.error('composite-jewelry-auto error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 
 // Helper function to retry downloading files if they fail
