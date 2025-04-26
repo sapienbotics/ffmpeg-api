@@ -1491,58 +1491,73 @@ app.post('/api/align-jewelry', async (req, res) => {
 });
 // ────────────────────────────────────────────────────────
 
+
 app.post('/composite-jewelry', async (req, res) => {
   try {
     const { modelUrl, jewelryUrl, maskUrl, x, y, width, height } = req.body;
     if (!modelUrl || !jewelryUrl || !maskUrl) {
       return res.status(400).json({ error: 'modelUrl, jewelryUrl & maskUrl required' });
     }
-
-    // 1) Download model, jewelry & mask
-    const [mRes, jRes, maskRes] = await Promise.all([
+    
+    // 1) Download images
+    const [ m, j, msk ] = await Promise.all([
       axios.get(modelUrl,   { responseType: 'arraybuffer' }),
       axios.get(jewelryUrl, { responseType: 'arraybuffer' }),
       axios.get(maskUrl,    { responseType: 'arraybuffer' }),
     ]);
-    const modelBuf   = Buffer.from(mRes.data);
-    const jewelryBuf = Buffer.from(jRes.data);
-    const maskBuf    = Buffer.from(maskRes.data);
-
-    // 2) Get model canvas size
+    const modelBuf   = Buffer.from(m.data);
+    const jewelryBuf = Buffer.from(j.data);
+    const maskBuf    = Buffer.from(msk.data);
+    
+    // 2) Model metadata
     const modelSharp = sharp(modelBuf);
-    const { width: CW, height: CH } = await modelSharp.metadata();
-
-    // 3) Resize jewelry to the mask width, keep aspect
+    const { width: baseW, height: baseH } = await modelSharp.metadata();
+    
+    // 3) Extract model skin tone for blending
+    const modelStats = await sharp(modelBuf)
+      .extract({ left: Math.max(0, x-20), top: Math.max(0, y-20), 
+                 width: Math.min(40, baseW-(x-20)), height: Math.min(40, baseH-(y-20)) })
+      .stats();
+    const skinTone = {
+      r: Math.round(modelStats.channels[0].mean),
+      g: Math.round(modelStats.channels[1].mean),
+      b: Math.round(modelStats.channels[2].mean)
+    };
+    
+    // 4) Resize jewelry
     const resizedJewelry = await sharp(jewelryBuf)
       .ensureAlpha()
-      .resize(width, null)
+      .resize(width, null, { fit: 'inside' })
       .png()
       .toBuffer();
-    const { width: RW, height: RH } = await sharp(resizedJewelry).metadata();
-
-    // 4) Figure out where to place it
-    const left = Math.round(x + (width - RW) / 2);
-    const top  = Math.round(y + height - RH);
-
-    // 5) Draw jewelry into full-canvas RGBA, then clip by your mask
+    const { width: rw, height: rh } = await sharp(resizedJewelry).metadata();
+    
+    // 5) Compute jewelry position
+    const left = Math.round(x + (width - rw) / 2);
+    const top  = Math.round(y + height - rh);
+    
+    // 6) Place jewelry on transparent canvas
     const jewelryCanvas = await sharp({
-        create: { width: CW, height: CH, channels: 4,
+        create: { width: baseW, height: baseH, channels: 4,
                   background: { r:0, g:0, b:0, alpha:0 } }
       })
       .composite([{ input: resizedJewelry, left, top }])
       .png()
       .toBuffer();
-
+    
+    // 7) Build RGBA mask
     const { data: maskRaw, info } = await sharp(maskBuf)
-      .resize(CW, CH)
+      .resize(baseW, baseH)
       .threshold(128)
       .toColourspace('b-w')
       .raw()
       .toBuffer({ resolveWithObject: true });
-
     const rgbaMask = Buffer.alloc(info.width * info.height * 4);
-    for (let i = 0; i < maskRaw.length; i++) rgbaMask[i*4 + 3] = maskRaw[i];
-
+    for (let i = 0; i < maskRaw.length; i++) {
+      rgbaMask[i*4 + 3] = maskRaw[i];
+    }
+    
+    // 8) Clip jewelry to mask
     const clippedJewelry = await sharp(jewelryCanvas)
       .composite([{
         input: rgbaMask,
@@ -1551,141 +1566,174 @@ app.post('/composite-jewelry', async (req, res) => {
       }])
       .png()
       .toBuffer();
-
-    // ─── NATURAL SHADOW IMPLEMENTATION ────────────────────────────────────────────
-    // Extract a sample skin tone from the model to make the shadow blend naturally
-    // We'll sample from an area likely to be neck/chest skin
-    const skinSampleSize = 10; // Sample a small area
-    const skinSampleX = Math.round(CW/2); // Center horizontally
-    const skinSampleY = Math.round(top + RH * 0.75); // Below the necklace
     
-    // Extract skin tone sample
-    const skinToneBuf = await sharp(modelBuf)
-      .extract({ 
-        left: Math.max(0, skinSampleX - skinSampleSize/2), 
-        top: Math.max(0, skinSampleY - skinSampleSize/2),
-        width: skinSampleSize, 
-        height: skinSampleSize 
-      })
-      .stats()
-      .then(stats => {
-        // Use the mean color as our skin tone
-        return {
-          r: Math.round(stats.channels[0].mean),
-          g: Math.round(stats.channels[1].mean),
-          b: Math.round(stats.channels[2].mean)
-        };
-      });
-
-    // Shadow parameters - adjusted for realism
-    const primaryShadowParams = {
-      blurRadius: 4,       // Sharper shadow for direct contact parts
-      offsetX: 2,          // Small offset for natural light direction
-      offsetY: 3,          // Slightly more vertical offset (light from above)
-      opacity: 0.25,       // Subtle shadow
-      intensity: 1.0       // Base intensity
-    };
+    // 9) Extract model lighting information
+    const modelLuma = await sharp(modelBuf)
+      .resize({ width: baseW, height: baseH })
+      .greyscale()
+      .raw()
+      .toBuffer();
     
-    const secondaryShadowParams = {
-      blurRadius: 10,      // Much softer shadow for diffuse/ambient effect
-      offsetX: 3,          // Slightly wider spread
-      offsetY: 6,          // More vertical drop for secondary shadow
-      opacity: 0.15,       // Very subtle secondary shadow
-      intensity: 0.7       // Lower intensity for soft shadow
-    };
-    
-    // Extract jewelry alpha 
-    const { data: jewelryAlpha } = await sharp(clippedJewelry)
-      .extractChannel(3)  // Alpha channel
+    // 10) Apply lighting and skin reflections to jewelry
+    const { data: jewelryRaw, info: jewelryInfo } = await sharp(clippedJewelry)
       .raw()
       .toBuffer({ resolveWithObject: true });
+    
+    // Modify jewelry pixels to match model lighting
+    const modifiedJewelryRaw = Buffer.from(jewelryRaw);
+    for (let i = 0; i < jewelryRaw.length; i += 4) {
+      const pixelIndex = Math.floor(i / 4);
+      const x = pixelIndex % baseW;
+      const y = Math.floor(pixelIndex / baseW);
       
-    // Create the shadow color by darkening the skin tone
-    const shadowColor = {
-      r: Math.max(0, Math.round(skinToneBuf.r * 0.3)),
-      g: Math.max(0, Math.round(skinToneBuf.g * 0.3)),
-      b: Math.max(0, Math.round(skinToneBuf.b * 0.3))
-    };
-    
-    // Create primary (sharp) shadow
-    const primaryShadowBuf = Buffer.alloc(CW * CH * 4);
-    for (let i = 0; i < jewelryAlpha.length; i++) {
-      const offset = i * 4;
-      primaryShadowBuf[offset] = shadowColor.r;
-      primaryShadowBuf[offset + 1] = shadowColor.g;
-      primaryShadowBuf[offset + 2] = shadowColor.b;
-      primaryShadowBuf[offset + 3] = Math.min(255, jewelryAlpha[i] * primaryShadowParams.intensity);
+      // Skip fully transparent pixels
+      if (jewelryRaw[i + 3] === 0) continue;
+      
+      // Apply light reflections - make jewelry respond to model lighting
+      const lumaIndex = y * baseW + x;
+      const modelBrightness = modelLuma[lumaIndex] / 255;
+      
+      // Apply skin reflection for gold/metal parts (subtle effect)
+      // This simulates the skin reflecting on the metallic surface
+      const skinReflection = 0.15; // Adjust strength of skin reflection
+      
+      // Adjust jewelry color based on model lighting and skin reflection
+      modifiedJewelryRaw[i] = Math.min(255, Math.max(0, 
+        jewelryRaw[i] * (0.7 + 0.6 * modelBrightness) + skinTone.r * skinReflection));
+      modifiedJewelryRaw[i+1] = Math.min(255, Math.max(0, 
+        jewelryRaw[i+1] * (0.7 + 0.6 * modelBrightness) + skinTone.g * skinReflection));
+      modifiedJewelryRaw[i+2] = Math.min(255, Math.max(0, 
+        jewelryRaw[i+2] * (0.7 + 0.6 * modelBrightness) + skinTone.b * skinReflection));
     }
     
-    // Create secondary (soft) shadow - using same alpha but will be more blurred
-    const secondaryShadowBuf = Buffer.alloc(CW * CH * 4);
-    for (let i = 0; i < jewelryAlpha.length; i++) {
-      const offset = i * 4;
-      secondaryShadowBuf[offset] = shadowColor.r;
-      secondaryShadowBuf[offset + 1] = shadowColor.g;
-      secondaryShadowBuf[offset + 2] = shadowColor.b;
-      secondaryShadowBuf[offset + 3] = Math.min(255, jewelryAlpha[i] * secondaryShadowParams.intensity);
+    // Create new image from modified jewelry raw data
+    const enhancedJewelry = await sharp(modifiedJewelryRaw, {
+      raw: {
+        width: baseW,
+        height: baseH,
+        channels: 4
+      }
+    }).png().toBuffer();
+    
+    // 11) Create improved shadow effect
+    // a) extract & blur alpha as *raw* with more natural falloff
+    const blurredAlpha = await sharp(enhancedJewelry)
+      .extractChannel('alpha')
+      .blur(8)
+      .raw()
+      .toBuffer();
+    
+    // b) make a black RGB layer, then join blurredAlpha as its alpha
+    const shadowLayer = await sharp({
+        create: {
+          width: baseW,
+          height: baseH,
+          channels: 3,
+          background: { r:0, g:0, b:0 }
+        }
+      })
+      .joinChannel(blurredAlpha, {
+        raw: { width: baseW, height: baseH, channels: 1 }
+      })
+      .png()
+      .toBuffer();
+    
+    // c) create a contact shadow (tighter to the jewelry)
+    const contactShadow = await sharp(enhancedJewelry)
+      .extractChannel('alpha')
+      .blur(2)
+      .raw()
+      .toBuffer();
+    
+    const contactShadowLayer = await sharp({
+        create: {
+          width: baseW,
+          height: baseH,
+          channels: 3,
+          background: { r:0, g:0, b:0 }
+        }
+      })
+      .joinChannel(contactShadow, {
+        raw: { width: baseW, height: baseH, channels: 1 }
+      })
+      .png()
+      .toBuffer();
+    
+    // 12) Add subtle skin shine where jewelry touches skin
+    const { data: alphaChannel } = await sharp(enhancedJewelry)
+      .extractChannel('alpha')
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    
+    const shineBuf = Buffer.alloc(baseW * baseH * 4);
+    for (let i = 0; i < alphaChannel.length; i++) {
+      const pixelIndex = i * 4;
+      // Create a shine only around the edges
+      if (alphaChannel[i] > 20 && alphaChannel[i] < 200) {
+        shineBuf[pixelIndex] = 255;
+        shineBuf[pixelIndex + 1] = 255;
+        shineBuf[pixelIndex + 2] = 255;
+        shineBuf[pixelIndex + 3] = Math.min(alphaChannel[i], 60); // Subtle shine
+      }
     }
     
-    // Process primary shadow
-    const primaryShadow = await sharp(primaryShadowBuf, {
-      raw: { width: CW, height: CH, channels: 4 }
-    })
-    .blur(primaryShadowParams.blurRadius)
-    .png()
-    .toBuffer();
+    const shineLayer = await sharp(shineBuf, {
+      raw: {
+        width: baseW,
+        height: baseH,
+        channels: 4
+      }
+    }).blur(3).png().toBuffer();
     
-    // Process secondary shadow (soft ambient shadow)
-    const secondaryShadow = await sharp(secondaryShadowBuf, {
-      raw: { width: CW, height: CH, channels: 4 }
-    })
-    .blur(secondaryShadowParams.blurRadius)
-    .png()
-    .toBuffer();
-    
-    // Final composite - layer both shadows and then the jewelry
+    // 13) Composite everything onto the model
     const finalBuf = await modelSharp
       .composite([
+        // Distant shadow (softer, more spread)
         {
-          // Secondary shadow (soft, wider spread)
-          input: secondaryShadow,
-          left: secondaryShadowParams.offsetX,
-          top: secondaryShadowParams.offsetY,
+          input: shadowLayer,
+          left: left + 4,
+          top: top + 5,
           blend: 'over',
-          opacity: secondaryShadowParams.opacity
+          opacity: 0.25
         },
+        // Contact shadow (tighter to the jewelry)
         {
-          // Primary shadow (sharper)
-          input: primaryShadow,
-          left: primaryShadowParams.offsetX,
-          top: primaryShadowParams.offsetY,
+          input: contactShadowLayer,
+          left: left + 1,
+          top: top + 1,
           blend: 'over',
-          opacity: primaryShadowParams.opacity
+          opacity: 0.35
         },
+        // Jewelry with lighting applied
+        { 
+          input: enhancedJewelry, 
+          left: 0, 
+          top: 0 
+        },
+        // Subtle skin shine effect where jewelry touches skin
         {
-          // Jewelry on top
-          input: clippedJewelry,
+          input: shineLayer,
           left: 0,
-          top: 0
+          top: 0,
+          blend: 'screen',
+          opacity: 0.3
         }
       ])
       .png()
       .toBuffer();
-    // ────────────────────────────────────────────────────────────────────────────
-
-    // 6) Save & return
+    
+    // 14) Save & respond
     const filename = `${uuidv4()}.png`;
-    const outPath  = path.join(outputDir, filename);
+    const outPath = path.join(outputDir, filename);
     await fs.promises.writeFile(outPath, finalBuf);
-
     res.json({ compositeUrl: `${req.protocol}://${req.get('host')}/output/${filename}` });
-  }
-  catch (err) {
+  } catch (err) {
     console.error('composite-jewelry error:', err);
     res.status(500).json({ error: err.message });
   }
 });
-
+// don't forget:
+app.use('/output', express.static(outputDir));
 
 
 app.post('/enhance-shadow', async (req, res) => {
