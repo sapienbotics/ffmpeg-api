@@ -1563,10 +1563,10 @@ app.post('/composite-jewelry', async (req, res) => {
     // Sample skin area near and below the necklace to get accurate color
     // More sample points for better averaging
     const samplePoints = [
-      { x: left + RW/2, y: top + RH + 5 },      // Center below
-      { x: left + RW/4, y: top + RH + 3 },      // Left below
-      { x: left + 3*RW/4, y: top + RH + 3 },    // Right below
-      { x: left + RW/2, y: top + RH/2 + 5 }     // Middle of necklace area
+      { x: left + Math.round(RW/2), y: top + RH + 5 },      // Center below
+      { x: left + Math.round(RW/4), y: top + RH + 3 },      // Left below
+      { x: left + Math.round(3*RW/4), y: top + RH + 3 },    // Right below
+      { x: left + Math.round(RW/2), y: top + Math.round(RH/2) + 5 }     // Middle of necklace area
     ];
     
     // Calculate average skin tone from sample points
@@ -1586,9 +1586,9 @@ app.post('/composite-jewelry', async (req, res) => {
     });
     
     // Use skin color for shadow base with very subtle darkening
-    const skinColorR = Math.floor(avgR / validSamples);
-    const skinColorG = Math.floor(avgG / validSamples);
-    const skinColorB = Math.floor(avgB / validSamples);
+    const skinColorR = Math.floor(avgR / validSamples) || 0;  // Fallback to 0 if NaN
+    const skinColorG = Math.floor(avgG / validSamples) || 0;
+    const skinColorB = Math.floor(avgB / validSamples) || 0;
     
     // Much more subtle shadow color - barely darker than skin
     const shadowDarkness = 0.92; // Very subtle (92% of original skin brightness)
@@ -1628,6 +1628,10 @@ app.post('/composite-jewelry', async (req, res) => {
     
     // Create a gradient for the shadow that fades with distance
     const createGradientShadow = async (settings) => {
+      // Ensure integer offsets
+      const offsetX = Math.round(settings.offsetX);
+      const offsetY = Math.round(settings.offsetY);
+      
       // Create shadow buffer with gradient
       const shadowBuffer = Buffer.alloc(CW * CH * 4);
       
@@ -1665,7 +1669,7 @@ app.post('/composite-jewelry', async (req, res) => {
               settings.maxOpacity * 255,
               thinnerAlpha[idx] * edgeDistance * settings.alphaMultiplier
             );
-            shadowBuffer[bufferIdx + 3] = finalAlpha;
+            shadowBuffer[bufferIdx + 3] = Math.round(finalAlpha); // Ensure integer
           } else {
             shadowBuffer[bufferIdx + 3] = 0; // Transparent if not part of shadow
           }
@@ -1689,8 +1693,8 @@ app.post('/composite-jewelry', async (req, res) => {
         .composite([{
           input: shadowBuffer,
           raw: { width: CW, height: CH, channels: 4 },
-          left: paddingForShadow + settings.offsetX,
-          top: paddingForShadow + settings.offsetY
+          left: paddingForShadow + offsetX, // Using integer offset
+          top: paddingForShadow + offsetY   // Using integer offset
         }])
         .blur(settings.blurRadius)
         .png()
@@ -1730,8 +1734,8 @@ app.post('/composite-jewelry', async (req, res) => {
     // Directional shadow - shows where light comes from
     const directionalShadowSettings = {
       blurRadius: 4,
-      offsetX: 1.5,        // Very small offset
-      offsetY: 2,          // Very small offset
+      offsetX: 2,        // Changed from 1.5 to 2 (integer)
+      offsetY: 2,        // Integer value
       maxOpacity: 0.12,
       alphaMultiplier: 0.35
     };
