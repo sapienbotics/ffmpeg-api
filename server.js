@@ -1553,100 +1553,43 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
 
-    // ─── ENHANCED MULTI-LAYERED SHADOW IMPLEMENTATION ───────────────────────────
-    
-    // Extract model skin tone for shadow color adaptation
-    const skinSampleArea = { 
-      left: Math.max(0, left), 
-      top: Math.max(0, top + RH), 
-      width: Math.min(RW, CW - left), 
-      height: Math.min(30, CH - (top + RH)) 
-    };
-    
-    const skinToneData = await sharp(modelBuf)
-      .extract(skinSampleArea)
-      .stats();
-      
-    // Calculate a shadow color based on skin tone (darker than skin)
-    const shadowBaseColor = {
-      r: Math.max(0, Math.floor(skinToneData.channels[0].mean * 0.3)),
-      g: Math.max(0, Math.floor(skinToneData.channels[1].mean * 0.3)),
-      b: Math.max(0, Math.floor(skinToneData.channels[2].mean * 0.3))
-    };
-    
-    // Extract the alpha channel from clipped jewelry
-    const { data: jewelryAlpha } = await sharp(clippedJewelry)
-      .extractChannel(3)  // Alpha channel
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-      
-    // Padding for shadow effects
-    const paddingForShadow = 20; // Larger padding for multi-layered shadows
-    const shadowCanvasWidth = CW + paddingForShadow * 2;
-    const shadowCanvasHeight = CH + paddingForShadow * 2;
-    
-    // ───── LAYER 1: AMBIENT OCCLUSION SHADOW (CONTACT SHADOW) ─────
-    // This is a very tight shadow right at the jewelry edges
-    const contactShadowBuffer = Buffer.alloc(CW * CH * 4);
-    for (let i = 0; i < jewelryAlpha.length; i++) {
-      const offset = i * 4;
-      contactShadowBuffer[offset] = shadowBaseColor.r;
-      contactShadowBuffer[offset + 1] = shadowBaseColor.g;
-      contactShadowBuffer[offset + 2] = shadowBaseColor.b;
-      contactShadowBuffer[offset + 3] = jewelryAlpha[i] > 0 ? 255 : 0; // Binary alpha for sharp edges
-    }
-    
-    // Create contact shadow (minimal blur, minimal offset)
-    const contactShadowImg = await sharp({
-        create: {
-          width: shadowCanvasWidth,
-          height: shadowCanvasHeight,
-          channels: 4,
-          background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-      })
-      .composite([{
-        input: contactShadowBuffer,
-        raw: { width: CW, height: CH, channels: 4 },
-        left: paddingForShadow + 1, // Minimal offset
-        top: paddingForShadow + 2
-      }])
-      .blur(2) // Very slight blur for contact shadow
-      .png()
-      .toBuffer();
-      
-    const croppedContactShadow = await sharp(contactShadowImg)
-      .extract({
-        left: paddingForShadow,
-        top: paddingForShadow,
-        width: CW,
-        height: CH
-      })
-      .png()
-      .toBuffer();
-    
-    // ───── LAYER 2: PRIMARY DIRECTIONAL SHADOW ─────
-    // Main shadow with directional light consideration
-    const lightAngle = 45; // Light from top-left (degrees)
-    const shadowDistance = 6; // Medium distance
+    // ─── DIRECTIONAL SHADOW IMPLEMENTATION ────────────────────────────────────────
+    // Light direction parameters
+    const lightAngle = 45;  // Light coming from top-left (in degrees)
+    const shadowDistance = 5; // How far the shadow extends
     
     // Calculate shadow offset based on light angle
     const shadowOffsetX = Math.round(Math.cos(lightAngle * Math.PI / 180) * shadowDistance);
     const shadowOffsetY = Math.round(Math.sin(lightAngle * Math.PI / 180) * shadowDistance);
     
-    // Create primary shadow buffer with varying alpha
-    const primaryShadowBuffer = Buffer.alloc(CW * CH * 4);
+    // Shadow appearance parameters
+    const blurRadius = 8;        // Soft edge blur 
+    const shadowOpacity = 0.3;   // Lower opacity for subtlety
+    const shadowColor = { r: 10, g: 10, b: 10 }; // Very dark shadow color
+    
+    // Create a new canvas slightly larger to accommodate the shadow offset and blur
+    const paddingForShadow = blurRadius * 2;
+    const shadowCanvasWidth = CW + paddingForShadow * 2;
+    const shadowCanvasHeight = CH + paddingForShadow * 2;
+    
+    // 1. Extract the alpha channel from clipped jewelry
+    const { data: jewelryAlpha } = await sharp(clippedJewelry)
+      .extractChannel(3)  // Alpha channel
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+      
+    // 2. Create a new RGBA buffer for the shadow
+    const shadowBuffer = Buffer.alloc(CW * CH * 4);
     for (let i = 0; i < jewelryAlpha.length; i++) {
       const offset = i * 4;
-      primaryShadowBuffer[offset] = shadowBaseColor.r;
-      primaryShadowBuffer[offset + 1] = shadowBaseColor.g;
-      primaryShadowBuffer[offset + 2] = shadowBaseColor.b;
-      // Attenuate alpha for more natural shadow falloff
-      primaryShadowBuffer[offset + 3] = Math.min(255, Math.floor(jewelryAlpha[i] * 0.9));
+      shadowBuffer[offset] = shadowColor.r;
+      shadowBuffer[offset + 1] = shadowColor.g;
+      shadowBuffer[offset + 2] = shadowColor.b;
+      shadowBuffer[offset + 3] = jewelryAlpha[i]; // Use jewelry alpha directly
     }
     
-    // Create primary shadow image
-    const primaryShadowImg = await sharp({
+    // 3. Create the shadow image, offset it and blur it
+    const shadowImg = await sharp({
         create: {
           width: shadowCanvasWidth,
           height: shadowCanvasHeight,
@@ -1655,16 +1598,17 @@ app.post('/composite-jewelry', async (req, res) => {
         }
       })
       .composite([{
-        input: primaryShadowBuffer,
+        input: shadowBuffer,
         raw: { width: CW, height: CH, channels: 4 },
         left: paddingForShadow + shadowOffsetX,
         top: paddingForShadow + shadowOffsetY
       }])
-      .blur(7) // Medium blur
+      .blur(blurRadius)
       .png()
       .toBuffer();
-      
-    const croppedPrimaryShadow = await sharp(primaryShadowImg)
+    
+    // 4. Extract the shadow area that overlaps with the original canvas
+    const croppedShadow = await sharp(shadowImg)
       .extract({
         left: paddingForShadow,
         top: paddingForShadow,
@@ -1674,122 +1618,23 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
     
-    // ───── LAYER 3: DISTANT SOFT SHADOW ─────
-    // This adds depth perception with a larger offset and more blur
-    const distantShadowDistance = shadowDistance * 2;
-    const distantOffsetX = Math.round(Math.cos(lightAngle * Math.PI / 180) * distantShadowDistance);
-    const distantOffsetY = Math.round(Math.sin(lightAngle * Math.PI / 180) * distantShadowDistance);
-    
-    // Create soft shadow buffer with reduced alpha
-    const distantShadowBuffer = Buffer.alloc(CW * CH * 4);
-    for (let i = 0; i < jewelryAlpha.length; i++) {
-      const offset = i * 4;
-      distantShadowBuffer[offset] = shadowBaseColor.r;
-      distantShadowBuffer[offset + 1] = shadowBaseColor.g;
-      distantShadowBuffer[offset + 2] = shadowBaseColor.b;
-      // Much lower alpha for distant shadow
-      distantShadowBuffer[offset + 3] = Math.min(255, Math.floor(jewelryAlpha[i] * 0.5));
-    }
-    
-    // Create distant shadow image
-    const distantShadowImg = await sharp({
-        create: {
-          width: shadowCanvasWidth,
-          height: shadowCanvasHeight,
-          channels: 4,
-          background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-      })
-      .composite([{
-        input: distantShadowBuffer,
-        raw: { width: CW, height: CH, channels: 4 },
-        left: paddingForShadow + distantOffsetX,
-        top: paddingForShadow + distantOffsetY
-      }])
-      .blur(12) // Significant blur for soft shadow
-      .png()
-      .toBuffer();
-      
-    const croppedDistantShadow = await sharp(distantShadowImg)
-      .extract({
-        left: paddingForShadow,
-        top: paddingForShadow,
-        width: CW,
-        height: CH
-      })
-      .png()
-      .toBuffer();
-    
-    // ───── LAYER 4: SUBTLE LIGHT INTERACTION HIGHLIGHTS ─────
-    // For diamond/crystal jewelry, add subtle highlights where light hits
-    const { data: jewelryData, info: jewelryInfo } = await sharp(clippedJewelry)
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-      
-    // Create highlight buffer for subtle light reflections
-    const highlightBuffer = Buffer.alloc(CW * CH * 4);
-    for (let i = 0; i < jewelryAlpha.length; i++) {
-      const pixelIndex = i * 4;
-      // Only create highlights on partially transparent edges (like gemstones)
-      if (jewelryAlpha[i] > 30 && jewelryAlpha[i] < 200) {
-        // White highlight
-        highlightBuffer[pixelIndex] = 255;
-        highlightBuffer[pixelIndex + 1] = 255;
-        highlightBuffer[pixelIndex + 2] = 255;
-        // Very subtle alpha
-        highlightBuffer[pixelIndex + 3] = Math.min(jewelryAlpha[i] * 0.2, 30);
-      }
-    }
-    
-    // Create highlight layer
-    const highlightLayer = await sharp(highlightBuffer, {
-      raw: {
-        width: CW,
-        height: CH,
-        channels: 4
-      }
-    })
-    .blur(3) // Soft blur for glow effect
-    .png()
-    .toBuffer();
-    
-    // Final composite with all shadow layers and the jewelry
+    // 5. Final composite - first the shadow, then the jewelry
     const finalBuf = await modelSharp
       .composite([
-        // Layer 1: Distant soft shadow (furthest from object)
         {
-          input: croppedDistantShadow,
+          input: croppedShadow,
           blend: 'over',
-          opacity: 0.35
+          opacity: shadowOpacity
         },
-        // Layer 2: Primary shadow (medium distance)
-        {
-          input: croppedPrimaryShadow,
-          blend: 'over',
-          opacity: 0.5
-        },
-        // Layer 3: Contact shadow (right at edges)
-        {
-          input: croppedContactShadow,
-          blend: 'multiply',
-          opacity: 0.6
-        },
-        // Layer 4: The jewelry itself
         {
           input: clippedJewelry
-        },
-        // Layer 5: Subtle light interactions/highlights
-        {
-          input: highlightLayer,
-          blend: 'screen',
-          opacity: 0.5
         }
       ])
       .png()
       .toBuffer();
     // ────────────────────────────────────────────────────────────────────────────
 
-    // Save & return
+    // 6) Save & return
     const filename = `${uuidv4()}.png`;
     const outPath  = path.join(outputDir, filename);
     await fs.promises.writeFile(outPath, finalBuf);
