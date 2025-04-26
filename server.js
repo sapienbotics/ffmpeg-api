@@ -12,7 +12,7 @@ const sharp = require('sharp'); // Add sharp for image conversion
 const cors = require('cors'); // Import CORS middleware
 const os = require('os');
 const { mkdirp } = require('mkdirp');
-const cv = require('opencv4nodejs');
+const cv = require('opencv4nodejs-prebuilt-install');
 
 
 const app = express();
