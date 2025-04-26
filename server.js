@@ -1555,102 +1555,33 @@ app.post('/composite-jewelry', async (req, res) => {
       }])
       .png()
       .toBuffer();
+      
+    // ─── VERY SIMPLE, VERY VISIBLE SHADOW ───────────────────────────────────────
     
-    // ─── ENHANCED SHADOW SYSTEM ───────────────────────────────────────────────
-    
-    // 1) Create a stronger drop shadow with bigger offset
-    const dropShadowAlpha = await sharp(clippedJewelry)
-      .extractChannel('alpha')
-      .blur(5)  // More defined shadow
-      .raw()
-      .toBuffer();
-    
-    const dropShadowLayer = await sharp({
-        create: {
-          width: baseW,
-          height: baseH,
-          channels: 3,
-          background: { r:0, g:0, b:0 }
-        }
-      })
-      .joinChannel(dropShadowAlpha, {
-        raw: { width: baseW, height: baseH, channels: 1 }
-      })
+    // Create a solid black shadow from the jewelry alpha
+    const shadowBuf = await sharp(clippedJewelry)
+      .removeAlpha()                // Remove alpha channel temporarily
+      .threshold(1)                 // Convert to pure black and white
+      .toColourspace('b-w')         // Make it grayscale (actually black)
+      .blur(7)                      // Spread the shadow
+      .linear(-0.2, 100)            // Increase contrast for more visibility
+      .ensureAlpha(0.7)             // Add back alpha at 70% opacity
       .png()
       .toBuffer();
-    
-    // 2) Create a second contact shadow that's more pronounced at the edges
-    const contactShadowAlpha = await sharp(clippedJewelry)
-      .extractChannel('alpha')
-      .blur(2)  // Sharper, more defined edges
-      .raw()
-      .toBuffer();
-    
-    const contactShadowLayer = await sharp({
-        create: {
-          width: baseW,
-          height: baseH,
-          channels: 3,
-          background: { r:0, g:0, b:0 }
-        }
-      })
-      .joinChannel(contactShadowAlpha, {
-        raw: { width: baseW, height: baseH, channels: 1 }
-      })
-      .png()
-      .toBuffer();
-    
-    // 3) Create a stronger depth shadow with larger offset
-    const depthShadowAlpha = await sharp(clippedJewelry)
-      .extractChannel('alpha')
-      .blur(10)  // More spread, bigger distance shadow
-      .raw()
-      .toBuffer();
-    
-    const depthShadowLayer = await sharp({
-        create: {
-          width: baseW,
-          height: baseH,
-          channels: 3,
-          background: { r:0, g:0, b:0 }
-        }
-      })
-      .joinChannel(depthShadowAlpha, {
-        raw: { width: baseW, height: baseH, channels: 1 }
-      })
-      .png()
-      .toBuffer();
-    
+      
     // ───────────────────────────────────────────────────────────────────────────
     
-    // Composite everything onto the model with VERY VISIBLE shadows
+    // 8) Composite jewelry with visible shadow
     const finalBuf = await modelSharp
       .composite([
-        // Depth shadow (bigger offset, slight left offset for directional light)
+        // Apply the shadow first (with offset)
         {
-          input: depthShadowLayer,
-          left: left + 7,  // More offset for more depth
-          top: top + 8,
-          blend: 'over',
-          opacity: 0.4     // Stronger shadow
+          input: shadowBuf,
+          left: 0, 
+          top: 8,    // Move shadow down 8 pixels for depth
+          blend: 'over'
         },
-        // Main drop shadow (standard offset)
-        {
-          input: dropShadowLayer,
-          left: left + 4,  // Standard drop shadow offset
-          top: top + 5,
-          blend: 'multiply', // Multiply blend mode for stronger shadow
-          opacity: 0.55      // More visible shadow
-        },
-        // Contact shadow (minimal offset for direct contact)
-        {
-          input: contactShadowLayer,
-          left: left + 1,  // Minimal offset for contact shadow
-          top: top + 2,
-          blend: 'darken', // Darken blend mode to enhance shadow
-          opacity: 0.6     // Very visible contact shadow
-        },
-        // The jewelry itself
+        // Then the jewelry on top
         { 
           input: clippedJewelry, 
           left: 0, 
@@ -1660,7 +1591,7 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
     
-    // Save & respond
+    // 9) Save & respond
     const filename = `${uuidv4()}.png`;
     const outPath  = path.join(outputDir, filename);
     await fs.promises.writeFile(outPath, finalBuf);
