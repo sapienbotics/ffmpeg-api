@@ -1554,8 +1554,6 @@ app.post('/composite-jewelry', async (req, res) => {
       .png()
       .toBuffer();
 
-    // **Enhanced Shadow and Shine Section**
-
     // Get raw data for analysis
     const { data: modelRawData, info: modelInfo } = await modelSharp
       .raw()
@@ -1564,7 +1562,7 @@ app.post('/composite-jewelry', async (req, res) => {
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    // **Improved Light Direction Detection**
+    // Improved Light Direction Detection
     const detectLightDirection = () => {
       const highlightThreshold = 190;
       let highlightPointsX = [], highlightPointsY = [];
@@ -1603,7 +1601,7 @@ app.post('/composite-jewelry', async (req, res) => {
     };
     const lightDirection = detectLightDirection();
 
-    // **Enhanced Skin Tone and Contour Extraction**
+    // Enhanced Skin Tone and Contour Extraction
     const extractSkinToneWithContours = () => {
       const neckYStart = top + RH + 2;
       const neckYEnd = Math.min(top + RH + 35, CH - 1);
@@ -1678,7 +1676,7 @@ app.post('/composite-jewelry', async (req, res) => {
     }
     const skinInfo = extractSkinToneWithContours();
 
-    // **Improved Shadow Color Creation**
+    // Improved Shadow Color Creation
     const createShadowColor = () => {
       const { r, g, b } = skinInfo.skinTone;
       let warmthScore = 0;
@@ -1706,7 +1704,7 @@ app.post('/composite-jewelry', async (req, res) => {
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    // **Advanced Jewelry Structure Analysis**
+    // Advanced Jewelry Structure Analysis
     const analyzeJewelryStructure = () => {
       const pendantMap = Buffer.alloc(jewelryAlpha.length);
       const chainMap = Buffer.alloc(jewelryAlpha.length);
@@ -1776,7 +1774,7 @@ app.post('/composite-jewelry', async (req, res) => {
     };
     const jewelryStructure = analyzeJewelryStructure();
 
-    // **Enhanced Shadow Generation**
+    // Enhanced Shadow Generation
     const createRealisticShadow = async (settings) => {
       const offsetX = Math.round(settings.offsetX);
       const offsetY = Math.round(settings.offsetY);
@@ -1859,7 +1857,7 @@ app.post('/composite-jewelry', async (req, res) => {
       return dirFactor;
     }
 
-    // **Enhanced Highlights**
+    // Enhanced Highlights
     const createSubtleHighlights = async () => {
       const highlightMask = Buffer.alloc(jewelryAlpha.length * 4);
       for (let y = 1; y < CH - 1; y++) {
@@ -1878,7 +1876,7 @@ app.post('/composite-jewelry', async (req, res) => {
               highlightMask[bufferIdx + 1] = 255;
               highlightMask[bufferIdx + 2] = 255;
               let strength = 0;
-              if (isTopEdge) strength += 70; // Increased for more shine
+              if (isTopEdge) strength += 70;
               if (isPendant) strength += 50;
               if ((x > CW / 2 && lightDirection.horizontalBias > 0) || (x < CW / 2 && lightDirection.horizontalBias < 0)) strength += 30;
               highlightMask[bufferIdx + 3] = Math.min(255, strength);
@@ -1901,16 +1899,16 @@ app.post('/composite-jewelry', async (req, res) => {
       blurRadius: 2,
       offsetX: Math.round(lightDirection.horizontalBias * 1),
       offsetY: 2,
-      maxOpacity: 0.35, // Increased
+      maxOpacity: 0.35,
       alphaMultiplier: 0.5,
-      strengthMultiplier: 1.2, // Added for strength
+      strengthMultiplier: 1.2,
       directional: false
     };
     const ambientShadowSettings = {
       blurRadius: 8,
       offsetX: 0,
       offsetY: 1,
-      maxOpacity: 0.2, // Increased
+      maxOpacity: 0.2,
       alphaMultiplier: 0.4,
       strengthMultiplier: 1.0,
       directional: false
@@ -1919,7 +1917,7 @@ app.post('/composite-jewelry', async (req, res) => {
       blurRadius: 4,
       offsetX: Math.round(lightDirection.horizontalBias * 2),
       offsetY: 3,
-      maxOpacity: 0.25, // Increased
+      maxOpacity: 0.25,
       alphaMultiplier: 0.45,
       strengthMultiplier: 1.1,
       directional: true
@@ -1928,7 +1926,7 @@ app.post('/composite-jewelry', async (req, res) => {
       blurRadius: 1,
       offsetX: Math.round(lightDirection.horizontalBias * 1),
       offsetY: 1,
-      maxOpacity: 0.4, // Increased
+      maxOpacity: 0.4,
       alphaMultiplier: 0.4,
       strengthMultiplier: 1.3,
       directional: true
@@ -1943,15 +1941,15 @@ app.post('/composite-jewelry', async (req, res) => {
       createSubtleHighlights()
     ]);
 
-    // Final composite
+    // Final composite with adjusted opacities
     const finalBuf = await modelSharp
       .composite([
-        { input: ambientShadow, blend: 'darken', opacity: 0.8 }, // Increased
-        { input: contactShadow, blend: 'darken', opacity: 0.9 }, // Increased
-        { input: directionalShadow, blend: 'darken', opacity: 0.85 }, // Increased
-        { input: microShadow, blend: 'darken', opacity: 0.7 }, // Increased
+        { input: ambientShadow, blend: 'darken', opacity: 0.8 },
+        { input: contactShadow, blend: 'darken', opacity: 0.9 },
+        { input: directionalShadow, blend: 'darken', opacity: 0.85 },
+        { input: microShadow, blend: 'darken', opacity: 0.7 },
         { input: clippedJewelry },
-        { input: highlights, blend: 'screen', opacity: 0.6 } // Increased for shine
+        { input: highlights, blend: 'screen', opacity: 0.6 }
       ])
       .png()
       .toBuffer();
