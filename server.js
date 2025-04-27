@@ -13,6 +13,7 @@ const cors = require('cors'); // Import CORS middleware
 const os = require('os');
 const { mkdirp } = require('mkdirp');
 const cv = require('opencv4nodejs-prebuilt-install');
+const Jimp = require('jimp');
 
 
 const app = express();
