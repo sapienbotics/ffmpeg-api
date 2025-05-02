@@ -1405,6 +1405,44 @@ app.post('/apply-custom-watermark', async (req, res) => {
     }
 });
 
+
+app.post('/convert-audio', async (req, res) => {
+    try {
+        const { inputUrl, outputFormat } = req.body;
+
+        if (!inputUrl || !outputFormat) {
+            return res.status(400).json({ error: 'Missing inputUrl or outputFormat in request body.' });
+        }
+
+        const inputFilename = `${uuidv4()}`;
+        const inputPath = path.join(storageDir, `${inputFilename}`);
+        const outputPath = path.join(outputDir, `${inputFilename}.${outputFormat}`);
+
+        // Step 1: Download the audio file
+        await downloadFile(inputUrl, inputPath);
+
+        // Step 2: Convert using FFmpeg
+        await new Promise((resolve, reject) => {
+            ffmpeg(inputPath)
+                .toFormat(outputFormat)
+                .on('error', (err) => reject(err))
+                .on('end', () => resolve())
+                .save(outputPath);
+        });
+
+        // Step 3: Return download link
+        const outputUrl = `${req.protocol}://${req.get('host')}/output/${path.basename(outputPath)}`;
+        return res.json({ success: true, url: outputUrl });
+
+    } catch (error) {
+        console.error('Error in /convert-audio:', error.message);
+        return res.status(500).json({ error: 'Audio conversion failed.' });
+    }
+});
+
+
+
+
 app.post('/mask-bbox', async (req, res) => {
   try {
     const { maskUrl } = req.body;
